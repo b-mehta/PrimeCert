@@ -92,7 +92,7 @@ lemma powModTR_aux_eq (n a b c fuel) (hfuel : b < fuel) :
       rw [powModAux, powModAux, Nat.mul_mod, Nat.mod_mod, ← pow_two,
         ← Nat.pow_mod, ← Nat.pow_mul, ← Nat.mul_mod, ← mul_assoc, ← Nat.pow_add_one]
       congr! 3
-      cutsat
+      lia
 
 lemma powModTR_eq (a b n : ℕ) : powModTR a b n = powMod a b n := by
   rw [powModTR, powModTR_aux_eq _ _ _ _ _ (by omega)]
