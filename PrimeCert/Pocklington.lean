@@ -85,7 +85,7 @@ theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
       Finsupp.single_apply, if_pos rfl, add_comm]
     refine le_of_not_gt fun h ↦ hxnq fun p ↦ ?_
     by_cases hpq : p = q
-    · subst hpq; exact lt_succ.mp h
+    · subst hpq; exact Nat.lt_succ_iff.mp h
     convert hxn p using 1
     rw [Finsupp.add_apply, Finsupp.single_apply, if_neg (Ne.symm hpq), add_zero]
   · rw [multiplicity_eq_zero.mpr hqn, pow_zero]
@@ -148,7 +148,8 @@ theorem pocklington_certify (N F₁ : ℕ) (h2n : 2 ≤ N) (hf₁ : F₁ ∣ N -
     N.minFac (N.minFac_prime (by grind)) N.minFac_dvd
   have h1p : 2 ≤ N.minFac := (N.minFac_prime (by grind)).two_le
   rw [Nat.ModEq.comm, Nat.modEq_iff_dvd' (by grind)] at this
-  have := Nat.succ_le.mp <| (Nat.le_sub_iff_add_le (by grind)).mp <| Nat.le_of_dvd (by grind) this
+  have := Nat.succ_le_iff.mp <| (Nat.le_sub_iff_add_le (by grind)).mp <|
+    Nat.le_of_dvd (by grind) this
   exact lt_asymm hf₁' <| ((Nat.pow_lt_pow_iff_left (by grind)).mpr this).trans_le <|
     Nat.minFac_sq_le_self (by grind) hn
 

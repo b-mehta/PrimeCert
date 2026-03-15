@@ -2,6 +2,7 @@ name = "PrimeCert"
 version = "0.1.0"
 keywords = ["math"]
 defaultTargets = ["PrimeCert"]
+testDriver = "PrimeCertTest"
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -17,3 +18,7 @@ rev = "v4.26.0"
 
 [[lean_lib]]
 name = "PrimeCert"
+
+[[lean_lib]]
+name = "PrimeCertTest"
+globs = ["PrimeCertTest.+"]
