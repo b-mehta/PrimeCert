@@ -124,7 +124,7 @@ theorem miller_rabin_squarefree {n : ℕ} (hn₀ : n ≠ 0) (hn : n < 36000000)
     have ha₁ : a' ^ (n - 1) = 1 := Units.pow_ofPowEqOne _ _
     have ha₂ := pow_card_eq_one (x := a')
     rw [ZMod.card_units_eq_totient, Nat.totient_prime_pow_succ hp, pow_one] at ha₂
-    replace ha₂ := pow_gcd_eq_one _ ha₁ ha₂
+    replace ha₂ := pow_gcd_eq_one.2 ⟨ha₁, ha₂⟩
     rw [Nat.gcd_mul_right_right_of_gcd_eq_one h₅] at ha₂
     replace ha₂ := pow_eq_one_of_dvd ha₂ (Nat.gcd_dvd_right _ _)
     convert congr(($ha₂ : ZMod (p ^ 2)))
