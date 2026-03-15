@@ -6,6 +6,7 @@ set_option diagnostics true in
 theorem powMod_11_100002_100003 : powMod 11 100002 100003 = 1 := by prove_pow_mod
 #print powMod_11_100002_100003
 
+set_option linter.style.longLine false in
 open Tactic.powMod in
 set_option diagnostics.threshold 0 in
 set_option diagnostics true in
