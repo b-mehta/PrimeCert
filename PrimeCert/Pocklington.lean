@@ -135,6 +135,8 @@ theorem pocklington_test (N F₁ : ℕ) (hn₀ : 0 < N) (hf₁ : F₁ ∣ N - 1)
     rw [← Nat.coprime_iff_gcd_eq_one] at hanq
     exact hanq.symm.coprime_dvd_left hpn
 
+/-- The Pocklington primitive-root predicate: for each prime factor `p` of `F₁`,
+`gcd(root ^ ((N-1)/p) - 1, N) = 1`. Built incrementally by `PocklingtonPred.step`. -/
 def PocklingtonPred (N root F₁ : ℕ) : Prop :=
   ∀ p ∈ F₁.primeFactors, (root ^ ((N - 1) / p) - 1).gcd N = 1
 
@@ -284,11 +286,20 @@ def mkPockPred (N a F₁ : Q(Nat)) (steps : Array PrimePow) (dict : PrimeDict) :
         mkAppOptM ``PocklingtonPred.step_pow #[N, a, none, mkNatLit p, mkNatLit e,
           ← dict.getM p, ih, eagerReflBoolTrue, eagerReflBoolTrue]) head
 
-/--
-A ladder in the Pocklington certificate is a triple `(N, a, F₁)` where
-  - `N` is the number to be certified as prime
-  - `a` is a pseudo-primitive root of `N`
-  - `F₁ > √N` is a partially factored divisor of `N - 1`, written out in full like `3 ^ 4 * 29 * 41`
+/-- Syntax for a `pock` certificate step: `(N, root, F₁)`.
+
+- `N`: the number to certify as prime
+- `root`: a value satisfying `root ^ (N-1) ≡ 1 (mod N)` and the GCD conditions
+- `F₁`: a fully-factored divisor of `N - 1` with `F₁ > √N`, written as `p₁ ^ e₁ * p₂ * ...`
+
+All prime factors appearing in `F₁` must already be in the `PrimeDict` (certified by
+earlier `small` or `pock` steps).
+
+```lean
+-- In a pock% or prime_cert% call:
+pock (339392917, 2, 3 ^ 4 * 29 * 41)
+pock (16290860017, 5, 339392917)
+```
 -/
 syntax pock_spec := num <|> ("(" num ", " num ", " factored ")")
 
@@ -314,11 +325,27 @@ end Meta
 
 open Meta
 
-/--
-Usage:
+/-- Convenience elaborator combining `small` and `pock` steps into a single term.
+
+Syntax: `pock% [small_primes; pock_steps]`
+
+- Before the `;`: comma-separated small prime literals whose primality is already known
+  (looked up as `PrimeCert.prime_N` declarations).
+- After the `;`: comma-separated Pocklington steps `(N, root, F₁)` where:
+  - `N` is the number to certify
+  - `root` is a pseudo-primitive root of `N`
+  - `F₁` is a factored divisor of `N - 1` with `F₁ > √N`, written as `p₁ ^ e₁ * p₂ * ...`
+
+Steps are processed in order; each step can reference primes certified by earlier steps.
+The last step's `N` becomes the certified prime.
+
 ```lean
+-- Certify 31: declare small primes 2, 3; then one Pocklington step
+theorem prime_31 : Nat.Prime 31 := pock% [2, 3; (31, 3, 2 * 3)]
+
+-- Multi-step ladder: small primes, then intermediate, then target
 theorem prime_16290860017 : Nat.Prime 16290860017 :=
-  pock% [3, 29, 41, (339392917, 2, 3 ^ 4 * 29 * 41), (16290860017, 5, 339392917)]
+  pock% [3, 29, 41; (339392917, 2, 3 ^ 4 * 29 * 41), (16290860017, 5, 339392917)]
 ```
 -/
 scoped elab "pock%" "[" heads:small_spec,+ ";" steps:pock_spec,+ "]" : term => do

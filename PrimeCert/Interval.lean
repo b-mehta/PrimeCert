@@ -7,10 +7,11 @@ Authors: Kenny Lau
 import Mathlib.Algebra.Order.Group.Nat
 import Mathlib.Algebra.Ring.Nat
 
-/-! # A tactic to check interval by binary search
+/-! # Interval checking by binary search
 
-The low-level tactic `check_interval` proves a goal of the form:
-`∀ n, lo ≤ n → n < hi → n % b = r → P n`.
+The `check_interval` tactic proves goals of the form
+`∀ n, lo ≤ n → n < hi → P n` or `∀ n, lo ≤ n → n < hi → n % b = r → P n`
+by building a balanced binary tree of `eagerReduce` proof terms, one per value in the range.
 -/
 
 section forallB
@@ -162,6 +163,25 @@ def makeForallModBisectHi
   mkApp5 (mkConst ``forall_mod_start) P (rnl% hi) bE rE <|
     makeForallModBisectLoHi P r hi b r bE rE pf
 
+/-- Tactic to prove bounded universal statements by exhaustive kernel checking.
+Accepts four goal shapes:
+
+- `∀ n < hi, P n`
+- `∀ n, lo ≤ n → n < hi → P n`
+- `∀ n < hi, n % b = r → P n`
+- `∀ n, lo ≤ n → n < hi → n % b = r → P n`
+
+The predicate `P n` must reduce to `true` (via `eagerReduce`) for every `n` in range.
+The tactic builds a balanced binary tree of proof terms, so the elaboration depth is
+logarithmic in the range size.
+
+```lean
+-- Check that wieferichKR is false or mirimanoffKR is false for all n ≡ 1 (mod 6), n < 6000:
+theorem wieferich_mirimanoff₁ : ∀ n < 6000, n % 6 = 1 →
+    (wieferichKR n).not'.or' (mirimanoffKR n).not' := by
+  check_interval
+```
+-/
 elab "check_interval" : tactic => Elab.Tactic.liftMetaFinishingTactic fun mId ↦ do
   let goal ← inferType <| .mvar mId
   let .forallE _ _ P₀ _ := goal | throwError "goal is not ∀"

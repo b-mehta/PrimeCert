@@ -24,6 +24,8 @@ def powModAux (a b c n : ℕ) : ℕ := (a ^ b * c) % n
 
 def Nat.eager (k : Nat → Nat) (n : Nat) : Nat := k (eagerReduce n)
 
+/-- Kernel-reducible tail-recursive modular exponentiation: computes `a ^ b % n`.
+Uses `Nat.rec` with bounded fuel so the kernel can reduce it via `eagerReduce`. -/
 noncomputable def powModTR (a b n : Nat) : Nat :=
   aux b.succ (a.mod n) b 1
 where
@@ -36,6 +38,8 @@ where
             (r ((a.mul a).mod n) (b.div 2) c))
           (c.mod n))
 
+/-- Computable version of `powModTR` using `partial_fixpoint`. Used at elaboration time
+(e.g. in `mkPowModEq'`) where we need actual computation, not kernel reduction. -/
 def powModTR' (a b n : ℕ) : ℕ :=
   aux (a % n) b 1
   where aux (a b c : ℕ) : ℕ :=
@@ -151,6 +155,20 @@ def prove_pow_mod_tac (g : MVarId) : MetaM Unit := do
     g.assign pf
   | _ => throwError "not an accepted expression"
 
+/-- Tactic to close goals about modular exponentiation. Handles two goal shapes:
+
+- `powMod a b n = m` — proves the equality by computing `a ^ b % n` at elaboration time
+- `powMod a b n ≠ m` — proves the disequality similarly
+
+All of `a`, `b`, `n`, `m` must be numeric literals. The computation uses `powModTR'`
+(the `partial_fixpoint` version) at elaboration time, then produces a kernel proof via
+`powModTR` and `eagerReduce`.
+
+```lean
+example : powMod 11 100002 100003 = 1 := by prove_pow_mod
+example : powMod 2 100002 100003 ≠ 1 := by prove_pow_mod
+```
+-/
 elab "prove_pow_mod" : tactic => liftMetaFinishingTactic prove_pow_mod_tac
 
 end Tactic.powMod

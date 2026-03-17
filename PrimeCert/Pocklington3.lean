@@ -7,7 +7,13 @@ Authors: Kenny Lau
 import Mathlib.NumberTheory.LegendreSymbol.Basic
 import PrimeCert.Pocklington
 
-/-! # An improved version of Pocklington's primality test -/
+/-! # Pocklington's primality test, cube-root variant
+
+The classic Pocklington test requires factoring a divisor `F > √N` of `N - 1`.
+This variant (due to Brillhart–Lehmer–Selfridge) only needs `F > N^(1/3)`, at the cost of
+an additional divisibility sieve up to a small bound `m` and a non-square check on `r² - 8s`
+(where `R = (N-1)/F` and `R = 2·F·s + r`).
+-/
 
 theorem Nat.prime_iff_not_exists_mul_eq' (p : ℕ) :
     Nat.Prime p ↔ 2 ≤ p ∧ ¬∃ m n, 2 ≤ m ∧ m < p ∧ 2 ≤ n ∧ n < p ∧ m * n = p := by
@@ -63,6 +69,8 @@ theorem Nat.add_sq_eq_dist_sq_add_four_mul (c d : ℕ) :
 
 namespace PrimeCert
 
+/-- The non-square certificate: one of three conditions that rule out `r² - 8s` being a
+perfect square, which is needed to exclude composite factorisations. -/
 def Pocklington3Cert (r s : ℕ) : Prop :=
   s = 0 ∨ ¬ IsSquare (r ^ 2 - 8 * s) ∨ r ^ 2 < 8 * s
 
@@ -196,6 +204,10 @@ theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
     ZMod.natCast_eq_zero_iff] at cond
   exact not_lt_of_ge (Nat.le_of_dvd (by grind) cond) h2p
 
+/-- How to discharge the `Pocklington3Cert` obligation:
+- `zero`: `s = 0`
+- `prime p hp`: witness that `r² - 8s` is a quadratic non-residue mod `p`
+- `lt`: `r² < 8s` -/
 inductive Pocklington3CertMode : Type
   | zero | prime (p : ℕ) (hp : Nat.Prime p) | lt
 
@@ -357,6 +369,10 @@ namespace Meta
 
 open Lean Meta Qq
 
+/-- Syntax for the non-square certificate mode in `pock3`:
+- A numeric literal `0` means `s = 0`
+- A numeric literal `p` (prime, `p > 2`) means `r² - 8s` is a quadratic non-residue mod `p`
+- `<` means `r² < 8s` -/
 syntax pock3_mode := num <|> "<"
 
 def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
@@ -370,10 +386,23 @@ def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
   | `(pock3_mode| <) => return q(.lt)
   | _ => Elab.throwUnsupportedSyntax
 
-/-- `(N, root, m, mode, F)` where `mode` is:
-* `0` for `s = 0`;
-* `p` for a small prime witnessing `r^2-8s` is not square;
-* `<` for `r^2 < 8s`.
+/-- Syntax for a `pock3` certificate step: `(N, root, m, mode, F)`.
+
+- `N`: the number to certify as prime
+- `root`: a pseudo-primitive root (for the factored part of `N - 1`)
+- `m`: sieve bound — all `l * F + 1` for `1 ≤ l < m` must not divide `N`
+  (smaller `m` = less sieve work but requires larger `F`)
+- `mode`: how to discharge the non-square condition (see `pock3_mode`)
+- `F`: the even, fully-factored divisor of `N - 1`, written as `2 ^ e * p₁ ^ e₁ * p₂ * ...`
+  (the power of 2 must come first)
+
+```lean
+-- Certify 73471: root 3, sieve bound 1, non-square witness 7, F = 2 * 31
+pock3 (73471, 3, 1, 7, 2 * 31)
+
+-- With higher power of 2 and multiple odd factors:
+pock3 (32560621, 2, 1, 7, 2 ^ 2 * 3 * 29)
+```
 -/
 syntax pock3_spec := "(" num "," num "," num "," pock3_mode "," prime_pow "*" factored")"
 
