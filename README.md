@@ -23,4 +23,14 @@ theorem prime_60digit :
      2, 1, 3, 2 * 32560621 * 3586530508831189)]
 ```
 
-To construct certificates for new primes, factor `N - 1` using an integer factorisation tool such as the [Alpertron ECM calculator](https://www.alpertron.com.ar/ECM.HTM).
+## Generating certificates
+
+`scripts/prime_cert.py` generates certificates automatically:
+
+```bash
+# Auto-factor N-1 (uses sympy via uv, or GNU factor, or built-in rho):
+python3 scripts/prime_cert.py 16290860017
+
+# Supply the factorisation of N-1 (for large primes, use alpertron.com.ar/ECM.HTM):
+python3 scripts/prime_cert.py 16290860017 '2^4 * 3 * 339392917'
+```
