@@ -25,6 +25,7 @@ ALPERTRON = "https://www.alpertron.com.ar/ECM.HTM"
 # -- Primality testing --
 
 def is_prime(n):
+    """Deterministic Miller-Rabin. Correct for all n < 3.3 × 10^24."""
     if n < 2: return False
     if n in (2, 3, 5, 7, 11, 13): return True
     if any(n % p == 0 for p in (2, 3, 5, 7, 11, 13)): return False
