@@ -504,9 +504,9 @@ static int qs_factor(mpz_t result, const mpz_t n) {
 
     /* M needs to be large enough to find fb_size+1 smooth relations.
      * Heuristic: M ≈ fb_size * exp(u) where u = ln(Q(M))/ln(B) */
-    long M = (long)B * 1000;
-    if (M < 1000000) M = 1000000;
-    if (M > 50000000) M = 50000000;
+    long M = (long)B * 5000;
+    if (M < 2000000) M = 2000000;
+    if (M > 100000000) M = 100000000;
 
     /* Sieve array: log approximations */
     double *sieve = calloc(2 * M + 1, sizeof(double));
@@ -544,7 +544,6 @@ static int qs_factor(mpz_t result, const mpz_t n) {
     }
 
     /* Collect smooth relations by trial division */
-    /* (debug removed) */
 
     /* Collect smooth relations by trial division */
     int nsmooth = 0;
@@ -593,7 +592,6 @@ static int qs_factor(mpz_t result, const mpz_t n) {
 
     free(sieve);
 
-    
     if (nsmooth < fb_size + 1) {
         /* Not enough smooth relations */
         free(fb); free(fb_sqrt); free(exponents); free(x_values);
@@ -721,6 +719,26 @@ static int combined_factor(mpz_t result, const mpz_t n) {
     for (int i = 0; ecm_params[i].B1; i++)
         if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
     return 0;
+}
+
+/* Test ECM directly, bypassing rho and QS */
+LEAN_EXPORT lean_obj_res lean_ecm_test(b_lean_obj_arg n_lean) {
+    mpz_t n, result;
+    mpz_init(n); mpz_init(result);
+    lean_nat_to_mpz(n, n_lean);
+    int ok = 0;
+    static const struct { unsigned long B1; int curves; } params[] = {
+        {2000, 25}, {10000, 200}, {50000, 300}, {0, 0}
+    };
+    for (int i = 0; params[i].B1 && !ok; i++)
+        ok = ecm_factor(result, n, params[i].B1, params[i].curves);
+    lean_obj_res ret;
+    if (ok) {
+        ret = lean_alloc_ctor(1, 1, 0);
+        lean_ctor_set(ret, 0, mpz_to_lean_nat(result));
+    } else ret = lean_box(0);
+    mpz_clear(n); mpz_clear(result);
+    return ret;
 }
 
 LEAN_EXPORT lean_obj_res lean_factor_rho(b_lean_obj_arg n_lean) {
