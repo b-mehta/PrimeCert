@@ -8,14 +8,15 @@ import Mathlib.Data.Nat.Totient
 import PrimeCert.Interval
 import PrimeCert.PowMod
 
-/-! # Checking for Wieferich primes and Mirimanoff primes
+/-! # Wieferich and Mirimanoff primes
 
-We seek solutions to `2^(p-1) ≡ 1 [MOD p^2]` and `3^(p-1) ≡ 1 [MOd p^2]`.
+A Wieferich prime satisfies `2^(p-1) ≡ 1 [MOD p²]`; a Mirimanoff prime satisfies
+`3^(p-1) ≡ 1 [MOD p²]`. As of 2025, the only known Wieferich primes are 1093 and 3511;
+the only known Mirimanoff primes are 11 and 1006003.
 
-For the first one, until 2025, the only known such primes are 1093 and 3511.
-
-For the second one, until 2025, the only known such primes are 11 and 1006003.
-
+The main result `wieferich_mirimanoff` shows that no prime below 6000 is simultaneously
+Wieferich and Mirimanoff. This is used in `miller_rabin_squarefree` to rule out
+squarefree pseudoprimes below 36 million (to bases 2 and 3).
 -/
 
 def Wieferich (p : ℕ) : Prop :=

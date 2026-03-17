@@ -4,8 +4,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kenny Lau
 -/
 
-/-! # Efficient implementation of (n - 1) % N -/
+/-! # Efficient computation of `(a - 1) % N`
 
+`predModKR` computes `(a + (N - 1)) % N` using `Nat.rec` so the kernel can reduce it
+via `eagerReduce`, avoiding the overhead of general modular arithmetic.
+-/
+
+/-- Kernel-reducible predecessor mod: computes `(a + (N - 1)) % N` for `a ≤ N`. -/
 def predModKR (a N : Nat) : Nat :=
   a.rec N.pred fun a _ ↦ a
 

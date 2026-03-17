@@ -7,7 +7,12 @@ Authors: Kenny Lau
 import Mathlib.Data.Nat.Prime.Defs
 import Qq
 
-/-! # Meta-code to combine certification methods -/
+/-! # Extensible framework for primality certificates
+
+The `prime_cert%` elaborator processes a sequence of *step groups* (e.g. `small`, `pock`, `pock3`),
+each registered via the `@[prime_cert]` attribute. A `PrimeDict` threads proof terms for
+already-certified primes through the ladder so later steps can reference earlier ones.
+-/
 
 open Lean Meta Elab Command Qq
 
@@ -39,7 +44,12 @@ initialize primeCertExt : SimpleScopedEnvExtension
     initial := ∅
   }
 
-/-- Attribute for identifying `prime_cert` extensions. -/
+/-- Attribute to register a new certification method for use in `prime_cert%`.
+
+Usage: `@[prime_cert key] def myExt : PrimeCertExt where ...`
+
+This registers the method under `key`, generating syntax rules so it can be used as
+`key spec` or `key {spec₁; spec₂; ...}` inside `prime_cert%`. -/
 syntax (name := prime_cert) "prime_cert " ident : attr
 
 /-- Read a `prime_cert` extension from a declaration of the right type. -/
@@ -104,6 +114,30 @@ def parseStepGroup (stx : TSyntax `step_group) :
     return ⟨ext, Syntax.TSepArray.getElems <| .mk (sep := ";") steps⟩
   | _ => throwUnsupportedSyntax
 
+/-- The main primality certificate elaborator.
+
+Syntax: `prime_cert% [group₁, group₂, ...]`
+
+Each group is a registered method name followed by one or more steps:
+- `small {p₁; p₂; ...}` — look up pre-proved small primes
+- `pock (N, root, F₁)` or `pock {step₁; step₂; ...}` — Pocklington certificates
+- `pock3 (N, root, m, mode, F)` — cube-root Pocklington certificates
+
+Groups are processed left-to-right. Within each group, steps are processed in order.
+Every certified prime is added to an internal `PrimeDict` so later steps can reference it.
+The last prime certified becomes the result.
+
+```lean
+theorem prime_60digit :
+    Nat.Prime 236684654874665389773181956283167565443541280517430278333971 := prime_cert%
+  [small {2; 3; 7; 11; 29; 31},
+   pock3 (73471, 3, 1, 7, 2 * 31),
+   pock3 (32560621, 2, 1, 7, 2 ^ 2 * 3 * 29),
+   pock3 (3586530508831189, 2, 1, 11, 2 ^ 2 * 73471),
+   pock3 (236684654874665389773181956283167565443541280517430278333971,
+     2, 1, 3, 2 * 32560621 * 3586530508831189)]
+```
+-/
 elab "prime_cert% " "[" grps:step_group,+ "]" : term => do
   let mut dict : PrimeDict := ∅
   let mut goal : ℕ := 0

@@ -6,15 +6,25 @@ Authors: Kenny Lau
 
 import PrimeCert.Meta.PrimeCert
 
-/-! # The default extension for small primes
+/-! # The `small` certificate method
 
-... where "small" means that we have a proof for it in exactly `PrimeCert.prime_$n`.
+Looks up a pre-existing `PrimeCert.prime_<n>` declaration (from `SmallPrimes.lean`),
+e.g. `PrimeCert.prime_31`. Used as a base case in certificate ladders.
 -/
 
 open Lean Meta Elab Qq
 
 namespace PrimeCert.Meta
 
+/-- Syntax for the `small` method: just a numeric literal `n`.
+Looks up the declaration `PrimeCert.prime_<n>` in the environment.
+
+```lean
+-- In a prime_cert% call:
+prime_cert% [small {2; 3; 5; 7}, ...]
+-- Each number must have a corresponding `PrimeCert.prime_<n>` theorem.
+```
+-/
 syntax small_spec := num
 
 def mkSmallProof : PrimeCertMethod ``small_spec := fun stx _ ↦ match stx with

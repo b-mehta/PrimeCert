@@ -7,12 +7,14 @@ Authors: Kenny Lau, Bhavik Mehta
 import PrimeCert.SmallPrimes
 import PrimeCert.Pocklington3
 
-/-! # Examples for prime certificates
+/-! # Example primality certificates
+
+Demonstrates `pock%`, `pock3`, and `prime_cert%` on primes up to 100+ digits,
+including the Ed25519 base point order and the Goldilocks prime `2^448 - 2^224 - 1`.
 
 Helpful links:
 * https://www.alpertron.com.ar/ECM.HTM (integer factorisation calculator using elliptic curves)
-
- -/
+-/
 
 set_option linter.style.longLine false
 
