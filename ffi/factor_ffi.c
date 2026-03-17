@@ -215,28 +215,30 @@ static void ecm_add(ecm_pt *R, const ecm_pt *P, const ecm_pt *Q, const ecm_pt *D
 /* Montgomery ladder: compute k*P */
 static void ecm_mul(ecm_pt *R, const ecm_pt *P, unsigned long k, const mpz_t a24, const mpz_t n) {
     if (k == 0) { mpz_set_ui(R->X, 0); mpz_set_ui(R->Z, 0); return; }
-    ecm_pt Q, T;
-    ecm_pt_init(&Q); ecm_pt_init(&T);
+    /* Save a copy of P since R may alias P */
+    ecm_pt P0, Q, T;
+    ecm_pt_init(&P0); ecm_pt_init(&Q); ecm_pt_init(&T);
+    mpz_set(P0.X, P->X); mpz_set(P0.Z, P->Z);
     mpz_set(R->X, P->X); mpz_set(R->Z, P->Z);
-    ecm_double(&Q, P, a24, n);
+    ecm_double(&Q, &P0, a24, n);
     unsigned long bit = 1UL << 62;
     while (!(k & bit)) bit >>= 1;
     bit >>= 1;
     while (bit) {
         if (k & bit) {
-            ecm_add(&T, &Q, R, P, n);
+            ecm_add(&T, &Q, R, &P0, n);
             mpz_set(R->X, T.X); mpz_set(R->Z, T.Z);
             ecm_double(&T, &Q, a24, n);
             mpz_set(Q.X, T.X); mpz_set(Q.Z, T.Z);
         } else {
-            ecm_add(&T, R, &Q, P, n);
+            ecm_add(&T, R, &Q, &P0, n);
             mpz_set(Q.X, T.X); mpz_set(Q.Z, T.Z);
             ecm_double(&T, R, a24, n);
             mpz_set(R->X, T.X); mpz_set(R->Z, T.Z);
         }
         bit >>= 1;
     }
-    ecm_pt_clear(&Q); ecm_pt_clear(&T);
+    ecm_pt_clear(&P0); ecm_pt_clear(&Q); ecm_pt_clear(&T);
 }
 
 /* Small primes for ECM stage 1 */
@@ -361,10 +363,10 @@ static int ecm_one_curve(mpz_t result, const mpz_t n, unsigned long B1, uint64_t
 }
 
 /* Try ECM with multiple curves */
+static unsigned long ecm_sigma_counter = 6;
 static int ecm_factor(mpz_t result, const mpz_t n, unsigned long B1, int curves) {
     for (int i = 0; i < curves; i++) {
-        uint64_t sigma = rng() % 1000000 + 6;
-        if (ecm_one_curve(result, n, B1, sigma)) return 1;
+        if (ecm_one_curve(result, n, B1, ecm_sigma_counter++)) return 1;
     }
     return 0;
 }
@@ -707,14 +709,15 @@ static int qs_factor(mpz_t result, const mpz_t n) {
 
 /* Combined factoring: rho first (fast for small factors), then ECM */
 static int combined_factor(mpz_t result, const mpz_t n) {
+    ecm_sigma_counter = 6;
     if (rho_mpz(result, n)) return 1;
     /* Try QS for balanced semiprimes (30-70 digits) */
-    if (mpz_sizeinbase(n, 10) >= 25 && mpz_sizeinbase(n, 10) <= 70) {
+    if (mpz_sizeinbase(n, 10) >= 25 && mpz_sizeinbase(n, 10) <= 42) {
         if (qs_factor(result, n)) return 1;
     }
     /* Escalating ECM */
     static const struct { unsigned long B1; int curves; } ecm_params[] = {
-        {2000, 25}, {10000, 200}, {50000, 300}, {250000, 500}, {1000000, 1000}, {0, 0}
+        {2000, 25}, {10000, 250}, {50000, 400}, {250000, 600}, {1000000, 1000}, {0, 0}
     };
     for (int i = 0; ecm_params[i].B1; i++)
         if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
