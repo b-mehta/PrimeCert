@@ -330,7 +330,7 @@ open Meta
 Syntax: `pock% [small_primes; pock_steps]`
 
 - Before the `;`: comma-separated small prime literals whose primality is already known
-  (looked up as `PrimeCert.prime_N` declarations).
+  (looked up as `PrimeCert.prime_<n>` declarations, e.g. `PrimeCert.prime_31`).
 - After the `;`: comma-separated Pocklington steps `(N, root, F₁)` where:
   - `N` is the number to certify
   - `root` is a pseudo-primitive root of `N`

@@ -11,7 +11,7 @@ import PrimeCert.PowMod
 /-! # Wieferich and Mirimanoff primes
 
 A Wieferich prime satisfies `2^(p-1) ≡ 1 [MOD p²]`; a Mirimanoff prime satisfies
-`3^(p-1) ≡ 1 [MOD p²]`. The only known Wieferich primes are 1093 and 3511;
+`3^(p-1) ≡ 1 [MOD p²]`. As of 2025, the only known Wieferich primes are 1093 and 3511;
 the only known Mirimanoff primes are 11 and 1006003.
 
 The main result `wieferich_mirimanoff` shows that no prime below 6000 is simultaneously

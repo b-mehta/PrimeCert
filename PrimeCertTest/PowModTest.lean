@@ -2,7 +2,7 @@ import PrimeCert.PowMod
 
 /-! # Tests for `prove_pow_mod`
 
-Checks the `prove_pow_mod` tactic on both small and large inputs (up to ~400-digit moduli).
+Checks the `prove_pow_mod` tactic on both small and large inputs (up to ~300-digit moduli).
 -/
 
 open Tactic.powMod in
