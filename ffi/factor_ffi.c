@@ -1,0 +1,332 @@
+/*
+ * FFI for Lean factor: GMP-optimized Pollard-Brent rho.
+ * Declares GMP types/functions directly to avoid needing gmp.h dev headers.
+ */
+#include <lean/lean.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+/* Minimal GMP declarations (enough for what we need) */
+typedef struct {
+    int _mp_alloc;
+    int _mp_size;
+    unsigned long *_mp_d;
+} __mpz_struct;
+typedef __mpz_struct mpz_t[1];
+
+extern void __gmpz_init(mpz_t);
+extern void __gmpz_init_set(mpz_t, const mpz_t);
+extern void __gmpz_init_set_ui(mpz_t, unsigned long);
+extern void __gmpz_clear(mpz_t);
+extern void __gmpz_set(mpz_t, const mpz_t);
+extern void __gmpz_set_ui(mpz_t, unsigned long);
+extern unsigned long __gmpz_get_ui(const mpz_t);
+extern int __gmpz_fits_ulong_p(const mpz_t);
+extern int __gmpz_cmp(const mpz_t, const mpz_t);
+extern int __gmpz_cmp_ui(const mpz_t, unsigned long);
+extern int __gmpz_sgn(const mpz_t);
+extern void __gmpz_add(mpz_t, const mpz_t, const mpz_t);
+extern void __gmpz_sub(mpz_t, const mpz_t, const mpz_t);
+extern void __gmpz_mul(mpz_t, const mpz_t, const mpz_t);
+extern void __gmpz_mod(mpz_t, const mpz_t, const mpz_t);
+extern void __gmpz_gcd(mpz_t, const mpz_t, const mpz_t);
+extern void __gmpz_abs(mpz_t, const mpz_t);
+extern int __gmpz_even_p_macro(const mpz_t);
+extern int __gmpz_probab_prime_p(const mpz_t, int);
+extern void __gmpz_mul_ui(mpz_t, const mpz_t, unsigned long);
+extern void __gmpz_sub_ui(mpz_t, const mpz_t, unsigned long);
+extern void __gmpz_add_ui(mpz_t, const mpz_t, unsigned long);
+extern int __gmpz_invert(mpz_t, const mpz_t, const mpz_t);
+
+#define mpz_init __gmpz_init
+#define mpz_init_set __gmpz_init_set
+#define mpz_init_set_ui __gmpz_init_set_ui
+#define mpz_clear __gmpz_clear
+#define mpz_set __gmpz_set
+#define mpz_set_ui __gmpz_set_ui
+#define mpz_get_ui __gmpz_get_ui
+#define mpz_fits_ulong_p __gmpz_fits_ulong_p
+#define mpz_cmp __gmpz_cmp
+#define mpz_cmp_ui __gmpz_cmp_ui
+#define mpz_add __gmpz_add
+#define mpz_sub __gmpz_sub
+#define mpz_mul __gmpz_mul
+#define mpz_mod __gmpz_mod
+#define mpz_gcd __gmpz_gcd
+#define mpz_abs __gmpz_abs
+#define mpz_probab_prime_p __gmpz_probab_prime_p
+#define mpz_mul_ui __gmpz_mul_ui
+#define mpz_sub_ui __gmpz_sub_ui
+#define mpz_add_ui __gmpz_add_ui
+#define mpz_invert __gmpz_invert
+/* mpz_even_p is a macro in gmp.h; implement directly */
+static inline int mpz_even_p(const mpz_t n) { return n[0]._mp_size == 0 || (n[0]._mp_d[0] & 1) == 0; }
+static inline int mpz_sgn(const mpz_t n) { return n[0]._mp_size < 0 ? -1 : (n[0]._mp_size > 0 ? 1 : 0); }
+
+/* Lean Nat <-> mpz conversion */
+/* lean_object for big Nat has tag LeanMPZ and embeds an mpz_struct */
+typedef struct {
+    lean_object m_header;
+    __mpz_struct m_value;
+} lean_mpz_object;
+
+static void lean_nat_to_mpz(mpz_t out, lean_object *n) {
+    if (lean_is_scalar(n))
+        mpz_set_ui(out, lean_unbox(n));
+    else {
+        lean_mpz_object *o = (lean_mpz_object *)n;
+        mpz_set(out, &o->m_value);
+    }
+}
+
+static lean_obj_res mpz_to_lean_nat(const mpz_t v) {
+    if (mpz_fits_ulong_p(v) && mpz_cmp_ui(v, LEAN_MAX_SMALL_NAT) <= 0)
+        return lean_box(mpz_get_ui(v));
+    /* Allocate a Lean mpz object */
+    lean_mpz_object *o = (lean_mpz_object *)lean_alloc_small_object(sizeof(__mpz_struct));
+    lean_set_st_header((lean_object *)o, LeanMPZ, 0);
+    mpz_init_set(&o->m_value, v);
+    return (lean_obj_res)o;
+}
+
+/* PRNG */
+static uint64_t rng_s = 42;
+static uint64_t rng(void) {
+    rng_s ^= rng_s << 13; rng_s ^= rng_s >> 7; rng_s ^= rng_s << 17;
+    return rng_s;
+}
+
+/* Pollard-Brent rho */
+static int rho_mpz(mpz_t result, const mpz_t n) {
+    if (mpz_even_p(n)) { mpz_set_ui(result, 2); return 1; }
+    mpz_t y, c, x, ys, q, g, diff;
+    mpz_init(y); mpz_init(c); mpz_init(x); mpz_init(ys);
+    mpz_init(q); mpz_init(g); mpz_init(diff);
+    int found = 0;
+    for (int att = 0; att < 5 && !found; att++) {  /* Limited attempts — escalate to ECM fast */
+        mpz_set_ui(c, rng()); mpz_mod(c, c, n);
+        if (!mpz_sgn(c)) mpz_set_ui(c, 1);
+        mpz_set_ui(y, rng()); mpz_mod(y, y, n);
+        mpz_set_ui(q, 1); mpz_set_ui(g, 1);
+        unsigned long r = 1;
+        while (!mpz_cmp_ui(g, 1)) {
+            mpz_set(x, y);
+            for (unsigned long i = 0; i < r; i++) {
+                mpz_mul(y, y, y); mpz_add(y, y, c); mpz_mod(y, y, n);
+            }
+            unsigned long k = 0;
+            while (k < r && !mpz_cmp_ui(g, 1)) {
+                mpz_set(ys, y);
+                unsigned long b = r - k; if (b > 128) b = 128;
+                for (unsigned long i = 0; i < b; i++) {
+                    mpz_mul(y, y, y); mpz_add(y, y, c); mpz_mod(y, y, n);
+                    mpz_sub(diff, x, y); mpz_abs(diff, diff);
+                    mpz_mul(q, q, diff); mpz_mod(q, q, n);
+                }
+                mpz_gcd(g, q, n); k += b;
+            }
+            r *= 2;
+            if (r > 100000) break;  /* cap ~300K iterations per attempt */
+        }
+        if (!mpz_cmp(g, n)) {
+            mpz_set_ui(g, 1);
+            while (!mpz_cmp_ui(g, 1)) {
+                mpz_mul(ys, ys, ys); mpz_add(ys, ys, c); mpz_mod(ys, ys, n);
+                mpz_sub(diff, x, ys); mpz_abs(diff, diff);
+                mpz_gcd(g, diff, n);
+            }
+        }
+        if (mpz_cmp(g, n)) { mpz_set(result, g); found = 1; }
+    }
+    mpz_clear(y); mpz_clear(c); mpz_clear(x); mpz_clear(ys);
+    mpz_clear(q); mpz_clear(g); mpz_clear(diff);
+    return found;
+}
+
+/* ECM (Elliptic Curve Method) using Montgomery curves */
+/* Montgomery point: (X : Z) in projective coordinates */
+typedef struct { mpz_t X, Z; } ecm_pt;
+
+static void ecm_pt_init(ecm_pt *P) { mpz_init(P->X); mpz_init(P->Z); }
+static void ecm_pt_clear(ecm_pt *P) { mpz_clear(P->X); mpz_clear(P->Z); }
+
+/* Point doubling on Montgomery curve: By^2 = x^3 + Ax^2 + x */
+static void ecm_double(ecm_pt *R, const ecm_pt *P, const mpz_t a24, const mpz_t n) {
+    mpz_t u, v, t;
+    mpz_init(u); mpz_init(v); mpz_init(t);
+    mpz_add(u, P->X, P->Z); mpz_mul(u, u, u); mpz_mod(u, u, n);
+    mpz_sub(v, P->X, P->Z); mpz_mul(v, v, v); mpz_mod(v, v, n);
+    mpz_mul(R->X, u, v); mpz_mod(R->X, R->X, n);
+    mpz_sub(t, u, v);
+    mpz_mul(R->Z, a24, t); mpz_mod(R->Z, R->Z, n);
+    mpz_add(R->Z, R->Z, v);
+    mpz_mul(R->Z, R->Z, t); mpz_mod(R->Z, R->Z, n);
+    mpz_clear(u); mpz_clear(v); mpz_clear(t);
+}
+
+/* Differential addition: R = P + Q given P - Q */
+static void ecm_add(ecm_pt *R, const ecm_pt *P, const ecm_pt *Q, const ecm_pt *D, const mpz_t n) {
+    mpz_t u, v, t1, t2;
+    mpz_init(u); mpz_init(v); mpz_init(t1); mpz_init(t2);
+    mpz_sub(u, P->X, P->Z); mpz_add(v, Q->X, Q->Z);
+    mpz_mul(u, u, v); mpz_mod(u, u, n);
+    mpz_add(v, P->X, P->Z); mpz_sub(t1, Q->X, Q->Z);
+    mpz_mul(v, v, t1); mpz_mod(v, v, n);
+    mpz_add(t1, u, v); mpz_mul(t1, t1, t1); mpz_mod(t1, t1, n);
+    mpz_sub(t2, u, v); mpz_mul(t2, t2, t2); mpz_mod(t2, t2, n);
+    mpz_mul(R->X, D->Z, t1); mpz_mod(R->X, R->X, n);
+    mpz_mul(R->Z, D->X, t2); mpz_mod(R->Z, R->Z, n);
+    mpz_clear(u); mpz_clear(v); mpz_clear(t1); mpz_clear(t2);
+}
+
+/* Montgomery ladder: compute k*P */
+static void ecm_mul(ecm_pt *R, const ecm_pt *P, unsigned long k, const mpz_t a24, const mpz_t n) {
+    if (k == 0) { mpz_set_ui(R->X, 0); mpz_set_ui(R->Z, 0); return; }
+    ecm_pt Q, T;
+    ecm_pt_init(&Q); ecm_pt_init(&T);
+    mpz_set(R->X, P->X); mpz_set(R->Z, P->Z);
+    ecm_double(&Q, P, a24, n);
+    unsigned long bit = 1UL << 62;
+    while (!(k & bit)) bit >>= 1;
+    bit >>= 1;
+    while (bit) {
+        if (k & bit) {
+            ecm_add(&T, &Q, R, P, n);
+            mpz_set(R->X, T.X); mpz_set(R->Z, T.Z);
+            ecm_double(&T, &Q, a24, n);
+            mpz_set(Q.X, T.X); mpz_set(Q.Z, T.Z);
+        } else {
+            ecm_add(&T, R, &Q, P, n);
+            mpz_set(Q.X, T.X); mpz_set(Q.Z, T.Z);
+            ecm_double(&T, R, a24, n);
+            mpz_set(R->X, T.X); mpz_set(R->Z, T.Z);
+        }
+        bit >>= 1;
+    }
+    ecm_pt_clear(&Q); ecm_pt_clear(&T);
+}
+
+/* Small primes for ECM stage 1 */
+static int small_primes[] = {
+    2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,
+    101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,
+    211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293,
+    307,311,313,317,331,337,347,349,353,359,367,373,379,383,389,397,
+    401,409,419,421,431,433,439,443,449,457,461,463,467,479,487,491,499,
+    509,521,523,541,547,557,563,569,571,577,587,593,599,601,607,613,617,619,631,
+    641,643,647,653,659,661,673,677,683,691,701,709,719,727,733,739,743,751,757,761,769,
+    773,787,797,809,811,821,823,827,829,839,853,857,859,863,877,881,883,887,
+    907,911,919,929,937,941,947,953,967,971,977,983,991,997, 0
+};
+
+/* ECM: try one curve. Returns factor or sets result to 1 on failure. */
+static int ecm_one_curve(mpz_t result, const mpz_t n, unsigned long B1, uint64_t sigma) {
+    /* Suyama parameterization */
+    mpz_t u, v, a, a24, t;
+    mpz_init(u); mpz_init(v); mpz_init(a); mpz_init(a24); mpz_init(t);
+    mpz_set_ui(u, sigma); mpz_mul_ui(u, u, sigma); mpz_sub_ui(u, u, 5); mpz_mod(u, u, n);
+    mpz_set_ui(v, sigma); mpz_mul_ui(v, v, 4); mpz_mod(v, v, n);
+
+    ecm_pt P;
+    ecm_pt_init(&P);
+    /* P.X = u^3, P.Z = v^3 */
+    mpz_mul(P.X, u, u); mpz_mul(P.X, P.X, u); mpz_mod(P.X, P.X, n);
+    mpz_mul(P.Z, v, v); mpz_mul(P.Z, P.Z, v); mpz_mod(P.Z, P.Z, n);
+
+    /* a24 = (v-u)^3 * (3u+v) / (16*u^3*v) ... simplified: */
+    mpz_sub(t, v, u); /* t = v - u */
+    mpz_mul(a24, t, t); mpz_mul(a24, a24, t); mpz_mod(a24, a24, n); /* (v-u)^3 */
+    mpz_mul_ui(t, u, 3); mpz_add(t, t, v); /* 3u + v */
+    mpz_mul(a24, a24, t); mpz_mod(a24, a24, n);
+    /* Divide by 16*u^3*v: compute inverse */
+    mpz_mul(t, P.X, v); mpz_mul_ui(t, t, 16); mpz_mod(t, t, n);
+    /* Check gcd before inversion */
+    mpz_gcd(result, t, n);
+    if (mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0) {
+        ecm_pt_clear(&P);
+        mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+        return 1; /* lucky factor */
+    }
+    if (!mpz_cmp(result, n)) {
+        ecm_pt_clear(&P);
+        mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+        return 0; /* degenerate curve */
+    }
+    /* Modular inverse of t mod n */
+    mpz_invert(t, t, n);
+    mpz_mul(a24, a24, t); mpz_mod(a24, a24, n);
+    /* a24 = (a+2)/4 */
+
+    /* Stage 1: multiply P by all prime powers up to B1 */
+    for (int i = 0; small_primes[i] && (unsigned long)small_primes[i] <= B1; i++) {
+        unsigned long p = small_primes[i];
+        unsigned long pp = p;
+        while (pp <= B1 / p) pp *= p;
+        ecm_mul(&P, &P, pp, a24, n);
+    }
+    /* Also handle primes beyond our table up to B1 */
+    for (unsigned long p = 1009; p <= B1; p += 2) {
+        /* Quick primality check */
+        int is_p = 1;
+        for (int d = 3; (unsigned long)d * d <= p; d += 2)
+            if (p % d == 0) { is_p = 0; break; }
+        if (!is_p) continue;
+        unsigned long pp = p;
+        while (pp <= B1 / p) pp *= p;
+        ecm_mul(&P, &P, pp, a24, n);
+    }
+
+    mpz_gcd(result, P.Z, n);
+    int found = mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0;
+    ecm_pt_clear(&P);
+    mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+    return found;
+}
+
+/* Try ECM with multiple curves */
+static int ecm_factor(mpz_t result, const mpz_t n, unsigned long B1, int curves) {
+    for (int i = 0; i < curves; i++) {
+        uint64_t sigma = rng() % 1000000 + 6;
+        if (ecm_one_curve(result, n, B1, sigma)) return 1;
+    }
+    return 0;
+}
+
+/* Combined factoring: rho first (fast for small factors), then ECM */
+static int combined_factor(mpz_t result, const mpz_t n) {
+    if (rho_mpz(result, n)) return 1;
+    /* Escalating ECM */
+    static const struct { unsigned long B1; int curves; } ecm_params[] = {
+        {2000, 10}, {11000, 30}, {50000, 100}, {250000, 300}, {1000000, 500}, {0, 0}
+    };
+    for (int i = 0; ecm_params[i].B1; i++)
+        if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
+    return 0;
+}
+
+LEAN_EXPORT lean_obj_res lean_factor_rho(b_lean_obj_arg n_lean) {
+    mpz_t n, result;
+    mpz_init(n); mpz_init(result);
+    lean_nat_to_mpz(n, n_lean);
+    int ok = combined_factor(result, n);
+    lean_obj_res ret;
+    if (ok) {
+        lean_obj_res val = mpz_to_lean_nat(result);
+        ret = lean_alloc_ctor(1, 1, 0); /* Option.some */
+        lean_ctor_set(ret, 0, val);
+    } else {
+        ret = lean_box(0); /* Option.none */
+    }
+    mpz_clear(n); mpz_clear(result);
+    return ret;
+}
+
+LEAN_EXPORT uint8_t lean_is_prime_gmp(b_lean_obj_arg n_lean) {
+    mpz_t n;
+    mpz_init(n);
+    lean_nat_to_mpz(n, n_lean);
+    int r = mpz_probab_prime_p(n, 25);
+    mpz_clear(n);
+    return r > 0 ? 1 : 0;
+}

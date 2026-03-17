@@ -22,3 +22,7 @@ name = "PrimeCert"
 [[lean_lib]]
 name = "PrimeCertTest"
 globs = ["PrimeCertTest.+"]
+
+[[lean_exe]]
+name = "factor"
+root = "Factor"
