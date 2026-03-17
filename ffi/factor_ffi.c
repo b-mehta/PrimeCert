@@ -38,6 +38,8 @@ extern void __gmpz_mul_ui(mpz_t, const mpz_t, unsigned long);
 extern void __gmpz_sub_ui(mpz_t, const mpz_t, unsigned long);
 extern void __gmpz_add_ui(mpz_t, const mpz_t, unsigned long);
 extern int __gmpz_invert(mpz_t, const mpz_t, const mpz_t);
+extern size_t __gmpz_sizeinbase(const mpz_t, int);
+#define mpz_sizeinbase __gmpz_sizeinbase
 
 #define mpz_init __gmpz_init
 #define mpz_init_set __gmpz_init_set
@@ -64,36 +66,30 @@ extern int __gmpz_invert(mpz_t, const mpz_t, const mpz_t);
 static inline int mpz_even_p(const mpz_t n) { return n[0]._mp_size == 0 || (n[0]._mp_d[0] & 1) == 0; }
 static inline int mpz_sgn(const mpz_t n) { return n[0]._mp_size < 0 ? -1 : (n[0]._mp_size > 0 ? 1 : 0); }
 
-/* Lean Nat <-> mpz conversion */
-/* lean_object for big Nat has tag LeanMPZ and embeds an mpz_struct */
-typedef struct {
-    lean_object m_header;
-    __mpz_struct m_value;
-} lean_mpz_object;
+/* Lean Nat <-> mpz conversion using official runtime API */
+extern lean_object * lean_alloc_mpz(mpz_t);
+extern void lean_extract_mpz_value(lean_object *, mpz_t);
 
 static void lean_nat_to_mpz(mpz_t out, lean_object *n) {
     if (lean_is_scalar(n))
         mpz_set_ui(out, lean_unbox(n));
-    else {
-        lean_mpz_object *o = (lean_mpz_object *)n;
-        mpz_set(out, &o->m_value);
-    }
+    else
+        lean_extract_mpz_value(n, out);
 }
 
 static lean_obj_res mpz_to_lean_nat(const mpz_t v) {
     if (mpz_fits_ulong_p(v) && mpz_cmp_ui(v, LEAN_MAX_SMALL_NAT) <= 0)
         return lean_box(mpz_get_ui(v));
-    /* Allocate a Lean mpz object */
-    lean_mpz_object *o = (lean_mpz_object *)lean_alloc_small_object(sizeof(__mpz_struct));
-    lean_set_st_header((lean_object *)o, LeanMPZ, 0);
-    mpz_init_set(&o->m_value, v);
-    return (lean_obj_res)o;
+    mpz_t tmp;
+    mpz_init_set(tmp, v);
+    return lean_alloc_mpz(tmp); /* takes ownership of tmp */
 }
 
-/* PRNG */
+/* PRNG — use simple counter-based sigma for ECM (good coverage) */
 static uint64_t rng_s = 42;
 static uint64_t rng(void) {
-    rng_s ^= rng_s << 13; rng_s ^= rng_s >> 7; rng_s ^= rng_s << 17;
+    /* LCG with good constants (Knuth) */
+    rng_s = rng_s * 6364136223846793005ULL + 1442695040888963407ULL;
     return rng_s;
 }
 
@@ -104,7 +100,8 @@ static int rho_mpz(mpz_t result, const mpz_t n) {
     mpz_init(y); mpz_init(c); mpz_init(x); mpz_init(ys);
     mpz_init(q); mpz_init(g); mpz_init(diff);
     int found = 0;
-    for (int att = 0; att < 5 && !found; att++) {  /* Limited attempts — escalate to ECM fast */
+    int max_att = mpz_sizeinbase(n, 2) <= 100 ? 30 : 3;
+    for (int att = 0; att < max_att && !found; att++) {
         mpz_set_ui(c, rng()); mpz_mod(c, c, n);
         if (!mpz_sgn(c)) mpz_set_ui(c, 1);
         mpz_set_ui(y, rng()); mpz_mod(y, y, n);
@@ -127,7 +124,7 @@ static int rho_mpz(mpz_t result, const mpz_t n) {
                 mpz_gcd(g, q, n); k += b;
             }
             r *= 2;
-            if (r > 100000) break;  /* cap ~300K iterations per attempt */
+            if (r > 2000000) break;  /* cap ~6M iterations per attempt */
         }
         if (!mpz_cmp(g, n)) {
             mpz_set_ui(g, 1);
@@ -137,7 +134,7 @@ static int rho_mpz(mpz_t result, const mpz_t n) {
                 mpz_gcd(g, diff, n);
             }
         }
-        if (mpz_cmp(g, n)) { mpz_set(result, g); found = 1; }
+        if (mpz_cmp_ui(g, 1) > 0 && mpz_cmp(g, n) != 0) { mpz_set(result, g); found = 1; }
     }
     mpz_clear(y); mpz_clear(c); mpz_clear(x); mpz_clear(ys);
     mpz_clear(q); mpz_clear(g); mpz_clear(diff);
@@ -278,8 +275,52 @@ static int ecm_one_curve(mpz_t result, const mpz_t n, unsigned long B1, uint64_t
     }
 
     mpz_gcd(result, P.Z, n);
+    if (mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0) {
+        ecm_pt_clear(&P);
+        mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+        return 1;
+    }
+
+    /* Stage 2: check for one large prime factor in group order in (B1, B2).
+     * Iterate odd q from B1 to B2, computing q*P via differential addition
+     * with step size 2, accumulating gcd. */
+    unsigned long B2 = B1 * 10;
+    ecm_pt P2, Q, Qprev, Tmp;
+    ecm_pt_init(&P2); ecm_pt_init(&Q); ecm_pt_init(&Qprev); ecm_pt_init(&Tmp);
+    ecm_double(&P2, &P, a24, n);
+    unsigned long startQ = (B1 % 2 == 0) ? B1 + 1 : B1;
+    ecm_mul(&Q, &P, startQ, a24, n);
+    ecm_mul(&Qprev, &P, startQ - 2, a24, n);
+    mpz_t acc;
+    mpz_init_set_ui(acc, 1);
+    for (unsigned long q = startQ; q <= B2; q += 2) {
+        /* Quick primality check for q */
+        int isp = 1;
+        if (q > 3) for (unsigned long dd = 3; dd * dd <= q; dd += 2)
+            if (q % dd == 0) { isp = 0; break; }
+        if (isp) {
+            mpz_mul(acc, acc, Q.Z); mpz_mod(acc, acc, n);
+        }
+        /* Advance: Q_{q+2} = Q_q + 2P with diff Q_{q-2} */
+        ecm_add(&Tmp, &Q, &P2, &Qprev, n);
+        mpz_set(Qprev.X, Q.X); mpz_set(Qprev.Z, Q.Z);
+        mpz_set(Q.X, Tmp.X); mpz_set(Q.Z, Tmp.Z);
+        /* Periodic GCD check */
+        if ((q & 0x3FF) == 1) {
+            mpz_gcd(result, acc, n);
+            if (mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0) {
+                ecm_pt_clear(&P2); ecm_pt_clear(&Q); ecm_pt_clear(&Qprev); ecm_pt_clear(&Tmp);
+                mpz_clear(acc); ecm_pt_clear(&P);
+                mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+                return 1;
+            }
+            mpz_set_ui(acc, 1);
+        }
+    }
+    mpz_gcd(result, acc, n);
     int found = mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0;
-    ecm_pt_clear(&P);
+    ecm_pt_clear(&P2); ecm_pt_clear(&Q); ecm_pt_clear(&Qprev); ecm_pt_clear(&Tmp);
+    mpz_clear(acc); ecm_pt_clear(&P);
     mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
     return found;
 }
@@ -298,7 +339,7 @@ static int combined_factor(mpz_t result, const mpz_t n) {
     if (rho_mpz(result, n)) return 1;
     /* Escalating ECM */
     static const struct { unsigned long B1; int curves; } ecm_params[] = {
-        {2000, 10}, {11000, 30}, {50000, 100}, {250000, 300}, {1000000, 500}, {0, 0}
+        {2000, 25}, {10000, 200}, {50000, 300}, {250000, 500}, {1000000, 1000}, {0, 0}
     };
     for (int i = 0; ecm_params[i].B1; i++)
         if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;

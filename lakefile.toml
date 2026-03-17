@@ -26,4 +26,4 @@ globs = ["PrimeCertTest.+"]
 [[lean_exe]]
 name = "factor"
 root = "Factor"
-moreLinkArgs = ["ffi/mulmod.o"]
+moreLinkArgs = ["ffi/mulmod.o", "ffi/factor_ffi.o"]
