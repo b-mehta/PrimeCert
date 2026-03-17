@@ -2,20 +2,15 @@
 """Generate prime_cert% Lean 4 certificates using pock3 (cube-root Pocklington).
 
 Usage:
-    # Auto-factor N-1:
+    # Auto-factor N-1 (for small-to-medium primes):
     python3 scripts/prime_cert.py 16290860017
 
-    # Supply factorisation of N-1 (e.g. from alpertron.com.ar/ECM.HTM):
+    # Supply factorisation of N-1 (for large primes, use alpertron.com.ar/ECM.HTM):
     python3 scripts/prime_cert.py 16290860017 '2^4 * 3 * 339392917'
 
-    # Random primes:
-    python3 scripts/prime_cert.py --random-digits 50 --samples 3
-
-Factoring strategy (in order of preference):
-    1. sympy.factorint via `uv run --with sympy` (handles everything, needs uv)
-    2. GNU coreutils `factor` (fast with GMP, limited without)
-    3. Built-in trial division + Pollard rho (pure Python, slow above ~28 digits)
-    4. Error with instructions to use alpertron.com.ar/ECM.HTM
+For small primes, N-1 is factored automatically using sympy (via uv), GNU
+coreutils factor, or built-in trial division + Pollard rho. For large primes,
+supply the complete factorisation of N-1 as a second argument.
 """
 import math, random, re, shutil, subprocess, sys
 
@@ -25,7 +20,8 @@ ALPERTRON = "https://www.alpertron.com.ar/ECM.HTM"
 # -- Primality testing --
 
 def is_prime(n):
-    """Deterministic Miller-Rabin. Correct for all n < 3.3 × 10^24."""
+    """Deterministic Miller-Rabin, correct for all n < 3.3 × 10^24.
+    Only used internally on small numbers (QNR witnesses, rho cofactors)."""
     if n < 2: return False
     if n in (2, 3, 5, 7, 11, 13): return True
     if any(n % p == 0 for p in (2, 3, 5, 7, 11, 13)): return False
@@ -190,16 +186,8 @@ def certify(N, nm1_factors=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2: print(__doc__); sys.exit(1)
-    if sys.argv[1] == "--random-digits":
-        d = int(sys.argv[2])
-        k = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 1
-        for _ in range(k):
-            n = random.randrange(10**(d-1), 10**d) | 1
-            while not is_prime(n): n += 2
-            print(certify(n)); print()
-    else:
-        N = int(sys.argv[1])
-        fs = parse_factorisation(sys.argv[2]) if len(sys.argv) >= 3 else None
-        if fs: assert math.prod(p**e for p, e in fs.items()) == N - 1, \
-            f"factorisation product doesn't match N-1 = {N-1}"
-        print(certify(N, fs))
+    N = int(sys.argv[1])
+    fs = parse_factorisation(sys.argv[2]) if len(sys.argv) >= 3 else None
+    if fs: assert math.prod(p**e for p, e in fs.items()) == N - 1, \
+        f"factorisation product doesn't match N-1 = {N-1}"
+    print(certify(N, fs))
