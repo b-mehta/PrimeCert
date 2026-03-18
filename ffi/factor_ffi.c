@@ -48,6 +48,7 @@ extern unsigned long __gmpz_fdiv_r_ui(mpz_t, const mpz_t, unsigned long);
 extern unsigned long __gmpz_tdiv_r_ui(mpz_t, const mpz_t, unsigned long);
 extern void __gmpz_addmul_ui(mpz_t, const mpz_t, unsigned long);
 extern void __gmpz_submul_ui(mpz_t, const mpz_t, unsigned long);
+extern void __gmpz_submul(mpz_t, const mpz_t, const mpz_t);
 extern int __gmpz_perfect_square_p(const mpz_t);
 extern void __gmpz_divexact_ui(mpz_t, const mpz_t, unsigned long);
 extern int __gmpz_divisible_ui_p(const mpz_t, unsigned long);
@@ -61,6 +62,7 @@ extern unsigned long __gmpz_mod_ui(mpz_t, const mpz_t, unsigned long);
 #define mpz_tdiv_r_ui __gmpz_tdiv_r_ui
 #define mpz_addmul_ui __gmpz_addmul_ui
 #define mpz_submul_ui __gmpz_submul_ui
+#define mpz_submul __gmpz_submul
 #define mpz_perfect_square_p __gmpz_perfect_square_p
 #define mpz_divexact_ui __gmpz_divexact_ui
 #define mpz_divisible_ui_p __gmpz_divisible_ui_p
@@ -318,48 +320,106 @@ static int ecm_one_curve(mpz_t result, const mpz_t n, unsigned long B1, uint64_t
         return 1;
     }
 
-    /* Stage 2: check for one large prime factor in group order in (B1, B2).
-     * Iterate odd q from B1 to B2, computing q*P via differential addition
-     * with step size 2, accumulating gcd. */
-    unsigned long B2 = B1 * 10;
-    ecm_pt P2, Q, Qprev, Tmp;
-    ecm_pt_init(&P2); ecm_pt_init(&Q); ecm_pt_init(&Qprev); ecm_pt_init(&Tmp);
-    ecm_double(&P2, &P, a24, n);
-    unsigned long startQ = (B1 % 2 == 0) ? B1 + 1 : B1;
-    ecm_mul(&Q, &P, startQ, a24, n);
-    ecm_mul(&Qprev, &P, startQ - 2, a24, n);
-    mpz_t acc;
-    mpz_init_set_ui(acc, 1);
-    for (unsigned long q = startQ; q <= B2; q += 2) {
-        /* Quick primality check for q */
-        int isp = 1;
-        if (q > 3) for (unsigned long dd = 3; dd * dd <= q; dd += 2)
-            if (q % dd == 0) { isp = 0; break; }
-        if (isp) {
-            mpz_mul(acc, acc, Q.Z); mpz_mod(acc, acc, n);
+    /* Stage 2: Baby-step Giant-step.
+     * Choose step D (even). Precompute baby[i] = (2i+1)*P for i=0..D/2-1.
+     * For each giant step j, compute G = j*D*P, accumulate ∏(G.X - baby[i].X).
+     * Check gcd periodically. This is O(D + (B2-B1)/D) point ops instead of O(B2-B1). */
+    unsigned long B2 = B1 * 50;
+    /* D ≈ √(B2-B1), rounded to multiple of 30 for wheel factorization */
+    unsigned long range = B2 - B1;
+    unsigned long D = 30;
+    while (D * D < range) D += 30;
+    if (D > 2310) D = 2310;  /* cap at primorial(11) */
+
+    /* Baby steps: compute d*P for odd d = 1, 3, 5, ..., D-1 */
+    int nbaby = D / 2;
+    mpz_t *baby_x = malloc(nbaby * sizeof(mpz_t));
+    for (int i = 0; i < nbaby; i++) mpz_init(baby_x[i]);
+    {
+        ecm_pt Bp, Bp_prev, P2b, Tmpb;
+        ecm_pt_init(&Bp); ecm_pt_init(&Bp_prev); ecm_pt_init(&P2b); ecm_pt_init(&Tmpb);
+        ecm_double(&P2b, &P, a24, n);
+        /* Bp = 1*P */
+        mpz_set(Bp.X, P.X); mpz_set(Bp.Z, P.Z);
+        /* Compute X/Z for normalization: store X*Z^(-1) mod n would be ideal,
+         * but for simplicity just store X and Z separately and compare X*Z' = X'*Z */
+        mpz_set(baby_x[0], Bp.X);  /* baby[0] = P.X (we'll compare X*Z - X'*Z) */
+        /* Actually, for the comparison we need X/Z. But modular inverse per baby is expensive.
+         * Instead: accumulate ∏(G.X * baby[i].Z - G.Z * baby[i].X) */
+        /* Let's store both X and Z for each baby step */
+        mpz_t *baby_z = malloc(nbaby * sizeof(mpz_t));
+        for (int i = 0; i < nbaby; i++) mpz_init(baby_z[i]);
+        mpz_set(baby_x[0], P.X); mpz_set(baby_z[0], P.Z);
+        /* Bp_prev = -1*P (same as P, differential add needs P-2P = -P which has same X,Z) */
+        /* For differential chain: compute 3P = 2P + P (diff P), 5P = 3P + 2P (diff P), etc. */
+        ecm_pt Bcur, Bprev;
+        ecm_pt_init(&Bcur); ecm_pt_init(&Bprev);
+        mpz_set(Bprev.X, P.X); mpz_set(Bprev.Z, P.Z); /* 1*P */
+        ecm_add(&Bcur, &P2b, &P, &P, n); /* 3*P = 2P + P (diff P) */
+        mpz_set(baby_x[1], Bcur.X); mpz_set(baby_z[1], Bcur.Z);
+        for (int i = 2; i < nbaby; i++) {
+            ecm_add(&Tmpb, &Bcur, &P2b, &Bprev, n); /* (2i+1)*P = (2i-1)*P + 2P (diff (2i-3)*P) */
+            mpz_set(Bprev.X, Bcur.X); mpz_set(Bprev.Z, Bcur.Z);
+            mpz_set(Bcur.X, Tmpb.X); mpz_set(Bcur.Z, Tmpb.Z);
+            mpz_set(baby_x[i], Bcur.X); mpz_set(baby_z[i], Bcur.Z);
         }
-        /* Advance: Q_{q+2} = Q_q + 2P with diff Q_{q-2} */
-        ecm_add(&Tmp, &Q, &P2, &Qprev, n);
-        mpz_set(Qprev.X, Q.X); mpz_set(Qprev.Z, Q.Z);
-        mpz_set(Q.X, Tmp.X); mpz_set(Q.Z, Tmp.Z);
-        /* Periodic GCD check */
-        if ((q & 0x3FF) == 1) {
-            mpz_gcd(result, acc, n);
-            if (mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0) {
-                ecm_pt_clear(&P2); ecm_pt_clear(&Q); ecm_pt_clear(&Qprev); ecm_pt_clear(&Tmp);
-                mpz_clear(acc); ecm_pt_clear(&P);
-                mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
-                return 1;
+        ecm_pt_clear(&Bp); ecm_pt_clear(&Bp_prev); ecm_pt_clear(&P2b); ecm_pt_clear(&Tmpb);
+        ecm_pt_clear(&Bcur); ecm_pt_clear(&Bprev);
+
+        /* Giant steps: G_j = j*D*P for j = ceil(B1/D), ceil(B1/D)+1, ..., ceil(B2/D) */
+        ecm_pt G, G_prev, DP, Gtmp;
+        ecm_pt_init(&G); ecm_pt_init(&G_prev); ecm_pt_init(&DP); ecm_pt_init(&Gtmp);
+        ecm_mul(&DP, &P, D, a24, n);  /* D*P */
+        unsigned long j_start = (B1 / D) + 1;
+        unsigned long j_end = (B2 / D) + 1;
+        ecm_mul(&G, &P, j_start * D, a24, n);
+        ecm_mul(&G_prev, &P, (j_start - 1) * D, a24, n);
+
+        mpz_t acc, diff_xz;
+        mpz_init_set_ui(acc, 1);
+        mpz_init(diff_xz);
+
+        for (unsigned long j = j_start; j <= j_end; j++) {
+            /* For each baby step i, check if j*D ± (2i+1) hits a prime.
+             * Accumulate ∏(G.X * baby_z[i] - G.Z * baby_x[i]) */
+            for (int i = 0; i < nbaby; i++) {
+                /* diff = G.X * baby_z[i] - G.Z * baby_x[i] */
+                mpz_mul(diff_xz, G.X, baby_z[i]);
+                mpz_submul(diff_xz, G.Z, baby_x[i]);
+                mpz_mod(diff_xz, diff_xz, n);
+                mpz_mul(acc, acc, diff_xz);
+                mpz_mod(acc, acc, n);
             }
-            mpz_set_ui(acc, 1);
+            /* Advance giant step: G_{j+1} = G_j + D*P (diff G_{j-1}) */
+            ecm_add(&Gtmp, &G, &DP, &G_prev, n);
+            mpz_set(G_prev.X, G.X); mpz_set(G_prev.Z, G.Z);
+            mpz_set(G.X, Gtmp.X); mpz_set(G.Z, Gtmp.Z);
+            /* Periodic GCD */
+            if ((j & 0xF) == 0) {
+                mpz_gcd(result, acc, n);
+                if (mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0) {
+                    /* Found! Clean up and return. */
+                    for (int i = 0; i < nbaby; i++) { mpz_clear(baby_x[i]); mpz_clear(baby_z[i]); }
+                    free(baby_x); free(baby_z);
+                    mpz_clear(acc); mpz_clear(diff_xz);
+                    ecm_pt_clear(&G); ecm_pt_clear(&G_prev); ecm_pt_clear(&DP); ecm_pt_clear(&Gtmp);
+                    ecm_pt_clear(&P);
+                    mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+                    return 1;
+                }
+                mpz_set_ui(acc, 1);
+            }
         }
+        mpz_gcd(result, acc, n);
+        int found2 = mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0;
+        for (int i = 0; i < nbaby; i++) { mpz_clear(baby_x[i]); mpz_clear(baby_z[i]); }
+        free(baby_x); free(baby_z);
+        mpz_clear(acc); mpz_clear(diff_xz);
+        ecm_pt_clear(&G); ecm_pt_clear(&G_prev); ecm_pt_clear(&DP); ecm_pt_clear(&Gtmp);
+        ecm_pt_clear(&P);
+        mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
+        return found2;
     }
-    mpz_gcd(result, acc, n);
-    int found = mpz_cmp_ui(result, 1) != 0 && mpz_cmp(result, n) != 0;
-    ecm_pt_clear(&P2); ecm_pt_clear(&Q); ecm_pt_clear(&Qprev); ecm_pt_clear(&Tmp);
-    mpz_clear(acc); ecm_pt_clear(&P);
-    mpz_clear(u); mpz_clear(v); mpz_clear(a); mpz_clear(a24); mpz_clear(t);
-    return found;
 }
 
 /* Try ECM with multiple curves */
@@ -717,7 +777,7 @@ static int combined_factor(mpz_t result, const mpz_t n) {
     }
     /* Escalating ECM */
     static const struct { unsigned long B1; int curves; } ecm_params[] = {
-        {2000, 25}, {10000, 250}, {50000, 400}, {250000, 600}, {1000000, 1000}, {0, 0}
+        {2000, 20}, {11000, 200}, {50000, 500}, {250000, 1000}, {1000000, 2000}, {0, 0}
     };
     for (int i = 0; ecm_params[i].B1; i++)
         if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
