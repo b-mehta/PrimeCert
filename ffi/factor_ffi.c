@@ -831,9 +831,27 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     long M = (long)exp(8.5 + 0.015 * Temp);
     if (M < 10000) M = 10000;
     if (M > 200000) M = 200000;
+    /* s chosen so a = product of s primes ≈ sqrt(2n)/M.
+     * Alpertron: s = Temp * 0.051 + 1. But we need to verify a is right. */
     int s = (int)(Temp * 0.051 + 1.0);
     if (s < 4) s = 4;
     if (s > 10) s = 10;
+    /* Adjust: compute target_a and check */
+    mpz_t check_a;
+    mpz_init(check_a);
+    mpz_mul_2exp(check_a, n, 1); /* 2n */
+    mpz_sqrt(check_a, check_a); /* sqrt(2n) */
+    mpz_fdiv_q_ui(check_a, check_a, (unsigned long)M); /* sqrt(2n)/M */
+    double log_target_a = mpz_sizeinbase(check_a, 2) * 0.693147;
+    /* Pick primes from middle of fb, estimate avg log */
+    int mid = (fb_size / 4 + 3 * fb_size / 4) / 2;
+    if (mid >= fb_size) mid = fb_size - 1;
+    if (mid < 2) mid = 2;
+    double avg_log_prime = log((double)fb[mid]);
+    s = (int)(log_target_a / avg_log_prime + 0.5);
+    if (s < 3) s = 3;
+    if (s > 10) s = 10;
+    mpz_clear(check_a);
 
     mpz_t target_a, sqrt_2n, tmp_z;
     mpz_init(target_a); mpz_init(sqrt_2n); mpz_init(tmp_z);
@@ -953,36 +971,35 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
          * For trial division, Q(x) * a = (a*x+b)^2 - n */
         memset(sieve, 0, sieve_len * sizeof(double));
 
-        /* Compute sieve start positions for each fb prime */
+        /* Compute sieve start positions for each fb prime.
+         * Save positions for sieve-guided trial division. */
+        unsigned long *soln1 = malloc(fb_size * sizeof(unsigned long));
+        unsigned long *soln2 = malloc(fb_size * sizeof(unsigned long));
+        for (int i = 0; i < fb_size; i++) { soln1[i] = 0; soln2[i] = 0; }
+
         for (int i = 2; i < fb_size; i++) {
             unsigned long p = fb[i];
-            /* Skip primes dividing a */
             int in_a = 0;
             for (int j = 0; j < s; j++)
                 if (fb[a_idx[j]] == p) { in_a = 1; break; }
-            if (in_a) continue;
+            if (in_a) { soln1[i] = soln2[i] = p; continue; } /* sentinel: skip */
 
             unsigned long r = fb_sqrt[i];
-            /* We need a*x + b ≡ ±r (mod p)
-             * x ≡ (±r - b) * a^{-1} (mod p) */
             unsigned long a_mod_p = mpz_mod_ui(NULL, a_mpz, p);
             unsigned long b_mod_p = mpz_mod_ui(NULL, b_mpz, p);
             unsigned long a_inv = mod_inv(a_mod_p, p);
 
-            unsigned long s1 = (unsigned __int128)(r + p - b_mod_p) % p * a_inv % p;
-            unsigned long s2 = (unsigned __int128)(p - r + p - b_mod_p) % p * a_inv % p;
+            soln1[i] = (unsigned __int128)(r + p - b_mod_p) % p * a_inv % p;
+            soln2[i] = (unsigned __int128)(p - r + p - b_mod_p) % p * a_inv % p;
 
             double logp = fb_log[i];
             for (int si = 0; si < 2; si++) {
-                long start = (long)(si == 0 ? s1 : s2);
-                /* First x >= -M with x ≡ start (mod p) */
+                long start = (long)(si == 0 ? soln1[i] : soln2[i]);
                 long x = -M + (((start - (-M % (long)p)) % (long)p + (long)p) % (long)p);
                 if (x < -M) x += p;
                 for (; x <= M; x += (long)p)
                     sieve[x + M] += logp;
             }
-
-            /* Prime powers omitted for speed — threshold compensates */
         }
 
         /* Primes dividing a: DON'T sieve — after dividing Q*a by a,
@@ -994,7 +1011,10 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
         double log_a = 0;
         for (int i = 0; i < s; i++) log_a += log((double)fb[a_idx[i]]);
         double log_Qmax = log_a + 2.0 * log((double)M);
-        double poly_thresh = log_Qmax - 2.2 * log((double)B);
+        /* Threshold: sieve value ≈ sum of log(p) for primes dividing Q(x).
+         * A B-smooth Q(x) has sieve ≈ log(Q). But we miss prime powers,
+         * so actual sieve is lower. Use aggressive threshold. */
+        double poly_thresh = log_Qmax * 0.72;
 
         /* Collect smooth relations */
         for (long x = -M; x <= M && nsmooth < needed; x++) {
@@ -1019,14 +1039,33 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
             if (mpz_sgn(q_val) == 0) continue;
 
             mpz_set(tmp2, q_val);
-            /* Trial divide: use native arithmetic when value fits in machine word */
             for (int i = 1; i < fb_size; i++) {
+                unsigned long p = fb[i];
+                /* Sieve-guided: skip primes that don't divide Q(x) */
+                if (soln1[i] != p) { /* not a prime dividing a */
+                    unsigned long xmp = ((x % (long)p) + (long)p) % p;
+                    if (xmp != soln1[i] && xmp != soln2[i]) continue;
+                }
+                if (mpz_fits_ulong_p(tmp2)) {
+                    unsigned long val = mpz_get_ui(tmp2);
+                    while (val % p == 0) { val /= p; exponents[nsmooth][i]++; }
+                    mpz_set_ui(tmp2, val);
+                } else {
+                    while (mpz_divisible_ui_p(tmp2, p)) {
+                        mpz_divexact_ui(tmp2, tmp2, p);
+                        exponents[nsmooth][i]++;
+                    }
+                }
+                if (mpz_cmp_ui(tmp2, 1) == 0) break;
+            }
+            /* Also check primes dividing a (not in sieve) */
+            for (int j = 0; j < s; j++) {
+                int i = a_idx[j];
                 unsigned long p = fb[i];
                 if (mpz_fits_ulong_p(tmp2)) {
                     unsigned long val = mpz_get_ui(tmp2);
                     while (val % p == 0) { val /= p; exponents[nsmooth][i]++; }
                     mpz_set_ui(tmp2, val);
-                    if (val == 1) break;
                 } else {
                     while (mpz_divisible_ui_p(tmp2, p)) {
                         mpz_divexact_ui(tmp2, tmp2, p);
@@ -1039,6 +1078,7 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
                 nsmooth++;
             }
         }
+        free(soln1); free(soln2);
 
             poly_count++;
         } /* end Gray code inner loop */
