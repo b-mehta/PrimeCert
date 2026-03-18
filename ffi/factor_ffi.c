@@ -864,12 +864,12 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
 
     /* Sieve array */
     long sieve_len = 2 * M + 1;
-    double *sieve = malloc(sieve_len * sizeof(double));
+    unsigned char *sieve = malloc(sieve_len);
 
-    /* Precompute log of each factor base prime */
-    double *fb_log = malloc(fb_size * sizeof(double));
+    /* Precompute scaled log of each factor base prime (fit in byte) */
+    unsigned char *fb_logb = malloc(fb_size);
     for (int i = 0; i < fb_size; i++)
-        fb_log[i] = (i <= 1) ? 0.0 : log((double)fb[i]);
+        fb_logb[i] = (i <= 1) ? 0 : (unsigned char)(log((double)fb[i]) / log(2.0) * 4 + 0.5);
 
     /* Threshold for Q(x) ≈ a*M^2 roughly */
     double thresh_base;
@@ -947,52 +947,71 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
         mpz_mod(tmp_z, tmp_z, a_mpz);
         if (mpz_sgn(tmp_z) != 0) { a_count++; continue; }
 
-        /* Gray code: iterate through 2^(s-1)-1 polynomials.
-         * For polynomial index k, find lowest bit j of k → flip sign of Bj[j].
-         * b_new = b_old ± 2*Bj[j] */
+        /* Precompute a_inv and Bj mod p for each fb prime — ONCE per a value */
+        unsigned long *a_inv_p = malloc(fb_size * sizeof(unsigned long));
+        unsigned long **Bj_mod_p = malloc(s * sizeof(unsigned long *));
+        for (int j = 0; j < s; j++) Bj_mod_p[j] = malloc(fb_size * sizeof(unsigned long));
+        unsigned long *soln1 = malloc(fb_size * sizeof(unsigned long));
+        unsigned long *soln2 = malloc(fb_size * sizeof(unsigned long));
+        int *in_a_flag = calloc(fb_size, sizeof(int));
+
+        for (int i = 2; i < fb_size; i++) {
+            unsigned long p = fb[i];
+            for (int j = 0; j < s; j++)
+                if (fb[a_idx[j]] == p) { in_a_flag[i] = 1; break; }
+            if (in_a_flag[i]) { a_inv_p[i] = 0; continue; }
+            unsigned long a_mod_p = mpz_mod_ui(NULL, a_mpz, p);
+            a_inv_p[i] = mod_inv(a_mod_p, p);
+            for (int j = 0; j < s; j++)
+                Bj_mod_p[j][i] = mpz_mod_ui(NULL, Bj[j], p);
+        }
+
+        /* Gray code: iterate through 2^(s-1)-1 polynomials */
         for (int pidx = 0; pidx <= npolys_per_a && nsmooth < needed; pidx++) {
             if (pidx > 0) {
-                /* Gray code: find which Bj to flip */
                 int F = pidx, jj = 0;
                 while ((F & 1) == 0) { F >>= 1; jj++; }
-                /* Add or subtract 2*Bj[jj] based on next bit */
-                if (F & 2) {
+                int polyadd = (F & 2) != 0;
+                /* Update b */
+                if (polyadd) {
                     mpz_add(b_mpz, b_mpz, Bj[jj]);
                     mpz_add(b_mpz, b_mpz, Bj[jj]);
                 } else {
                     mpz_sub(b_mpz, b_mpz, Bj[jj]);
                     mpz_sub(b_mpz, b_mpz, Bj[jj]);
                 }
-                /* No mod/normalize — b can be outside [0,a), that's fine */
+                /* Incrementally update sieve positions:
+                 * soln_new = soln_old ± 2*Bj_mod_p[jj] * a_inv mod p */
+                for (int i = 2; i < fb_size; i++) {
+                    if (in_a_flag[i]) continue;
+                    unsigned long p = fb[i];
+                    unsigned long shift = (unsigned __int128)2 * Bj_mod_p[jj][i] % p * a_inv_p[i] % p;
+                    if (polyadd) {
+                        soln1[i] = (soln1[i] + p - shift) % p;
+                        soln2[i] = (soln2[i] + p - shift) % p;
+                    } else {
+                        soln1[i] = (soln1[i] + shift) % p;
+                        soln2[i] = (soln2[i] + shift) % p;
+                    }
+                }
+            } else {
+                /* First polynomial: compute sieve positions from scratch */
+                for (int i = 2; i < fb_size; i++) {
+                    if (in_a_flag[i]) { soln1[i] = soln2[i] = fb[i]; continue; }
+                    unsigned long p = fb[i];
+                    unsigned long r = fb_sqrt[i];
+                    unsigned long b_mod_p = mpz_mod_ui(NULL, b_mpz, p);
+                    soln1[i] = (unsigned __int128)(r + p - b_mod_p) % p * a_inv_p[i] % p;
+                    soln2[i] = (unsigned __int128)(p - r + p - b_mod_p) % p * a_inv_p[i] % p;
+                }
             }
 
-        /* Sieve Q(x) = ((a*x+b)^2 - n) / a for x in [-M, M]
-         * The division by a is exact and makes values smaller → more smooth.
-         * For trial division, Q(x) * a = (a*x+b)^2 - n */
-        memset(sieve, 0, sieve_len * sizeof(double));
-
-        /* Compute sieve start positions for each fb prime.
-         * Save positions for sieve-guided trial division. */
-        unsigned long *soln1 = malloc(fb_size * sizeof(unsigned long));
-        unsigned long *soln2 = malloc(fb_size * sizeof(unsigned long));
-        for (int i = 0; i < fb_size; i++) { soln1[i] = 0; soln2[i] = 0; }
-
+        /* Sieve (byte array — fast memset and cache-friendly) */
+        memset(sieve, 0, sieve_len);
         for (int i = 2; i < fb_size; i++) {
+            if (in_a_flag[i]) continue;
             unsigned long p = fb[i];
-            int in_a = 0;
-            for (int j = 0; j < s; j++)
-                if (fb[a_idx[j]] == p) { in_a = 1; break; }
-            if (in_a) { soln1[i] = soln2[i] = p; continue; } /* sentinel: skip */
-
-            unsigned long r = fb_sqrt[i];
-            unsigned long a_mod_p = mpz_mod_ui(NULL, a_mpz, p);
-            unsigned long b_mod_p = mpz_mod_ui(NULL, b_mpz, p);
-            unsigned long a_inv = mod_inv(a_mod_p, p);
-
-            soln1[i] = (unsigned __int128)(r + p - b_mod_p) % p * a_inv % p;
-            soln2[i] = (unsigned __int128)(p - r + p - b_mod_p) % p * a_inv % p;
-
-            double logp = fb_log[i];
+            unsigned char logp = fb_logb[i];
             for (int si = 0; si < 2; si++) {
                 long start = (long)(si == 0 ? soln1[i] : soln2[i]);
                 long x = -M + (((start - (-M % (long)p)) % (long)p + (long)p) % (long)p);
@@ -1002,23 +1021,17 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
             }
         }
 
-        /* Primes dividing a: DON'T sieve — after dividing Q*a by a,
-         * these primes no longer divide every entry. They'll be caught
-         * in trial division if they divide Q(x). */
-
         /* Threshold: Q(x) ≈ a*M^2/2. A B-smooth number has sieve value ≈ log(Q).
          * Allow a slack of ~log(B)^1.5 to catch partial-smooth numbers. */
         double log_a = 0;
         for (int i = 0; i < s; i++) log_a += log((double)fb[a_idx[i]]);
         double log_Qmax = log_a + 2.0 * log((double)M);
-        /* Threshold: sieve value ≈ sum of log(p) for primes dividing Q(x).
-         * A B-smooth Q(x) has sieve ≈ log(Q). But we miss prime powers,
-         * so actual sieve is lower. Use aggressive threshold. */
-        double poly_thresh = log_Qmax * 0.72;
+        /* Threshold in byte-scaled log2*4 units */
+        unsigned char poly_thresh = (unsigned char)(log_Qmax / log(2.0) * 4 * 0.72);
 
         /* Collect smooth relations */
         for (long x = -M; x <= M && nsmooth < needed; x++) {
-            if (sieve[x + M] < poly_thresh) continue;
+            if (sieve[x + M] < poly_thresh) continue;  /* byte comparison — fast */
 
             /* Compute Q(x)*a = (a*x+b)^2 - n */
             mpz_set_si(x_val, x);
@@ -1078,15 +1091,16 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
                 nsmooth++;
             }
         }
-        free(soln1); free(soln2);
-
             poly_count++;
         } /* end Gray code inner loop */
+        free(soln1); free(soln2); free(a_inv_p); free(in_a_flag);
+        for (int j = 0; j < s; j++) free(Bj_mod_p[j]);
+        free(Bj_mod_p);
         a_count++;
     } /* end a-value outer loop */
 
     for (int i = 0; i < 12; i++) mpz_clear(Bj[i]);
-    free(sieve); free(fb_log);
+    free(sieve); free(fb_logb);
     mpz_clear(target_a); mpz_clear(sqrt_2n); mpz_clear(tmp_z);
     mpz_clear(q_val); mpz_clear(a_mpz); mpz_clear(b_mpz);
     mpz_clear(x_val); mpz_clear(tmp2);
@@ -1195,20 +1209,33 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
 static int combined_factor(mpz_t result, const mpz_t n) {
     ecm_sigma_counter = 6;
     if (rho_mpz(result, n)) return 1;
+    size_t ndig = mpz_sizeinbase(n, 10);
     /* Try QS for balanced semiprimes (25-42 digits) */
-    if (mpz_sizeinbase(n, 10) >= 25 && mpz_sizeinbase(n, 10) <= 42) {
+    if (ndig >= 25 && ndig <= 42) {
         if (qs_factor(result, n)) return 1;
     }
-    /* Try SIQS for larger balanced semiprimes (42-60 digits) */
-    if (mpz_sizeinbase(n, 10) > 42 && mpz_sizeinbase(n, 10) <= 60) {
-        if (siqs_factor(result, n)) return 1;
+    /* For 43-60 digits: interleave ECM and SIQS.
+     * Quick ECM first (might find an unbalanced factor fast),
+     * then SIQS, then more ECM. */
+    if (ndig > 42) {
+        /* Quick ECM pass */
+        if (ecm_factor(result, n, 2000, 20)) return 1;
+        if (ecm_factor(result, n, 11000, 100)) return 1;
+        if (ecm_factor(result, n, 50000, 200)) return 1;
+        /* SIQS for balanced semiprimes */
+        if (ndig <= 60 && siqs_factor(result, n)) return 1;
+        /* More ECM if SIQS failed */
+        if (ecm_factor(result, n, 50000, 500)) return 1;
+        if (ecm_factor(result, n, 250000, 1000)) return 1;
+        if (ecm_factor(result, n, 1000000, 2000)) return 1;
+    } else {
+        /* Escalating ECM for smaller numbers */
+        static const struct { unsigned long B1; int curves; } ecm_params[] = {
+            {2000, 20}, {11000, 200}, {50000, 500}, {250000, 1000}, {1000000, 2000}, {0, 0}
+        };
+        for (int i = 0; ecm_params[i].B1; i++)
+            if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
     }
-    /* Escalating ECM */
-    static const struct { unsigned long B1; int curves; } ecm_params[] = {
-        {2000, 20}, {11000, 200}, {50000, 500}, {250000, 1000}, {1000000, 2000}, {0, 0}
-    };
-    for (int i = 0; ecm_params[i].B1; i++)
-        if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
     return 0;
 }
 
