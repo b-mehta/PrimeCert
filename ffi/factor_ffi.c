@@ -800,8 +800,8 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     int fb_target = (int)exp(sqrt(Temp * log(Temp)) * 0.363 - 1.0);
     if (fb_target < 100) fb_target = 100;
     if (fb_target > QS_MAX_FB - 100) fb_target = QS_MAX_FB - 100;
-    /* B chosen to give approximately fb_target primes in factor base */
-    unsigned long B = (unsigned long)(fb_target * 15);
+    /* B = SieveLimit from Alpertron formula */
+    unsigned long B = (unsigned long)exp(8.5 + 0.015 * Temp);
     if (B < 1000) B = 1000;
     if (B > 600000) B = 600000;
 
@@ -866,24 +866,25 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     mpz_init(q_val); mpz_init(a_mpz); mpz_init(b_mpz);
     mpz_init(x_val); mpz_init(tmp2);
 
-    /* Generate polynomials and sieve */
-    int max_polys = 20000;
+    /* Generate polynomials and sieve — Gray code for multiple b per a */
+    int max_a_values = 2000;
+    int a_count = 0;
     int poly_count = 0;
-    int a_idx[12]; /* indices into fb for primes forming a */
+    int a_idx[12];
+    int npolys_per_a = (1 << (s - 1)) - 1; /* 2^(s-1) - 1 polynomials per a */
+    mpz_t Bj[12]; /* Bj[j] = sqrt(n) * (a/pj)^(-1) mod a, scaled */
+    for (int i = 0; i < 12; i++) mpz_init(Bj[i]);
 
-    while (nsmooth < needed && poly_count < max_polys) {
+    while (nsmooth < needed && a_count < max_a_values) {
         /* Choose s primes from factor base for a */
-        /* Pick from range [lo, hi) in factor base, randomized */
         int lo = fb_size / 4;
         if (lo < 3) lo = 3;
         int hi = 3 * fb_size / 4;
         if (hi <= lo + s) hi = lo + s + 5;
         if (hi > fb_size) hi = fb_size;
 
-        /* Random selection of s distinct indices */
         for (int i = 0; i < s; i++) {
-            int idx;
-            int retry;
+            int idx, retry;
             do {
                 retry = 0;
                 idx = lo + (int)(rng() % (unsigned long)(hi - lo));
@@ -893,51 +894,59 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
             a_idx[i] = idx;
         }
 
-        /* Compute a = product of selected primes */
         mpz_set_ui(a_mpz, 1);
         for (int i = 0; i < s; i++)
             mpz_mul_ui(a_mpz, a_mpz, fb[a_idx[i]]);
 
-        /* Compute b using CRT: for each prime p_i in a,
-         * b ≡ sqrt(n) (mod p_i), and b^2 ≡ n (mod a) */
-        /* Use Garner's algorithm / CRT */
-        /* b_j = solution for partial product a_0*...*a_{j-1} */
-        mpz_set_ui(b_mpz, 0);
-        mpz_t partial_a, inv_pa;
-        mpz_init_set_ui(partial_a, 1);
-        mpz_init(inv_pa);
-
-        for (int i = 0; i < s; i++) {
-            unsigned long pi = fb[a_idx[i]];
-            unsigned long ri = fb_sqrt[a_idx[i]];
-            /* Current b mod pi */
-            unsigned long b_mod_pi = mpz_mod_ui(NULL, b_mpz, pi);
-            /* We want b ≡ ri (mod pi) */
-            unsigned long delta = (ri + pi - b_mod_pi) % pi;
-            /* partial_a_inv mod pi */
-            unsigned long pa_mod_pi = mpz_mod_ui(NULL, partial_a, pi);
-            unsigned long pa_inv = mod_inv(pa_mod_pi, pi);
-            unsigned long coeff = (unsigned __int128)delta * pa_inv % pi;
-            /* b += coeff * partial_a */
-            mpz_set(tmp_z, partial_a);
-            mpz_mul_ui(tmp_z, tmp_z, coeff);
-            mpz_add(b_mpz, b_mpz, tmp_z);
-            /* partial_a *= pi */
-            mpz_mul_ui(partial_a, partial_a, pi);
+        /* Compute Bj[j] for each factor pj of a:
+         * Bj[j] = sqrt(n) mod pj * (a/pj)^(-1) mod pj * (a/pj) */
+        for (int j = 0; j < s; j++) {
+            unsigned long pj = fb[a_idx[j]];
+            unsigned long rj = fb_sqrt[a_idx[j]];
+            /* a/pj */
+            mpz_fdiv_q_ui(tmp_z, a_mpz, pj);
+            /* (a/pj)^(-1) mod pj */
+            unsigned long apj_mod = mpz_mod_ui(NULL, tmp_z, pj);
+            unsigned long apj_inv = mod_inv(apj_mod, pj);
+            /* Bj = rj * apj_inv mod pj * (a/pj) */
+            unsigned long coeff = (unsigned __int128)rj * apj_inv % pj;
+            mpz_mul_ui(Bj[j], tmp_z, coeff);
         }
-        /* Ensure b^2 ≡ n (mod a). Normalize: b should be in [0, a/2] */
-        /* If b > a/2, use b = a - b (both work since (-b)^2 = b^2) */
+
+        /* Initial b = B1 + B2 + ... + Bs (all positive signs) */
+        mpz_set_ui(b_mpz, 0);
+        for (int j = 0; j < s; j++)
+            mpz_add(b_mpz, b_mpz, Bj[j]);
+        mpz_mod(b_mpz, b_mpz, a_mpz);
+        /* Normalize to [-a/2, a/2] */
         mpz_fdiv_q_ui(tmp_z, a_mpz, 2);
         if (mpz_cmp(b_mpz, tmp_z) > 0)
             mpz_sub(b_mpz, a_mpz, b_mpz);
 
-        mpz_clear(partial_a); mpz_clear(inv_pa);
-
-        /* Verify b^2 ≡ n (mod a) — skip poly if not */
+        /* Verify */
         mpz_mul(tmp_z, b_mpz, b_mpz);
         mpz_sub(tmp_z, tmp_z, n);
         mpz_mod(tmp_z, tmp_z, a_mpz);
-        if (mpz_sgn(tmp_z) != 0) { poly_count++; continue; }
+        if (mpz_sgn(tmp_z) != 0) { a_count++; continue; }
+
+        /* Gray code: iterate through 2^(s-1)-1 polynomials.
+         * For polynomial index k, find lowest bit j of k → flip sign of Bj[j].
+         * b_new = b_old ± 2*Bj[j] */
+        for (int pidx = 0; pidx <= npolys_per_a && nsmooth < needed; pidx++) {
+            if (pidx > 0) {
+                /* Gray code: find which Bj to flip */
+                int F = pidx, jj = 0;
+                while ((F & 1) == 0) { F >>= 1; jj++; }
+                /* Add or subtract 2*Bj[jj] based on next bit */
+                if (F & 2) {
+                    mpz_add(b_mpz, b_mpz, Bj[jj]);
+                    mpz_add(b_mpz, b_mpz, Bj[jj]);
+                } else {
+                    mpz_sub(b_mpz, b_mpz, Bj[jj]);
+                    mpz_sub(b_mpz, b_mpz, Bj[jj]);
+                }
+                /* No mod/normalize — b can be outside [0,a), that's fine */
+            }
 
         /* Sieve Q(x) = ((a*x+b)^2 - n) / a for x in [-M, M]
          * The division by a is exact and makes values smaller → more smooth.
@@ -1031,9 +1040,12 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
             }
         }
 
-        poly_count++;
-    }
+            poly_count++;
+        } /* end Gray code inner loop */
+        a_count++;
+    } /* end a-value outer loop */
 
+    for (int i = 0; i < 12; i++) mpz_clear(Bj[i]);
     free(sieve); free(fb_log);
     mpz_clear(target_a); mpz_clear(sqrt_2n); mpz_clear(tmp_z);
     mpz_clear(q_val); mpz_clear(a_mpz); mpz_clear(b_mpz);
