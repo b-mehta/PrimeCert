@@ -107,14 +107,14 @@ theorem pocklington3_test (N F R m r s : ℕ)
   rw [show (c * F + 1) * (d * F + 1) = F * ((c * d) * F + (c + d)) + 1 by ring,
     ← R_def, add_left_inj, Nat.mul_right_inj hf₀] at hpq
   have even_F : Even F := by
-    rw [← R_def, Nat.odd_add_one, Nat.not_odd_iff_even, Nat.even_mul,
-      ← Nat.not_odd_iff_even (n := R)] at odd_n; tauto
+    rw [← R_def, Nat.odd_add_one, Nat.not_odd_iff_even, Nat.even_mul] at odd_n
+    exact odd_n.resolve_right (Nat.not_even_iff_odd.mpr odd_R)
   have odd_cd : Odd (c + d) := by
     rw [← hpq] at odd_R
     refine (Nat.odd_add'.mp odd_R).mpr <| Even.mul_left even_F _
   have even_cd : Even (c * d) := by
     rw [Nat.odd_add, ← Nat.not_even_iff_odd] at odd_cd
-    rw [Nat.even_mul]; tauto
+    rw [Nat.even_mul]; exact (em (Even c)).imp id odd_cd.mp
   have hcdr : (c + d) % (2 * F) = r := by
     obtain ⟨q, hq⟩ := even_iff_exists_two_mul.mp even_cd
     replace hpq := congr($hpq % (2 * F))
