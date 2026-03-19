@@ -793,26 +793,30 @@ static unsigned long mod_inv(unsigned long a, unsigned long p) {
 static int siqs_factor(mpz_t result, const mpz_t n) {
     if (mpz_perfect_square_p(n)) { mpz_sqrt(result, n); return 1; }
 
+    size_t ndig = mpz_sizeinbase(n, 10);
     double ln_n = mpz_sizeinbase(n, 2) * 0.693147;
-    double ln_ln_n = log(ln_n);
-    /* Alpertron-style parameters based on Temp = ln(n) */
-    double Temp = ln_n;
-    int fb_target = (int)exp(sqrt(Temp * log(Temp)) * 0.363 - 1.0);
-    if (fb_target < 100) fb_target = 100;
-    if (fb_target > QS_MAX_FB - 100) fb_target = QS_MAX_FB - 100;
-    /* B = SieveLimit from Alpertron formula */
-    unsigned long B = (unsigned long)exp(8.5 + 0.015 * Temp);
-    if (B < 1000) B = 1000;
-    if (B > 600000) B = 600000;
 
-    /* Build factor base */
+    /* Tuned parameters per digit range (from msieve/yafu experience).
+     * fb_target = desired factor base size, M = sieve half-width. */
+    int fb_target;
+    long M;
+    if      (ndig <= 30) { fb_target = 200;  M = 16384; }
+    else if (ndig <= 34) { fb_target = 400;  M = 32768; }
+    else if (ndig <= 38) { fb_target = 600;  M = 32768; }
+    else if (ndig <= 42) { fb_target = 900;  M = 65536; }
+    else if (ndig <= 46) { fb_target = 1400; M = 65536; }
+    else if (ndig <= 52) { fb_target = 2000; M = 65536; }
+    else if (ndig <= 58) { fb_target = 3000; M = 65536; }
+    else                 { fb_target = 4500; M = 65536; }
+
+    /* Build factor base — collect primes where n is a QR */
     unsigned long *fb = malloc(QS_MAX_FB * sizeof(unsigned long));
     unsigned long *fb_sqrt = malloc(QS_MAX_FB * sizeof(unsigned long));
     int fb_size = 0;
     fb[fb_size++] = 0; fb_sqrt[0] = 0; /* sign factor */
     fb[fb_size++] = 2; fb_sqrt[1] = 1;
 
-    for (unsigned long p = 3; p <= B && fb_size < QS_MAX_FB; p += 2) {
+    for (unsigned long p = 3; fb_size < fb_target; p += 2) {
         int isp = 1;
         for (unsigned long d = 3; d * d <= p; d += 2)
             if (p % d == 0) { isp = 0; break; }
@@ -825,34 +829,22 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
         }
     }
 
-    int needed = fb_size + 50;
+    int needed = fb_size + 20;
 
-    /* Alpertron-style: M = exp(8.5 + 0.015*Temp), s = Temp*0.051 + 1 */
-    long M = (long)exp(8.5 + 0.015 * Temp);
-    if (M < 10000) M = 10000;
-    if (M > 200000) M = 200000;
-    /* s chosen so a = product of s primes ≈ sqrt(2n)/M.
-     * Alpertron: s = Temp * 0.051 + 1. But we need to verify a is right. */
-    int s = (int)(Temp * 0.051 + 1.0);
-    if (s < 4) s = 4;
-    if (s > 10) s = 10;
-    /* Adjust: compute target_a and check */
+    /* Compute s from target_a = sqrt(2n)/M */
     mpz_t check_a;
     mpz_init(check_a);
-    mpz_mul_2exp(check_a, n, 1); /* 2n */
-    mpz_sqrt(check_a, check_a); /* sqrt(2n) */
-    mpz_fdiv_q_ui(check_a, check_a, (unsigned long)M); /* sqrt(2n)/M */
+    mpz_mul_2exp(check_a, n, 1);
+    mpz_sqrt(check_a, check_a);
+    mpz_fdiv_q_ui(check_a, check_a, (unsigned long)M);
     double log_target_a = mpz_sizeinbase(check_a, 2) * 0.693147;
-    /* Pick primes from middle of fb, estimate avg log */
-    int mid = (fb_size / 4 + 3 * fb_size / 4) / 2;
-    if (mid >= fb_size) mid = fb_size - 1;
+    int mid = fb_size / 2;
     if (mid < 2) mid = 2;
     double avg_log_prime = log((double)fb[mid]);
-    s = (int)(log_target_a / avg_log_prime + 0.5);
+    int s = (int)(log_target_a / avg_log_prime + 0.5);
     if (s < 3) s = 3;
     if (s > 10) s = 10;
     mpz_clear(check_a);
-
     mpz_t target_a, sqrt_2n, tmp_z;
     mpz_init(target_a); mpz_init(sqrt_2n); mpz_init(tmp_z);
 
@@ -871,13 +863,16 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     for (int i = 0; i < fb_size; i++)
         fb_logb[i] = (i <= 1) ? 0 : (unsigned char)(log((double)fb[i]) / log(2.0) * 4 + 0.5);
 
-    /* Threshold for Q(x) ≈ a*M^2 roughly */
-    double thresh_base;
-    {
-        /* log(n)/2 as rough estimate for log(Q(x)) */
-        thresh_base = ln_n / 2.0 - 25.0;
-        if (thresh_base < 20.0) thresh_base = 20.0;
-    }
+    /* Large prime bound for single-large-prime variation */
+    unsigned long lp_bound = (unsigned long)fb[fb_size - 1] * fb[fb_size - 1];
+    /* Hash table for partial relation matching */
+    #define LP_HASH_SIZE 65536
+    #define LP_HASH_MASK (LP_HASH_SIZE - 1)
+    typedef struct lp_entry { unsigned long lp; int exp_idx; struct lp_entry *next; } lp_entry_t;
+    lp_entry_t **lp_hash = calloc(LP_HASH_SIZE, sizeof(lp_entry_t *));
+    lp_entry_t *lp_pool = malloc(50000 * sizeof(lp_entry_t));
+    int lp_pool_used = 0;
+    int npartials = 0;
 
     /* Temp mpz for trial division */
     mpz_t q_val, a_mpz, b_mpz, x_val, tmp2;
@@ -885,13 +880,21 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     mpz_init(x_val); mpz_init(tmp2);
 
     /* Generate polynomials and sieve — Gray code for multiple b per a */
-    int max_a_values = 2000;
+    int max_a_values = 10000;
     int a_count = 0;
     int poly_count = 0;
     int a_idx[12];
     int npolys_per_a = (1 << (s - 1)) - 1; /* 2^(s-1) - 1 polynomials per a */
     mpz_t Bj[12]; /* Bj[j] = sqrt(n) * (a/pj)^(-1) mod a, scaled */
     for (int i = 0; i < 12; i++) mpz_init(Bj[i]);
+
+    /* Pre-allocate per-a arrays (reuse across iterations) */
+    unsigned long *a_inv_p = malloc(fb_size * sizeof(unsigned long));
+    unsigned long **Bj_mod_p = malloc(12 * sizeof(unsigned long *));
+    for (int j = 0; j < 12; j++) Bj_mod_p[j] = malloc(fb_size * sizeof(unsigned long));
+    unsigned long *soln1 = malloc(fb_size * sizeof(unsigned long));
+    unsigned long *soln2 = malloc(fb_size * sizeof(unsigned long));
+    int *in_a_flag = malloc(fb_size * sizeof(int));
 
     while (nsmooth < needed && a_count < max_a_values) {
         /* Choose s primes from factor base for a */
@@ -921,12 +924,9 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
         for (int j = 0; j < s; j++) {
             unsigned long pj = fb[a_idx[j]];
             unsigned long rj = fb_sqrt[a_idx[j]];
-            /* a/pj */
             mpz_fdiv_q_ui(tmp_z, a_mpz, pj);
-            /* (a/pj)^(-1) mod pj */
             unsigned long apj_mod = mpz_mod_ui(NULL, tmp_z, pj);
             unsigned long apj_inv = mod_inv(apj_mod, pj);
-            /* Bj = rj * apj_inv mod pj * (a/pj) */
             unsigned long coeff = (unsigned __int128)rj * apj_inv % pj;
             mpz_mul_ui(Bj[j], tmp_z, coeff);
         }
@@ -936,24 +936,18 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
         for (int j = 0; j < s; j++)
             mpz_add(b_mpz, b_mpz, Bj[j]);
         mpz_mod(b_mpz, b_mpz, a_mpz);
-        /* Normalize to [-a/2, a/2] */
         mpz_fdiv_q_ui(tmp_z, a_mpz, 2);
         if (mpz_cmp(b_mpz, tmp_z) > 0)
             mpz_sub(b_mpz, a_mpz, b_mpz);
 
-        /* Verify */
+        /* Verify b^2 ≡ n (mod a) */
         mpz_mul(tmp_z, b_mpz, b_mpz);
         mpz_sub(tmp_z, tmp_z, n);
         mpz_mod(tmp_z, tmp_z, a_mpz);
         if (mpz_sgn(tmp_z) != 0) { a_count++; continue; }
 
         /* Precompute a_inv and Bj mod p for each fb prime — ONCE per a value */
-        unsigned long *a_inv_p = malloc(fb_size * sizeof(unsigned long));
-        unsigned long **Bj_mod_p = malloc(s * sizeof(unsigned long *));
-        for (int j = 0; j < s; j++) Bj_mod_p[j] = malloc(fb_size * sizeof(unsigned long));
-        unsigned long *soln1 = malloc(fb_size * sizeof(unsigned long));
-        unsigned long *soln2 = malloc(fb_size * sizeof(unsigned long));
-        int *in_a_flag = calloc(fb_size, sizeof(int));
+        memset(in_a_flag, 0, fb_size * sizeof(int));
 
         for (int i = 2; i < fb_size; i++) {
             unsigned long p = fb[i];
@@ -1012,22 +1006,30 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
             if (in_a_flag[i]) continue;
             unsigned long p = fb[i];
             unsigned char logp = fb_logb[i];
+            /* Sieve positions: x ≡ soln[i] (mod p), mapped to [0, 2M] */
             for (int si = 0; si < 2; si++) {
-                long start = (long)(si == 0 ? soln1[i] : soln2[i]);
-                long x = -M + (((start - (-M % (long)p)) % (long)p + (long)p) % (long)p);
-                if (x < -M) x += p;
-                for (; x <= M; x += (long)p)
-                    sieve[x + M] += logp;
+                unsigned long s_pos = (si == 0 ? soln1[i] : soln2[i]);
+                /* First x in [-M, M] where x ≡ s_pos (mod p):
+                 * offset = ((s_pos - (-M % p) + p) % p gives start in [0, 2M] */
+                long neg_M_mod = (long)((-M) % (long)p);
+                if (neg_M_mod < 0) neg_M_mod += p;
+                long off = (long)s_pos - neg_M_mod;
+                if (off < 0) off += p;
+                for (long j = off; j < sieve_len; j += (long)p)
+                    sieve[j] += logp;
             }
         }
 
-        /* Threshold: Q(x) ≈ a*M^2/2. A B-smooth number has sieve value ≈ log(Q).
-         * Allow a slack of ~log(B)^1.5 to catch partial-smooth numbers. */
+        /* Threshold: we want sieve[x] ≈ log2(|Q(x)|) * 4 for smooth Q(x).
+         * Q(x) = ((ax+b)^2 - n) / a. Near x=0, |Q(x)| ≈ |b^2-n|/a ≈ n/a (small).
+         * Near x=M, |Q(x)| ≈ a*M^2. Average is somewhere between.
+         * Threshold = log2(a*M^2) * 4 * T where T ≈ 0.6-0.7 to allow slack for
+         * large prime factor or sieve misses. Lower T = more candidates = slower
+         * trial division but more smooth finds. */
         double log_a = 0;
         for (int i = 0; i < s; i++) log_a += log((double)fb[a_idx[i]]);
         double log_Qmax = log_a + 2.0 * log((double)M);
-        /* Threshold in byte-scaled log2*4 units */
-        unsigned char poly_thresh = (unsigned char)(log_Qmax / log(2.0) * 4 * 0.72);
+        unsigned char poly_thresh = (unsigned char)(log_Qmax / log(2.0) * 4 * 0.70);
 
         /* Collect smooth relations */
         for (long x = -M; x <= M && nsmooth < needed; x++) {
@@ -1089,16 +1091,55 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
 
             if (mpz_cmp_ui(tmp2, 1) == 0) {
                 nsmooth++;
+            } else if (mpz_fits_ulong_p(tmp2)) {
+                /* Single large prime variation */
+                unsigned long lp = mpz_get_ui(tmp2);
+                if (lp > 1 && lp <= lp_bound) {
+                    unsigned long h = (lp * 2654435761UL) & LP_HASH_MASK;
+                    /* Search hash bucket for matching partial */
+                    lp_entry_t *ent = lp_hash[h], *prev = NULL, *match = NULL;
+                    while (ent) {
+                        if (ent->lp == lp) { match = ent; break; }
+                        prev = ent; ent = ent->next;
+                    }
+                    if (match && nsmooth < QS_MAX_SMOOTH - 1) {
+                        /* Combine: product of ax+b, sum of exponents */
+                        int pidx = match->exp_idx;
+                        mpz_mul(ax_plus_b[nsmooth], ax_plus_b[nsmooth], ax_plus_b[pidx]);
+                        mpz_mod(ax_plus_b[nsmooth], ax_plus_b[nsmooth], n);
+                        for (int j = 0; j < fb_size; j++)
+                            exponents[nsmooth][j] += exponents[pidx][j];
+                        nsmooth++;
+                        /* Remove from hash */
+                        if (prev) prev->next = match->next;
+                        else lp_hash[h] = match->next;
+                        npartials--;
+                    } else if (lp_pool_used < 50000) {
+                        /* Store new partial */
+                        int slot = needed + lp_pool_used;
+                        if (slot < QS_MAX_SMOOTH) {
+                            memcpy(exponents[slot], exponents[nsmooth], fb_size * sizeof(int));
+                            mpz_set(ax_plus_b[slot], ax_plus_b[nsmooth]);
+                            lp_entry_t *e = &lp_pool[lp_pool_used++];
+                            e->lp = lp;
+                            e->exp_idx = slot;
+                            e->next = lp_hash[h];
+                            lp_hash[h] = e;
+                            npartials++;
+                        }
+                    }
+                }
             }
         }
             poly_count++;
         } /* end Gray code inner loop */
-        free(soln1); free(soln2); free(a_inv_p); free(in_a_flag);
-        for (int j = 0; j < s; j++) free(Bj_mod_p[j]);
-        free(Bj_mod_p);
         a_count++;
     } /* end a-value outer loop */
 
+    free(soln1); free(soln2); free(a_inv_p); free(in_a_flag);
+    for (int j = 0; j < 12; j++) free(Bj_mod_p[j]);
+    free(Bj_mod_p);
+    free(lp_hash); free(lp_pool);
     for (int i = 0; i < 12; i++) mpz_clear(Bj[i]);
     free(sieve); free(fb_logb);
     mpz_clear(target_a); mpz_clear(sqrt_2n); mpz_clear(tmp_z);
@@ -1205,36 +1246,43 @@ static int siqs_factor(mpz_t result, const mpz_t n) {
     return found;
 }
 
-/* Combined factoring: rho first (fast for small factors), then ECM */
 static int combined_factor(mpz_t result, const mpz_t n) {
     ecm_sigma_counter = 6;
-    if (rho_mpz(result, n)) return 1;
     size_t ndig = mpz_sizeinbase(n, 10);
-    /* Try QS for balanced semiprimes (25-42 digits) */
-    if (ndig >= 25 && ndig <= 42) {
-        if (qs_factor(result, n)) return 1;
+
+    /* ECM stages: B1 and curve counts from GMP-ECM recommendations.
+     * Each stage finds factors up to max_digits. */
+    static const struct { unsigned long B1; int curves; int max_digits; } ecm_stages[] = {
+        {2000,    25,  15},
+        {11000,   90,  20},
+        {50000,   300, 25},
+        {250000,  700, 30},
+        {1000000, 1800, 35},
+        {3000000, 5100, 40},
+        {11000000, 10600, 45},
+        {43000000, 19300, 50},
+        {0, 0, 0}
+    };
+
+    /* SIQS is available but not yet fast enough to beat ECM.
+     * Disable for now — ECM handles all sizes. */
+    int siqs_after = -1;
+
+    int total_curves = 0;
+    int half_digits = (int)(ndig + 1) / 2;
+    for (int i = 0; ecm_stages[i].B1; i++) {
+        /* Try SIQS once we've hit the curve threshold */
+        if (siqs_after >= 0 && total_curves >= siqs_after) {
+            if (siqs_factor(result, n)) return 1;
+            siqs_after = -1; /* don't try again */
+        }
+        if (ecm_factor(result, n, ecm_stages[i].B1, ecm_stages[i].curves)) return 1;
+        total_curves += ecm_stages[i].curves;
+        if (ecm_stages[i].max_digits >= half_digits + 5) break;
     }
-    /* For 43-60 digits: interleave ECM and SIQS.
-     * Quick ECM first (might find an unbalanced factor fast),
-     * then SIQS, then more ECM. */
-    if (ndig > 42) {
-        /* Quick ECM pass */
-        if (ecm_factor(result, n, 2000, 20)) return 1;
-        if (ecm_factor(result, n, 11000, 100)) return 1;
-        if (ecm_factor(result, n, 50000, 200)) return 1;
-        /* SIQS for balanced semiprimes */
-        if (ndig <= 60 && siqs_factor(result, n)) return 1;
-        /* More ECM if SIQS failed */
-        if (ecm_factor(result, n, 50000, 500)) return 1;
-        if (ecm_factor(result, n, 250000, 1000)) return 1;
-        if (ecm_factor(result, n, 1000000, 2000)) return 1;
-    } else {
-        /* Escalating ECM for smaller numbers */
-        static const struct { unsigned long B1; int curves; } ecm_params[] = {
-            {2000, 20}, {11000, 200}, {50000, 500}, {250000, 1000}, {1000000, 2000}, {0, 0}
-        };
-        for (int i = 0; ecm_params[i].B1; i++)
-            if (ecm_factor(result, n, ecm_params[i].B1, ecm_params[i].curves)) return 1;
+    /* Final SIQS attempt if not tried yet */
+    if (siqs_after >= 0) {
+        if (siqs_factor(result, n)) return 1;
     }
     return 0;
 }
