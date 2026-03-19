@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 
 /* Minimal GMP declarations (enough for what we need) */
 typedef struct {
@@ -184,14 +186,209 @@ static int rho_mpz(mpz_t result, const mpz_t n) {
     return found;
 }
 
-/* ECM (Elliptic Curve Method) using Montgomery curves */
-/* Montgomery point: (X : Z) in projective coordinates */
+/* ================================================================
+ * Fixed-width Montgomery multiplication (192-bit / 3 limbs)
+ * Replaces mpz_mul+mpz_mod in ECM hot loop for numbers ≤ ~57 digits.
+ * ================================================================ */
+#define ML 3  /* Montgomery limbs */
+typedef struct { uint64_t d[ML]; } mval;  /* 192-bit value */
+
+typedef struct {
+    mval n;         /* modulus */
+    uint64_t n0inv; /* -n[0]^(-1) mod 2^64 */
+    mval r2;        /* R^2 mod n, for converting to Montgomery form */
+    int active;     /* 1 if modulus fits in ML limbs */
+} mctx;
+
+static inline int mval_ge(const mval *a, const mval *b) {
+    for (int i = ML-1; i >= 0; i--) {
+        if (a->d[i] > b->d[i]) return 1;
+        if (a->d[i] < b->d[i]) return 0;
+    }
+    return 1; /* equal */
+}
+
+/* Montgomery multiplication: result = a * b * R^(-1) mod n
+ * Uses CIOS (Coarsely Integrated Operand Scanning) algorithm. */
+static void mmul(mval *r, const mval *a, const mval *b, const mctx *ctx) {
+    uint64_t t[ML+1];
+    memset(t, 0, sizeof(t));
+    for (int i = 0; i < ML; i++) {
+        /* Multiply step: t += a[i] * b */
+        unsigned __int128 carry = 0;
+        for (int j = 0; j < ML; j++) {
+            carry += (unsigned __int128)a->d[i] * b->d[j] + t[j];
+            t[j] = (uint64_t)carry;
+            carry >>= 64;
+        }
+        t[ML] += (uint64_t)carry;
+        /* Reduce step: m = t[0] * n0inv mod 2^64; t += m * n; t >>= 64 */
+        uint64_t m = t[0] * ctx->n0inv;
+        carry = (unsigned __int128)m * ctx->n.d[0] + t[0];
+        carry >>= 64;
+        for (int j = 1; j < ML; j++) {
+            carry += (unsigned __int128)m * ctx->n.d[j] + t[j];
+            t[j-1] = (uint64_t)carry;
+            carry >>= 64;
+        }
+        t[ML-1] = t[ML] + (uint64_t)carry;
+        t[ML] = (uint64_t)(carry >> 64);
+    }
+    /* Conditional subtraction */
+    mval res;
+    memcpy(&res, t, sizeof(mval));
+    if (t[ML] || mval_ge(&res, &ctx->n)) {
+        unsigned __int128 borrow = 0;
+        for (int i = 0; i < ML; i++) {
+            borrow = (unsigned __int128)res.d[i] - ctx->n.d[i] - (uint64_t)(borrow >> 127);
+            res.d[i] = (uint64_t)borrow;
+            borrow = (borrow >> 64) & 1 ? (unsigned __int128)1 << 127 : 0;
+        }
+    }
+    *r = res;
+}
+
+static void madd(mval *r, const mval *a, const mval *b, const mctx *ctx) {
+    unsigned __int128 carry = 0;
+    mval s;
+    for (int i = 0; i < ML; i++) {
+        carry += (unsigned __int128)a->d[i] + b->d[i];
+        s.d[i] = (uint64_t)carry;
+        carry >>= 64;
+    }
+    if (carry || mval_ge(&s, &ctx->n)) {
+        unsigned __int128 borrow = 0;
+        for (int i = 0; i < ML; i++) {
+            borrow = (unsigned __int128)s.d[i] - ctx->n.d[i] - (uint64_t)(borrow >> 127);
+            s.d[i] = (uint64_t)borrow;
+            borrow = (borrow >> 64) & 1 ? (unsigned __int128)1 << 127 : 0;
+        }
+    }
+    *r = s;
+}
+
+static void msub(mval *r, const mval *a, const mval *b, const mctx *ctx) {
+    unsigned __int128 borrow = 0;
+    mval s;
+    for (int i = 0; i < ML; i++) {
+        borrow = (unsigned __int128)a->d[i] - b->d[i] - (uint64_t)(borrow >> 127);
+        s.d[i] = (uint64_t)borrow;
+        borrow = (borrow >> 64) & 1 ? (unsigned __int128)1 << 127 : 0;
+    }
+    if (borrow) { /* a < b, add n */
+        unsigned __int128 carry = 0;
+        for (int i = 0; i < ML; i++) {
+            carry += (unsigned __int128)s.d[i] + ctx->n.d[i];
+            s.d[i] = (uint64_t)carry;
+            carry >>= 64;
+        }
+    }
+    *r = s;
+}
+
+/* Initialize Montgomery context from GMP mpz modulus */
+static void mctx_init(mctx *ctx, const mpz_t n) {
+    memset(ctx, 0, sizeof(*ctx));
+    if (mpz_sizeinbase(n, 2) > ML * 64) { ctx->active = 0; return; }
+    ctx->active = 1;
+    /* Extract limbs from n */
+    for (int i = 0; i < ML && i < n[0]._mp_size; i++)
+        ctx->n.d[i] = n[0]._mp_d[i];
+    /* Compute n0inv = -n[0]^(-1) mod 2^64 using Newton's method */
+    uint64_t x = 1;
+    for (int i = 0; i < 6; i++) /* 6 iterations: 1->2->4->8->16->32->64 bits */
+        x *= 2 - ctx->n.d[0] * x;
+    ctx->n0inv = (uint64_t)(-(int64_t)x); /* negate: we want -n^(-1) */
+    /* Compute R^2 mod n using GMP */
+    mpz_t r2;
+    mpz_init(r2);
+    mpz_set_ui(r2, 1);
+    mpz_mul_2exp(r2, r2, 2 * ML * 64); /* R^2 = 2^(2*192) */
+    mpz_mod(r2, r2, n);
+    for (int i = 0; i < ML && i < r2[0]._mp_size; i++)
+        ctx->r2.d[i] = r2[0]._mp_d[i];
+    mpz_clear(r2);
+}
+
+/* Convert mpz to Montgomery form */
+static void mval_from_mpz(mval *r, const mpz_t a, const mctx *ctx) {
+    mval tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    for (int i = 0; i < ML && i < a[0]._mp_size; i++)
+        tmp.d[i] = a[0]._mp_d[i];
+    mmul(r, &tmp, &ctx->r2, ctx); /* a * R^2 * R^(-1) = a * R */
+}
+
+/* Convert from Montgomery form to mpz */
+static void mval_to_mpz(mpz_t r, const mval *a, const mctx *ctx) {
+    mval one = {{1, 0, 0}};
+    mval tmp;
+    mmul(&tmp, a, &one, ctx); /* a * 1 * R^(-1) = a * R^(-1) */
+    mpz_set_ui(r, 0);
+    for (int i = ML-1; i >= 0; i--) {
+        mpz_mul_2exp(r, r, 64);
+        mpz_add_ui(r, r, tmp.d[i]);
+    }
+}
+
+/* ================================================================
+ * ECM using Montgomery multiplication for small moduli
+ * ================================================================ */
+
+typedef struct { mval X, Z; } mpt; /* Montgomery-form point */
+
+static void mecm_double(mpt *R, const mpt *P, const mval *a24, const mctx *ctx) {
+    mval u, v, t;
+    madd(&u, &P->X, &P->Z, ctx); mmul(&u, &u, &u, ctx);
+    msub(&v, &P->X, &P->Z, ctx); mmul(&v, &v, &v, ctx);
+    mmul(&R->X, &u, &v, ctx);
+    msub(&t, &u, &v, ctx);
+    mmul(&R->Z, a24, &t, ctx);
+    madd(&R->Z, &R->Z, &v, ctx);
+    mmul(&R->Z, &R->Z, &t, ctx);
+}
+
+static void mecm_add(mpt *R, const mpt *P, const mpt *Q, const mpt *D, const mctx *ctx) {
+    mval u, v, t, t2;
+    msub(&u, &P->X, &P->Z, ctx); madd(&v, &Q->X, &Q->Z, ctx);
+    mmul(&u, &u, &v, ctx);
+    madd(&v, &P->X, &P->Z, ctx); msub(&t, &Q->X, &Q->Z, ctx);
+    mmul(&v, &v, &t, ctx);
+    madd(&t, &u, &v, ctx); mmul(&t, &t, &t, ctx);
+    msub(&t2, &u, &v, ctx); mmul(&t2, &t2, &t2, ctx);
+    mmul(&R->X, &D->Z, &t, ctx);
+    mmul(&R->Z, &D->X, &t2, ctx);
+}
+
+static void mecm_mul(mpt *R, const mpt *P, unsigned long k, const mval *a24, const mctx *ctx) {
+    if (k == 0) { memset(R, 0, sizeof(*R)); return; }
+    mpt P0 = *P, R0 = *P, R1;
+    mecm_double(&R1, &P0, a24, ctx);
+    unsigned long bit = 1UL << 62;
+    while (!(k & bit)) bit >>= 1;
+    bit >>= 1;
+    while (bit) {
+        if (k & bit) {
+            mecm_add(&R0, &R1, &R0, &P0, ctx);
+            mecm_double(&R1, &R1, a24, ctx);
+        } else {
+            mecm_add(&R1, &R0, &R1, &P0, ctx);
+            mecm_double(&R0, &R0, a24, ctx);
+        }
+        bit >>= 1;
+    }
+    *R = R0;
+}
+
+/* ================================================================
+ * ECM with mpz fallback for large moduli
+ * ================================================================ */
 typedef struct { mpz_t X, Z; } ecm_pt;
 
 static void ecm_pt_init(ecm_pt *P) { mpz_init(P->X); mpz_init(P->Z); }
 static void ecm_pt_clear(ecm_pt *P) { mpz_clear(P->X); mpz_clear(P->Z); }
 
-/* Persistent scratch space to avoid repeated mpz_init/clear in hot loops */
+/* mpz scratch space for fallback path */
 static mpz_t _eu, _ev, _et, _et2;
 static int _ecm_scratch_inited = 0;
 static void ecm_scratch_init(void) {
@@ -201,7 +398,6 @@ static void ecm_scratch_init(void) {
     }
 }
 
-/* Point doubling on Montgomery curve: By^2 = x^3 + Ax^2 + x */
 static void ecm_double(ecm_pt *R, const ecm_pt *P, const mpz_t a24, const mpz_t n) {
     mpz_add(_eu, P->X, P->Z); mpz_mul(_eu, _eu, _eu); mpz_mod(_eu, _eu, n);
     mpz_sub(_ev, P->X, P->Z); mpz_mul(_ev, _ev, _ev); mpz_mod(_ev, _ev, n);
@@ -212,7 +408,6 @@ static void ecm_double(ecm_pt *R, const ecm_pt *P, const mpz_t a24, const mpz_t 
     mpz_mul(R->Z, R->Z, _et); mpz_mod(R->Z, R->Z, n);
 }
 
-/* Differential addition: R = P + Q given P - Q */
 static void ecm_add(ecm_pt *R, const ecm_pt *P, const ecm_pt *Q, const ecm_pt *D, const mpz_t n) {
     mpz_sub(_eu, P->X, P->Z); mpz_add(_ev, Q->X, Q->Z);
     mpz_mul(_eu, _eu, _ev); mpz_mod(_eu, _eu, n);
@@ -224,11 +419,9 @@ static void ecm_add(ecm_pt *R, const ecm_pt *P, const ecm_pt *Q, const ecm_pt *D
     mpz_mul(R->Z, D->X, _et2); mpz_mod(R->Z, R->Z, n);
 }
 
-/* Montgomery ladder: compute k*P. Uses pointer swaps instead of copies. */
 static void ecm_mul(ecm_pt *R, const ecm_pt *P, unsigned long k, const mpz_t a24, const mpz_t n) {
     if (k == 0) { mpz_set_ui(R->X, 0); mpz_set_ui(R->Z, 0); return; }
     ecm_scratch_init();
-    /* P0 = original point (difference), R0/R1 = running pair */
     ecm_pt P0, R0, R1;
     ecm_pt_init(&P0); ecm_pt_init(&R0); ecm_pt_init(&R1);
     mpz_set(P0.X, P->X); mpz_set(P0.Z, P->Z);
@@ -368,24 +561,54 @@ static int ecm_one_curve(mpz_t result, const mpz_t n, unsigned long B1, uint64_t
     /* a24 = (a+2)/4 */
 
     /* Stage 1: multiply P by all prime powers up to B1.
-     * small_primes table covers up to 10993; for larger B1, continue with sieve. */
-    for (int i = 0; small_primes[i] && (unsigned long)small_primes[i] <= B1; i++) {
-        unsigned long p = small_primes[i];
-        unsigned long pp = p;
-        while (pp <= B1 / p) pp *= p;
-        ecm_mul(&P, &P, pp, a24, n);
-    }
-    /* For B1 > 10993: sieve to find remaining primes */
-    if (B1 > 10993) {
-        /* Simple incremental sieve for primes in (10993, B1] */
-        for (unsigned long p = 10999; p <= B1; p += 2) {
-            int is_p = 1;
-            for (unsigned long d = 3; d * d <= p; d += 2)
-                if (p % d == 0) { is_p = 0; break; }
-            if (!is_p) continue;
+     * Use fixed-width Montgomery multiplication when modulus fits in 192 bits. */
+    mctx mc;
+    mctx_init(&mc, n);
+    if (mc.active) {
+        /* Fast path: 192-bit Montgomery arithmetic */
+        mpt mP;
+        mval ma24;
+        mval_from_mpz(&mP.X, P.X, &mc);
+        mval_from_mpz(&mP.Z, P.Z, &mc);
+        mval_from_mpz(&ma24, a24, &mc);
+        for (int i = 0; small_primes[i] && (unsigned long)small_primes[i] <= B1; i++) {
+            unsigned long p = small_primes[i];
+            unsigned long pp = p;
+            while (pp <= B1 / p) pp *= p;
+            mecm_mul(&mP, &mP, pp, &ma24, &mc);
+        }
+        if (B1 > 10993) {
+            for (unsigned long p = 10999; p <= B1; p += 2) {
+                int is_p = 1;
+                for (unsigned long d = 3; d * d <= p; d += 2)
+                    if (p % d == 0) { is_p = 0; break; }
+                if (!is_p) continue;
+                unsigned long pp = p;
+                while (pp <= B1 / p) pp *= p;
+                mecm_mul(&mP, &mP, pp, &ma24, &mc);
+            }
+        }
+        /* Convert back to mpz for GCD and Stage 2 */
+        mval_to_mpz(P.X, &mP.X, &mc);
+        mval_to_mpz(P.Z, &mP.Z, &mc);
+    } else {
+        /* Fallback: GMP mpz arithmetic for large moduli */
+        for (int i = 0; small_primes[i] && (unsigned long)small_primes[i] <= B1; i++) {
+            unsigned long p = small_primes[i];
             unsigned long pp = p;
             while (pp <= B1 / p) pp *= p;
             ecm_mul(&P, &P, pp, a24, n);
+        }
+        if (B1 > 10993) {
+            for (unsigned long p = 10999; p <= B1; p += 2) {
+                int is_p = 1;
+                for (unsigned long d = 3; d * d <= p; d += 2)
+                    if (p % d == 0) { is_p = 0; break; }
+                if (!is_p) continue;
+                unsigned long pp = p;
+                while (pp <= B1 / p) pp *= p;
+                ecm_mul(&P, &P, pp, a24, n);
+            }
         }
     }
 
