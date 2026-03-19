@@ -20,8 +20,8 @@ theorem Nat.prime_iff_not_exists_mul_eq' (p : ℕ) :
   rw [prime_iff_not_exists_mul_eq]
   refine and_congr_right fun hp ↦ not_congr <| exists_congr fun m ↦ exists_congr fun n ↦ ?_
   refine ⟨fun ⟨hmp, hnp, hmnp⟩ ↦ ⟨?_, hmp, ?_, hnp, hmnp⟩, by tauto⟩
-  · by_contra hm; interval_cases m <;> grind
-  · by_contra hn; interval_cases n <;> grind
+  · by_contra hm; interval_cases m <;> lia
+  · by_contra hn; interval_cases n <;> lia
 
 theorem Nat.modEq_prod {ι : Type*} {s : Finset ι} {f g : ι → ℕ} {b : ℕ}
     (hb : ∀ i ∈ s, f i ≡ g i [MOD b]) : (∏ i ∈ s, f i) ≡ (∏ i ∈ s, g i) [MOD b] := by
@@ -33,9 +33,9 @@ theorem Nat.modEq_one_of_dvd_of_prime (n b : ℕ) (prime : ∀ p, Nat.Prime p �
     (d : ℕ) (hdn : d ∣ n) : d ≡ 1 [MOD b] := by
   by_cases hn : n = 0
   · have := prime 2 prime_two <| hn ▸ dvd_zero _
-    rw [ModEq.comm, modEq_iff_dvd' (by grind), dvd_one] at this
+    rw [ModEq.comm, modEq_iff_dvd' (by lia), dvd_one] at this
     exact this ▸ modEq_one
-  have hd : d ≠ 0 := by rintro rfl; rw [zero_dvd_iff] at hdn; grind
+  have hd : d ≠ 0 := by rintro rfl; rw [zero_dvd_iff] at hdn; lia
   rw [← factorization_prod_pow_eq_self hd, Finsupp.prod,
     ← Finset.prod_const_one (s := d.factorization.support)]
   refine modEq_prod fun p hp ↦ ?_
@@ -62,7 +62,7 @@ theorem Nat.modEq_iff_exists_mul_add' {p q b : ℕ} (hqp : q ≤ p) :
 theorem Nat.add_sq_eq_dist_sq_add_four_mul (c d : ℕ) :
     (c + d) ^ 2 = (max c d - min c d) ^ 2 + 4 * (c * d) := by
   wlog h : c ≤ d
-  · rw [add_comm, max_comm, min_comm, mul_comm]; grind
+  · rw [add_comm, max_comm, min_comm, mul_comm c d]; exact this d c (by order)
   obtain ⟨d, rfl⟩ := le_iff_exists_add.mp h
   rw [max_eq_right h, min_eq_left h, Nat.add_sub_cancel_left]
   ring
@@ -84,24 +84,24 @@ theorem pocklington3_test (N F R m r s : ℕ)
     (cert : s = 0 ∨ ¬ IsSquare (r ^ 2 - 8 * s) ∨ r ^ 2 < 8 * s) :
     Nat.Prime N := by
   simp_rw [Nat.prime_iff_not_exists_mul_eq', not_exists, not_and]
-  refine ⟨by grind, fun p q h2p hpn h2q hqn hpq ↦ ?_⟩
-  have := pocklington_test N F (by grind)
+  refine ⟨by lia, fun p q h2p hpn h2q hqn hpq ↦ ?_⟩
+  have := pocklington_test N F (by lia)
     (by rw [← R_def, Nat.add_sub_cancel_right]; exact dvd_mul_right _ _) primitive
   replace this := Nat.modEq_one_of_dvd_of_prime _ _ this
   have hp := this p (hpq ▸ dvd_mul_right _ _)
   have hq := this q (hpq ▸ dvd_mul_left _ _)
-  rw [Nat.modEq_iff_exists_mul_add' (by grind)] at hp hq
+  rw [Nat.modEq_iff_exists_mul_add' (by lia)] at hp hq
   obtain ⟨c, rfl⟩ := hp
   obtain ⟨d, rfl⟩ := hq
   have hmc : m ≤ c := le_of_not_gt fun hcm ↦ by
     obtain hc | hc := le_or_gt 1 c
     · exact divisors c hc hcm (hpq ▸ dvd_mul_right _ _)
-    · interval_cases c; rw [zero_mul] at h2p; grind
+    · interval_cases c; rw [zero_mul] at h2p; lia
   have hmd : m ≤ d := le_of_not_gt fun hdm ↦ by
     obtain hd | hd := le_or_gt 1 d
     · exact divisors d hd hdm (hpq ▸ dvd_mul_left _ _)
-    · interval_cases d; rw [zero_mul] at h2q; grind
-  have hf₀ : F ≠ 0 := by rintro rfl; rw [zero_mul] at R_def; grind
+    · interval_cases d; rw [zero_mul] at h2q; lia
+  have hf₀ : F ≠ 0 := by rintro rfl; rw [zero_mul] at R_def; lia
   have hR₂ := Nat.div_add_mod R (2 * F)
   rw [r_def, s_def] at hR₂
   rw [show (c * F + 1) * (d * F + 1) = F * ((c * d) * F + (c + d)) + 1 by ring,
@@ -124,26 +124,26 @@ theorem pocklington3_test (N F R m r s : ℕ)
     obtain ⟨c, hc⟩ := le_iff_exists_add.mp hmc
     obtain ⟨d, hd⟩ := le_iff_exists_add.mp hmd
     rw [hc, hd]
-    grind
+    lia
   have hcdr₁ : c + d < 2 * F + r := by
     rw [← R_def, ← hpq] at bound
     conv_lhs at bound => exact
       show _ = (c * d + m ^ 2) * F ^ 2 + (c + d) * F + (m * F + 1) by ring
     grw [← hcdm] at bound
     conv_lhs at bound => exact show _ = (m * F + 1) * ((c + d) * F + 1) by ring
-    rw [mul_lt_mul_iff_right₀ (by grind), add_lt_add_iff_right] at bound
+    rw [mul_lt_mul_iff_right₀ (by lia), add_lt_add_iff_right] at bound
     conv_rhs at bound => exact show _ = (2 * F + r) * F by ring
-    rwa [mul_lt_mul_iff_left₀ (by grind)] at bound
+    rwa [mul_lt_mul_iff_left₀ (by lia)] at bound
   have hcdr₂ := Nat.div_add_mod (c + d) (2 * F)
   rw [hcdr] at hcdr₂
-  rw [← hcdr₂, add_lt_add_iff_right, mul_lt_iff_lt_one_right (by grind), Nat.lt_one_iff] at hcdr₁
+  rw [← hcdr₂, add_lt_add_iff_right, mul_lt_iff_lt_one_right (by lia), Nat.lt_one_iff] at hcdr₁
   rw [hcdr₁, mul_zero, zero_add] at hcdr₂
   have hscd := hR₂.trans hpq.symm
-  rw [← hcdr₂, add_left_inj, mul_right_comm, mul_left_inj' (by grind)] at hscd
+  rw [← hcdr₂, add_left_inj, mul_right_comm, mul_left_inj' (by lia)] at hscd
   obtain cert | cert := cert
   · -- first case: s = 0
     rw [cert, mul_zero, eq_comm, mul_eq_zero] at hscd
-    grind
+    lia
   · -- second case: r^2-8s is not square
     have square : r ^ 2 = 8 * s + (max c d - min c d) ^ 2 := by
       rw [hcdr₂, show 8 = 4 * 2 by rfl, mul_assoc, hscd, Nat.add_sq_eq_dist_sq_add_four_mul,
@@ -151,7 +151,7 @@ theorem pocklington3_test (N F R m r s : ℕ)
     rw [square, Nat.add_sub_cancel_left] at cert
     obtain cert | cert := cert
     · exact cert ⟨_, sq _⟩
-    · grind
+    · lia
 
 -- MOVE
 def forallB (f : ℕ → Bool) (start len : ℕ) (step : ℕ := 1) : Bool :=
@@ -191,7 +191,7 @@ theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
     (cond : powMod (r ^ 2 - 8 * s) (p / 2) p = p - 1) :
     Pocklington3Cert r s := by
   refine .inr <| .inl fun h ↦ ?_
-  have p_odd : p % 2 = 1 := by rw [← Nat.not_even_iff, Nat.Prime.even_iff hp]; grind
+  have p_odd : p % 2 = 1 := by rw [← Nat.not_even_iff, Nat.Prime.even_iff hp]; lia
   obtain ⟨a, ha⟩ := h
   rw [ha, powMod, ← sq, ← pow_mul, Nat.two_mul_odd_div_two p_odd] at cond
   replace cond := congr(($cond : ZMod p))
@@ -199,10 +199,10 @@ theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
   rw [ZMod.natCast_mod, Nat.cast_pow, Nat.cast_sub hp.one_le, ZMod.natCast_self, zero_sub,
     Nat.cast_one] at cond
   have ha : (a : ZMod p) ≠ 0 := by
-    rintro ha; rw [ha, zero_pow (by grind), eq_comm, neg_eq_zero] at cond; grind
+    rintro ha; rw [ha, zero_pow (by lia), eq_comm, neg_eq_zero] at cond; grind
   rw [ZMod.pow_card_sub_one_eq_one ha, eq_neg_iff_add_eq_zero, one_add_one_eq_two, ← Nat.cast_two,
     ZMod.natCast_eq_zero_iff] at cond
-  exact not_lt_of_ge (Nat.le_of_dvd (by grind) cond) h2p
+  exact not_lt_of_ge (Nat.le_of_dvd (by lia) cond) h2p
 
 /-- How to discharge the `Pocklington3Cert` obligation:
 - `zero`: `s = 0`
@@ -277,12 +277,13 @@ theorem mem_primeFactors_prod_toNat (L : List PrimePow) (p : ℕ) :
       rw [List.mem_map, not_exists]
       exact fun pp h ↦ absurd h.2 <| pow_ne_zero _ pp.pf.ne_zero
 
+-- `omega` is >2x faster than `lia` here (57ms vs 148ms median over 5 runs)
 theorem of_gcd_pred_mod_eq_one (a b : ℕ) (h : (a % b - 1).gcd b = 1)
     (hb : 2 ≤ b) : (a - 1).gcd b = 1 := by
-  rwa [Nat.gcd_comm, Nat.gcd_def, if_neg (by grind), ← Nat.mod_sub_of_le]
+  rwa [Nat.gcd_comm, Nat.gcd_def, if_neg (by omega), ← Nat.mod_sub_of_le]
   · by_cases h₀ : a % b = 0
-    · rw [h₀, Nat.zero_sub, Nat.gcd_zero_left] at h; grind
-    · grind
+    · rw [h₀, Nat.zero_sub, Nat.gcd_zero_left] at h; omega
+    · omega
 
 /--
 Inputs (not all needed):
@@ -322,7 +323,7 @@ theorem pocklington3_certKR (N root m e : ℕ) (F' : List PrimePow) (mode : Pock
     refine mul_ne_zero (List.prod_ne_zero ?_) (pow_ne_zero _ <| by decide)
     rw [List.mem_map, not_exists]
     exact fun pp h ↦ absurd (h.2) <| pow_ne_zero _ pp.pf.ne_zero
-  have hf₂ : 2 ≤ F := by grind
+  have hf₂ : 2 ≤ F := by lia
   have hn₁ : N ≠ 1 := by
     rintro rfl
     rw [add_eq_right, mul_eq_zero] at R_def
@@ -337,7 +338,7 @@ theorem pocklington3_certKR (N root m e : ℕ) (F' : List PrimePow) (mode : Pock
   have hrs : 2 * F * s + r = R := by
     rw [← Nat.div_add_mod R (2 * F), ← h_two_F]; rfl
   refine pocklington3_test N F R m r s R_def (mul_comm 2 F ▸ rfl) (mul_comm 2 F ▸ rfl)
-    (by grind) odd_N (Nat.odd_iff.mpr odd_R) ?_ ?_ ?_ ?_
+    (by lia) odd_N (Nat.odd_iff.mpr odd_R) ?_ ?_ ?_ ?_
   · simp only [List.rec_and, Nat.beq_eq, powMod] at primitive
     rw [F_def, ← PrimePow.toNat_def ⟨2, e, Nat.prime_two, by simpa⟩, mul_comm, ← List.prod_cons,
       ← List.map_cons]
@@ -345,7 +346,7 @@ theorem pocklington3_certKR (N root m e : ℕ) (F' : List PrimePow) (mode : Pock
     · rw [Nat.ModEq, Nat.one_mod_eq_one.mpr hn₁, ← powMod, psp]
     · obtain ⟨pp, hpp, rfl⟩ := mem_primeFactors_prod_toNat _ _ hp
       rw [List.mem_cons] at hpp
-      refine of_gcd_pred_mod_eq_one _ _ ?_ (by grind)
+      refine of_gcd_pred_mod_eq_one _ _ ?_ (by lia)
       obtain rfl | hpp := hpp
       · convert primitive.1 using 5
         convert Nat.div_eq_sub_mod_div.symm
@@ -354,10 +355,10 @@ theorem pocklington3_certKR (N root m e : ℕ) (F' : List PrimePow) (mode : Pock
         convert Nat.div_eq_sub_mod_div.symm
         rw [eq_comm, ← Nat.one_mod_eq_one.mpr pp.pf.ne_one, ← Nat.ModEq]
         refine Nat.ModEq.of_dvd (dvd_F_of_mem_F' _ hpp) ?_
-        rw [Nat.ModEq, Nat.one_mod_eq_one.mpr (by grind), hnf]
+        rw [Nat.ModEq, Nat.one_mod_eq_one.mpr (by lia), hnf]
   · rw [show F + 1 = 1 * F + 1 by simp, forallB_iff'] at divisors
     simp only [Nat.blt_eq, Nat.pos_iff_ne_zero, ne_eq, ← Nat.dvd_iff_mod_eq_zero] at divisors
-    exact fun l hl₁ hl₂ ↦ divisors l hl₁ (by grind)
+    exact fun l hl₁ hl₂ ↦ divisors l hl₁ (by lia)
   · rw [← R_def, ← hrs]
     conv_lhs => exact show _ = ((s * 2 + m ^ 2) * F + r + m) * F + 1 by ring
     conv_rhs => exact show _ = (((F * 2 + r) * m + 2) * F + r + m) * F + 1 by ring

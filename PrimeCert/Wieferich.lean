@@ -75,16 +75,15 @@ theorem Nat.Prime.mod_6 {p : ℕ} (hp : p.Prime) (hp₂ : p ≠ 2) (hp₃ : p �
   generalize p % 6 = r at *
   subst p
   interval_cases r
-  · rw [add_zero, prime_mul_iff, eq_false (p := Prime 6) (by decide)] at hp
-    grind
-  · grind
+  · rw [add_zero, prime_mul_iff, eq_false (p := Prime 6) (by decide)] at hp; simp at hp
+  · left; lia
   · rw [show 6 * k + 2 = 2 * (3 * k + 1) by ring, prime_mul_iff] at hp
-    grind
+    rcases hp with ⟨-, h⟩ | ⟨-, h⟩ <;> lia
   · rw [show 6 * k + 3 = 3 * (2 * k + 1) by ring, prime_mul_iff] at hp
-    grind
+    rcases hp with ⟨-, h⟩ | ⟨-, h⟩ <;> lia
   · rw [show 6 * k + 4 = 2 * (3 * k + 2) by ring, prime_mul_iff] at hp
-    grind
-  · grind
+    rcases hp with ⟨-, h⟩ | ⟨-, h⟩ <;> lia
+  · right; lia
 
 theorem wieferich_mirimanoff {p : ℕ} (hp : p.Prime) (p_bound : p < 6000) :
     ¬(2 ^ (p - 1) ≡ 1 [MOD p^2]) ∨ ¬(3 ^ (p - 1) ≡ 1 [MOD p^2]) := by
@@ -92,8 +91,8 @@ theorem wieferich_mirimanoff {p : ℕ} (hp : p.Prime) (p_bound : p < 6000) :
   · clear p_bound
     revert hp
     decide +revert +kernel
-  have hp₁ : p ≠ 1 := by grind
-  obtain h₁ | h₅ := hp.mod_6 (by grind) (by grind)
+  have hp₁ : p ≠ 1 := hp.ne_one
+  obtain h₁ | h₅ := hp.mod_6 (by lia) (by lia)
   · simpa [hp₁] using wieferich_mirimanoff₁ p p_bound h₁
   · simpa [hp₁] using Or.inl <| wieferich₅ p p_bound h₅
 
@@ -112,12 +111,12 @@ theorem miller_rabin_squarefree {n : ℕ} (hn₀ : n ≠ 0) (hn : n < 36000000)
     exact absurd hp (by decide)
   have h₁ : _ < 6000 ^ 2 := (Nat.le_of_dvd (pos_of_ne_zero hn₀) hpn).trans_lt hn
   rw [Nat.pow_lt_pow_iff_left (by decide)] at h₁
-  have hn₁' : n - 1 ≠ 0 := by grind
+  have hn₁' : n - 1 ≠ 0 := by lia
   have hp₁ : p ^ 2 ≠ 0 := pow_ne_zero _ hp.ne_zero
   have := NeZero.mk hp₁
   have h₅ : (n - 1).gcd p = 1 := by
-    rw [Nat.gcd_sub_left_left_of_dvd _ (by grind only)
-      (dvd_trans (dvd_pow_self _ (by grind only)) hpn), Nat.gcd_one_left]
+    rw [Nat.gcd_sub_left_left_of_dvd _ (by lia)
+      (dvd_trans (dvd_pow_self _ (by lia)) hpn), Nat.gcd_one_left]
   have h₄ (a) (ha : a ^ (n - 1) ≡ 1 [MOD n]) : a ^ (p - 1) ≡ 1 [MOD p^2] := by
     replace ha := ha.of_dvd hpn
     rw [← ZMod.natCast_eq_natCast_iff, Nat.cast_pow, Nat.cast_one] at ha ⊢
