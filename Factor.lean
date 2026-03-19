@@ -15,9 +15,11 @@ Output: one "prime exponent" pair per line, sorted.
 @[extern "lean_mulmod64"] opaque mulMod64 (a b m : UInt64) : UInt64
 @[extern "lean_submod64"] opaque subMod64 (a b m : UInt64) : UInt64
 
--- GMP-backed rho+ECM for large numbers (ffi/factor_ffi.c)
+-- GMP-backed ECM for large numbers (ffi/factor_ffi.c)
 @[extern "lean_factor_rho"] opaque factorFFI (n : @& Nat) : Option Nat
 @[extern "lean_is_prime_gmp"] opaque isPrimeGMP (n : @& Nat) : Bool
+-- Full factorization in C (avoids Lean↔C round-trips for large numbers)
+@[extern "lean_full_factor"] opaque fullFactorFFI (n : @& Nat) : Array (Nat × Nat)
 
 -- ============================================================
 -- UInt64 fast path (fully unboxed, zero allocation)
@@ -135,6 +137,10 @@ def addFactor (fs : Array (Nat × Nat)) (p : Nat) : Array (Nat × Nat) :=
 
 partial def factorize (n : Nat) : Array (Nat × Nat) := Id.run do
   if n ≤ 1 then return #[]
+  -- For numbers ≥ 2^63: do the full factorization in C to avoid round-trips
+  if n ≥ smallBound then
+    return fullFactorFFI n
+  -- For smaller numbers: use fast UInt64 path
   let (trialFs, remaining) := trialDivide n
   let mut fs := trialFs
   let mut stack : Array Nat := if remaining > 1 then #[remaining] else #[]
@@ -145,21 +151,11 @@ partial def factorize (n : Nat) : Array (Nat × Nat) := Id.run do
     if m ≤ 1 then continue
     if isPrime m then
       fs := addFactor fs m; continue
-    -- For numbers < 2^63: use unboxed UInt64 rho (blazing fast)
-    if m < smallBound then
-      let (r, rng') := pollardRho64 m.toUInt64 rng 100
-      rng := rng'
-      match r with
-      | some d => stack := stack.push d.toNat; stack := stack.push (m / d.toNat); continue
-      | none => fs := addFactor fs m; continue
-    -- For numbers ≥ 2^63: use C FFI (GMP rho + ECM)
-    match factorFFI m with
-    | some d =>
-      if d > 1 && d < m then
-        stack := stack.push d; stack := stack.push (m / d)
-      else
-        fs := addFactor fs m  -- FFI returned degenerate result
-    | none => fs := addFactor fs m
+    let (r, rng') := pollardRho64 m.toUInt64 rng 100
+    rng := rng'
+    match r with
+    | some d => stack := stack.push d.toNat; stack := stack.push (m / d.toNat); continue
+    | none => fs := addFactor fs m; continue
   return fs.qsort (fun a b => a.1 < b.1)
 
 def main (args : List String) : IO Unit := do
