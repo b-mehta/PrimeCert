@@ -5,6 +5,7 @@ Authors: Kenny Lau
 -/
 
 import Mathlib.Data.Nat.Totient
+import Mathlib.Tactic.IntervalCases
 import PrimeCert.Interval
 import PrimeCert.PowMod
 
