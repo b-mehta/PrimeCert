@@ -9,8 +9,7 @@ CSV=scripts/test_cases.csv
 
 echo "n,digits,lean_ms,sympy_ms,ratio,lean_factors,match"
 tail -n +3 "$CSV" | while IFS=, read -r n digits factors sympy_ms; do
-    # Lean
-    lean_out=$(timeout "$MAX_SEC" "$FACTOR" "$n" 2>/dev/null) || lean_out="TIMEOUT"
+    # Lean (single run — process startup is ~5ms, negligible)
     lean_start=$(date +%s%N)
     lean_out=$(timeout "$MAX_SEC" "$FACTOR" "$n" 2>/dev/null) || lean_out="TIMEOUT"
     lean_end=$(date +%s%N)
