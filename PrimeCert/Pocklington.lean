@@ -57,7 +57,7 @@ theorem Nat.modEq_iff_forall_prime_dvd {a b n : ℕ} :
       specialize h p hp
       rw [multiplicity_zero_right, pow_one] at h
       exact h.eq_of_lt_of_lt (by linarith) (by linarith)
-  · conv_lhs => rw [← factorization_prod_pow_eq_self hn₀]
+  · conv_lhs => rw [← prod_factorization_pow_eq_self hn₀]
     rw [Finsupp.prod, modEq_finset_prod_iff]
     · simp_rw [support_factorization, mem_primeFactors_of_ne_zero hn₀, and_comm, and_imp]
       refine forall_congr' fun p ↦ imp_congr_right fun hpn ↦ imp_congr_right fun hp ↦ ?_
