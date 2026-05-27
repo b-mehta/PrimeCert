@@ -36,7 +36,7 @@ theorem Nat.modEq_one_of_dvd_of_prime (n b : ℕ) (prime : ∀ p, Nat.Prime p �
     rw [ModEq.comm, modEq_iff_dvd' (by lia), dvd_one] at this
     exact this ▸ modEq_one
   have hd : d ≠ 0 := by rintro rfl; rw [zero_dvd_iff] at hdn; lia
-  rw [← factorization_prod_pow_eq_self hd, Finsupp.prod,
+  rw [← prod_factorization_pow_eq_self hd, Finsupp.prod,
     ← Finset.prod_const_one (s := d.factorization.support)]
   refine modEq_prod fun p hp ↦ ?_
   rw [support_factorization, mem_primeFactors] at hp
