@@ -1,10 +1,11 @@
 /-
 Copyright (c) 2025 Kenny Lau. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Kenny Lau
+Authors: Kenny Lau, Bhavik Mehta
 -/
 
 import Mathlib.NumberTheory.LegendreSymbol.Basic
+import Mathlib.Algebra.BigOperators.ModEq
 import PrimeCert.Pocklington
 
 /-! # Pocklington's primality test, cube-root variant
@@ -23,12 +24,6 @@ theorem Nat.prime_iff_not_exists_mul_eq' (p : ℕ) :
   · by_contra hm; interval_cases m <;> lia
   · by_contra hn; interval_cases n <;> lia
 
-theorem Nat.modEq_prod {ι : Type*} {s : Finset ι} {f g : ι → ℕ} {b : ℕ}
-    (hb : ∀ i ∈ s, f i ≡ g i [MOD b]) : (∏ i ∈ s, f i) ≡ (∏ i ∈ s, g i) [MOD b] := by
-  classical induction s using Finset.induction with
-  | empty => simp; rfl
-  | insert a s has ih => simp_rw [Finset.prod_insert has]; exact Nat.ModEq.mul (by grind) (by grind)
-
 theorem Nat.modEq_one_of_dvd_of_prime (n b : ℕ) (prime : ∀ p, Nat.Prime p → p ∣ n → p ≡ 1 [MOD b])
     (d : ℕ) (hdn : d ∣ n) : d ≡ 1 [MOD b] := by
   by_cases hn : n = 0
@@ -38,7 +33,7 @@ theorem Nat.modEq_one_of_dvd_of_prime (n b : ℕ) (prime : ∀ p, Nat.Prime p �
   have hd : d ≠ 0 := by rintro rfl; rw [zero_dvd_iff] at hdn; lia
   rw [← prod_factorization_pow_eq_self hd, Finsupp.prod,
     ← Finset.prod_const_one (s := d.factorization.support)]
-  refine modEq_prod fun p hp ↦ ?_
+  refine Nat.ModEq.prod fun p hp ↦ ?_
   rw [support_factorization, mem_primeFactors] at hp
   exact ((prime p hp.1 (hp.2.1.trans hdn)).pow _).trans <| by simp; rfl
 
