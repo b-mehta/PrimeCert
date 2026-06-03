@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2025 Kenny Lau. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Kenny Lau
+Authors: Kenny Lau, Bhavik Mehta
 -/
 
 import PrimeCert.Meta.SmallPrime
@@ -27,20 +27,14 @@ To use this certificate for primality of `N`, factorise `N - 1` completely.
   - For each prime factor `p` of `F₁`, `gcd(a ^ ((N - 1) / p) - 1, N) = 1`.
 -/
 
-theorem List.pairwise_iff_toFinset {α β : Type*} (l : List α) (hl : l.Nodup)
-    (P : β → β → Prop) (hp : Symmetric P) (e : α → β) [DecidableEq α] :
-    l.Pairwise (P.onFun e) ↔ _root_.Pairwise (P.onFun fun i : l.toFinset ↦ e i) := by
-  rw [Finset.pairwise_subtype_iff_pairwise_finset',
-    List.pairwise_iff_coe_toFinset_pairwise hl (hp.comap _)]
-
 theorem Nat.modEq_finset_prod_iff {a b : ℕ} {ι : Type*} (s : Finset ι) (e : ι → ℕ)
-    (co : Pairwise (Coprime.onFun fun i : s ↦ e i)) :
-    a ≡ b [MOD s.prod e] ↔ ∀ i ∈ s, a ≡ b [MOD e i] := by
+    (co : (s : Set ι).Pairwise (Coprime.onFun e)) :
+    a ≡ b [MOD ∏ i ∈ s, e i] ↔ ∀ i ∈ s, a ≡ b [MOD e i] := by
   classical
   obtain ⟨l, hl, rfl⟩ := s.exists_list_nodup_eq
   rw [List.prod_toFinset e hl, Nat.modEq_list_map_prod_iff]
   · simp_rw [List.mem_toFinset]
-  · rwa [List.pairwise_iff_toFinset _ hl _ Coprime.symmetric]
+  · rwa [← List.pairwise_iff_coe_toFinset_pairwise hl (Coprime.symmetric.comap _)]
 
 theorem multiplicity_zero_right {α : Type*} [MonoidWithZero α] (x : α) : multiplicity x 0 = 1 :=
   multiplicity_eq_one_of_not_finiteMultiplicity fun h ↦ h.ne_zero rfl
@@ -62,9 +56,7 @@ theorem Nat.modEq_iff_forall_prime_dvd {a b n : ℕ} :
     · simp_rw [support_factorization, mem_primeFactors_of_ne_zero hn₀, and_comm, and_imp]
       refine forall_congr' fun p ↦ imp_congr_right fun hpn ↦ imp_congr_right fun hp ↦ ?_
       rw [multiplicity_eq_factorization hp hn₀]
-    · refine fun p q hp ↦ coprime_pow_primes _ _ ?_ ?_ <| by grind
-      · exact ((mem_primeFactors_of_ne_zero hn₀).mp p.2).1
-      · exact ((mem_primeFactors_of_ne_zero hn₀).mp q.2).1
+    · grind [support_factorization, coprime_pow_primes, Set.Pairwise]
 
 theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
     {q n x : ℕ} (hq : q.Prime) (hxn : x ∣ n) (hxnq : ¬ x ∣ n / q) :
