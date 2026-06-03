@@ -94,8 +94,8 @@ theorem wieferich_mirimanoff {p : ℕ} (hp : p.Prime) (p_bound : p < 6000) :
     decide +revert +kernel
   have hp₁ : p ≠ 1 := hp.ne_one
   obtain h₁ | h₅ := hp.mod_6 (by lia) (by lia)
-  · simpa [hp₁] using wieferich_mirimanoff₁ p p_bound h₁
-  · simpa [hp₁] using Or.inl <| wieferich₅ p p_bound h₅
+  · simpa [hp₁] using! wieferich_mirimanoff₁ p p_bound h₁
+  · simpa [hp₁] using! Or.inl <| wieferich₅ p p_bound h₅
 
 theorem _root_.pow_eq_one_of_dvd {M : Type*} [Monoid M] {x : M} {m n : ℕ}
     (h₁ : x ^ m = 1) (h₂ : m ∣ n) : x ^ n = 1 := by
