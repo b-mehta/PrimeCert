@@ -128,6 +128,6 @@ theorem miller_rabin_squarefree {n : ℕ} (hn₀ : n ≠ 0) (hn : n < 36000000)
     replace ha₂ := pow_gcd_eq_one.2 ⟨ha₁, ha₂⟩
     rw [Nat.gcd_mul_right_right_of_gcd_eq_one h₅] at ha₂
     replace ha₂ := pow_eq_one_of_dvd ha₂ (Nat.gcd_dvd_right _ _)
-    convert congr(($ha₂ : ZMod (p ^ 2)))
+    simpa [a'] using congr(($ha₂ : ZMod (p ^ 2)))
   have := wieferich_mirimanoff hp h₁
   tauto
