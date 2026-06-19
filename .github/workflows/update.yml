@@ -47,7 +47,7 @@ jobs:
       contents: write      # Grants permission to push changes to the repository
       pull-requests: write # Grants permission to create or update pull requests
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Skip the LKG bump entirely while an incompatibility is reported.
       # When a regression exists, we want reviewer attention focused entirely on
@@ -96,7 +96,7 @@ jobs:
       contents: write      # Grants permission to push changes to the repository
       pull-requests: write # Grants permission to create or update pull requests
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Open or update incompatibility issue
         id: track
         uses: leanprover-community/downstream-reports/.github/actions/track-incompatibility@main
