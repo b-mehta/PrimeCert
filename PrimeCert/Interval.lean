@@ -14,43 +14,6 @@ The `check_interval` tactic proves goals of the form
 by building a balanced binary tree of `eagerReduce` proof terms, one per value in the range.
 -/
 
-section forallB
-
-noncomputable def forallB (f : ℕ → Bool) (start len : ℕ) (step : ℕ := 1) : Bool :=
-  (Nat.rec (motive := fun _ ↦ ℕ × Bool) (start, true)
-    (fun _ ih ↦ ih.rec fun i b ↦ (i.add step, (f i).and' b)) len).2
-
-theorem forallB_iff_range' (f : ℕ → Bool) (start len step : ℕ) :
-    forallB f start len step ↔ ∀ n ∈ List.range' start len step, f n := by
-  unfold forallB
-  simp only [Bool.and'_eq_and]
-  induction len with
-  | zero => simp
-  | succ len ih =>
-    simp only [Bool.and_eq_true, ih, List.range'_concat, List.forall_mem_append,
-      List.forall_mem_singleton, and_comm]
-    refine and_congr_left fun _a ↦ Eq.congr_left <| congr_arg f ?_
-    clear ih _a
-    induction len with
-    | zero => simp
-    | succ len ih => simp only; rw [ih, Nat.add_eq, mul_add_one, add_assoc]
-
-theorem forallB_iff (f : ℕ → Bool) (start len step : ℕ) :
-    forallB f start len step ↔ ∀ n < len, f (n * step + start) := by
-  simp_rw [add_comm, mul_comm, forallB_iff_range', List.mem_range']; aesop
-
-theorem forallB_iff' (f : ℕ → Bool) (start r len step : ℕ) :
-    forallB f (start * step + r) len step ↔
-    ∀ n, start ≤ n → n < start + len → f (n * step + r) := by
-  simp_rw [forallB_iff, ← add_assoc, ← add_mul, le_iff_exists_add, exists_imp,
-    forall_eq_apply_imp_iff, add_lt_add_iff_left, add_comm]
-
-theorem forallB_one_iff (f : ℕ → Bool) (start len : ℕ) :
-    forallB f start len ↔ ∀ n, start ≤ n → n < start + len → f n := by
-  simp_rw [forallB_iff_range', List.mem_range'_1, and_imp]
-
-end forallB
-
 section forall_step
 /-! # Tools for automation of ∀ n, lo ≤ n → n < hi → P n -/
 
