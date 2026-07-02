@@ -14,7 +14,7 @@ supply the complete factorisation of N-1 as a second argument.
 """
 import math, random, re, shutil, subprocess, sys
 
-SMALL = 2300  # SmallPrimes.lean covers primes up to ~2300
+SMALL = 3000  # SmallPrimes.lean covers primes up to 3000
 ALPERTRON = "https://www.alpertron.com.ar/ECM.HTM"
 
 # -- Primality testing --
