@@ -1,2 +1,3 @@
+import PrimeCertTest.PowModBench
 import PrimeCertTest.PowModTest
 import PrimeCertTest.PrimeListTest

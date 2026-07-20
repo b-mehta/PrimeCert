@@ -60,22 +60,25 @@ The shared dev box is noisy; a fair comparison needs a dedicated CI runner.
 3. **Windowed exponentiation** (`2^w`-ary): precompute `a^0..a^(2^w-1) % n` in the elaborator,
    emit fewer, larger steps. Standard fast-exp optimisation, orthogonal to A/B.
 
-## Status / what is delivered here
-This branch delivers the **investigation only**: the precise characterisation of approaches A
-and B, the diagnosis of why the 700-digit example fails under pure reflection, the hybrid
-options, and the CI benchmark methodology. No code was added yet — the next steps below need a
-CI runner (the shared dev box is too noisy to be the "fair, noiseless" comparison the task
-asks for), so they are laid out rather than guessed at overnight.
+## Delivered here
+- **Approach A ported into the repo.** `PrimeCertTest/PowModBench.lean` adds the
+  `powModAux_{zero,one,even,odd}_eq` step lemmas, `mkPowModAuxEq`, and the tactic
+  `prove_pow_mod_steps`, alongside PrimeCert's existing approach B (`prove_pow_mod`).
+- **Benchmark harness.** The same fact is proved by both tactics at 256/1024/2048-bit exponents
+  under `#time`; results `r = 2^e mod n` are exact by construction. Both tactics verify (the
+  file builds).
+
+Local `#time` (shared box, noisy; elaboration only — **not** the fair comparison):
+`256b` B 12ms / A 15ms; `1024b` B 14ms / A 114ms; `2048b` B 13ms / A 400ms. Caveat: `#time`
+captures elaboration, and B's cost is mostly in *kernel checking* of the `eagerReduce` term,
+which `#time` does not attribute — so no conclusion is drawn here.
+
+## Next steps (need a pinned CI runner)
+1. **Measure fairly on CI**: run the harness with `count_heartbeats` / the profiler's kernel
+   bucket so elaboration vs. kernel time are separated; medians over a few runs; push the size
+   gradient up to the ~3912-bit exponent of the 700-digit example.
+2. From the crossover, **implement the hybrid** (threshold switch, or chunked/windowed
+   reflection — see options above).
+3. **Re-enable the 700-digit example** as the acceptance test once the hybrid lands.
 
 Reference (both tactics side by side): `b-mehta/mathlib4@large-prime:Mathlib/V2/PowMod.lean`.
-
-## Next steps (concrete, flagged for Bhavik)
-1. **Port approach A** (`prove_pow_mod` + the `powModAux_{zero,one,even,odd}_eq` step lemmas +
-   `mkPowModAuxEq`) into PrimeCert alongside the existing approach B, so both tactics exist in
-   the repo. ≈ 100 lines, adapted from the reference; PrimeCert already has `powMod`/`powModAux`.
-2. **Add a CI benchmark file** proving `powMod`/`≠` at exponent sizes 2^6…2^13 bits with each
-   tactic under the profiler, emitting JSON timings (elaboration vs. kernel), medians over a few
-   runs, on a pinned runner.
-3. From the crossover, **implement the hybrid** (threshold switch or chunked/windowed
-   reflection).
-4. **Re-enable the 700-digit example** as the acceptance test once the hybrid lands.
