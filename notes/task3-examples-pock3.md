@@ -36,32 +36,35 @@ with the script, then replace the `pock`/`pock%` version.
   kernel-checked, so a successful build *is* the proof they are correct).
 - `maxRecDepth` / `exponentiation.threshold` `set_option`s are kept as needed per example.
 
-## What actually happened (blocker found)
+## What actually happened
 
-Only `prime_16290860017'` converted cleanly: its `N-1` fully factors in seconds, so the script
-emits a pure-`pock3` ladder, and it is verified by the build.
+`prime_16290860017'` converted cleanly: its `N-1` fully factors in seconds, so the script emits
+a pure-`pock3` ladder (verified by the build).
 
-The four large examples (100-digit, `2^255-19`, `2^448-2^224-1`, ed25519 order) are **blocked**:
+The four large examples (100-digit, `2^255-19`, `2^448-2^224-1`, ed25519 order) were harder.
+Correcting an earlier mischaracterisation: the script **can** reuse proven factors (the
+README's supplied-factorisation feature), but the stock code honoured it only for the *top* `N`
+— every sub-prime was re-factored via `factor(p-1)`, which stalls on the large primes in these
+chains. A `pock`/`pock3` cert factors only *part* of each `N-1`, so a re-derivation needs those
+factorisations threaded through the whole recursion.
 
-- A `pock`/`pock3` certificate deliberately factors only *part* of `N-1` (`F`, with the
-  cofactor `R = (N-1)/F` left unfactored — that is the whole point of Pocklington). So the
-  existing certificates do **not** contain a full factorisation of `N-1`.
-- Regenerating a certificate with the script therefore requires re-factoring `N-1` from
-  scratch. sympy (via `uv`) timed out (>300–400s) on each of these — factoring a 100+-digit
-  `N-1` with a large prime factor is the genuinely hard step (the README itself points to
-  alpertron ECM for this).
-- The script cannot reuse the factorisations already present in the existing ladder; it
-  re-factors each level independently and hits the same wall on the large primes.
+## Fix delivered: a factor pool
+`scripts/prime_cert.py` now takes `--pool=FILE` (lines `prime: factorisation`) and consults it
+at **every** level of the recursion, so a certificate rebuilds from an existing ladder with no
+new factoring. Verified: `31757755568855353` (fully pool-covered) certifies instantly with zero
+`factor()` calls; the auto-factor path is unchanged.
 
-So auto-conversion of the large examples is not feasible without either (a) supplying the full
-`N-1` factorisations (obtained out-of-band via ECM / alpertron), or (b) teaching the script /
-a new tool to reuse the factorisations the existing ladder already proves. Both are real work
-and a design decision, so they are left for review rather than guessed at overnight.
+## Remaining issue (root/mode search, not factoring)
+Rebuilding the *largest* primes (e.g. the 71-digit factor in the 25519 chain) is still slow, but
+the bottleneck is now the search the script does for the pseudo-primitive `root` (and the
+non-residue `mode` witness): thousands of modular exponentiations on ~71-digit numbers. This is
+a performance issue, not correctness/factoring. The existing ladders already record a working
+`root`/`mode` per prime, so the clean next step is to let the pool supply `root`/`mode` too and
+skip the search. Then the four large examples regenerate mechanically and verify in CI.
 
-## Recommendation
-Extend `scripts/prime_cert.py` (or a companion) to accept the existing ladder and reuse its
-proven prime factors, so a `pock`→`pock3` re-derivation needs no new factoring. Then the four
-large examples convert mechanically. Flagged for Bhavik.
+## Status
+`prime_16290860017'` converted + verified. Script gained a whole-ladder factor pool (tested).
+The four large examples remain on `pock`/`pock%` pending the `root`/`mode` supply above.
 
 ## Status
 `prime_16290860017'` converted to `pock3` and verified (build of `PrimeCertTest.PrimeListTest`).
