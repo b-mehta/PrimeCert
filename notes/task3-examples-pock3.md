@@ -73,8 +73,14 @@ primes are unaffected (the float is exact enough).
 regardless of size). The 71-digit prime dropped from >90s to 0.04s; the full `2^255-19`
 certificate regenerates as pure `pock3` in 0.05s.
 
-## Status
-`prime_16290860017'` converted + verified. Script now (a) reuses proven factors at every level
-(`--pool`) and (b) uses an exact integer cube root. With both, all four large examples
-regenerate instantly (verified for `2^255-19`). Substituting them into `PrimeListTest.lean` and
-CI-verifying is the remaining mechanical step.
+## Status — done
+All active examples now use `pock3` (no `pock`/`pock%`). Converted and verified by building
+`PrimeCertTest.PrimeListTest`: `prime_16290860017'`, `prime_25519` (`2^255-19`),
+`prime_448_224_1` (`2^448-2^224-1`), the 100-digit example, and `prime_ed25519_order`.
+
+Each large one was regenerated with `scripts/prime_cert.py` using a factor pool built from the
+existing ladder (`--pool`), enabled by the two script fixes (whole-ladder factor reuse + exact
+integer cube root). The generator even pruned redundant factors, so several ladders are shorter.
+
+Remaining `pock%` mentions are intentional: the *commented-out* ~700-digit example (Task 6's
+target) and `Meta/Pocklington.lean`'s own documentation of the `pock` method.
