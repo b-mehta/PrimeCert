@@ -19,8 +19,10 @@ set_option linter.style.longLine false
 
 namespace PrimeCert
 
-theorem prime_16290860017' : Nat.Prime 16290860017 :=
-  pock% [3, 29, 41; (339392917, 2, 3 ^ 4 * 29 * 41), (16290860017, 5, 339392917)]
+theorem prime_16290860017' : Nat.Prime 16290860017 := prime_cert%
+  [small {3; 29},
+   pock3 (339392917, 2, 1, 3, 2 ^ 2 * 3 ^ 4 * 29),
+   pock3 (16290860017, 5, 1, 0, 2 ^ 4 * 3 * 339392917)]
 
 -- randomly generated 60-digit prime
 theorem prime_236684654874665389773181956283167565443541280517430278333971 :
