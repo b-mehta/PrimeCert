@@ -130,6 +130,17 @@ def parse_factorisation(s):
         p, e = int(m[1]), int(m[2] or 1); fs[p] = fs.get(p, 0) + e
     return fs
 
+def icbrt(n):
+    """Floor of the cube root of `n`, exact for arbitrarily large integers (Newton's method).
+    Avoids `int(n ** (1/3))`, whose float estimate is off by ~1e7 for ~70-digit `n` and turns a
+    `while (t+1)**3 <= n: t += 1` refinement into millions of big-integer cubings."""
+    if n < 2: return n
+    x = 1 << ((n.bit_length() + 2) // 3)
+    while True:
+        y = (2 * x + n // (x * x)) // 3
+        if y >= x: return x
+        x = y
+
 # -- Certificate generation --
 
 def certify(N, nm1_factors=None, pool=None):
@@ -153,8 +164,7 @@ def certify(N, nm1_factors=None, pool=None):
         e = fs.pop(2, 0)
 
         # Select smallest odd factors until F > p^(1/3)
-        F, target = 1 << e, int(p ** (1/3)) + 2
-        while (target + 1) ** 3 <= p: target += 1
+        F, target = 1 << e, icbrt(p)
         sel = []
         for q in sorted(fs):
             sel.append((q, fs[q])); F *= q ** fs[q]

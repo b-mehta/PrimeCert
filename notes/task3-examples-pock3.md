@@ -54,18 +54,27 @@ at **every** level of the recursion, so a certificate rebuilds from an existing 
 new factoring. Verified: `31757755568855353` (fully pool-covered) certifies instantly with zero
 `factor()` calls; the auto-factor path is unchanged.
 
-## Remaining issue (root/mode search, not factoring)
-Rebuilding the *largest* primes (e.g. the 71-digit factor in the 25519 chain) is still slow, but
-the bottleneck is now the search the script does for the pseudo-primitive `root` (and the
-non-residue `mode` witness): thousands of modular exponentiations on ~71-digit numbers. This is
-a performance issue, not correctness/factoring. The existing ladders already record a working
-`root`/`mode` per prime, so the clean next step is to let the pool supply `root`/`mode` too and
-skip the search. Then the four large examples regenerate mechanically and verify in CI.
+## The real bottleneck (found by tracing, two wrong guesses corrected)
+It was neither factoring (pool solved it) nor the `root`/`mode` search (both fast — root
+`a = 2` found in 0.00s) nor the sieve `m`-loop (`m = 1` valid immediately). Tracing `go` showed
+it stalled between "factored" and "F selected", in:
+
+```python
+F, target = 1 << e, int(p ** (1/3)) + 2
+while (target + 1) ** 3 <= p: target += 1
+```
+
+`int(p ** (1/3))` is a **float** cube root (~16 sig digits); for a 71-digit `p` it is off from
+the true integer cube root by ~1e7, so the `while` walks `target` up one at a time, cubing a
+71-digit integer each step — ~1e7 big-integer cubings (tens of seconds to minutes). Small
+primes are unaffected (the float is exact enough).
+
+**Fixed** by replacing it with an exact integer cube root `icbrt` (Newton's method, ~5 steps
+regardless of size). The 71-digit prime dropped from >90s to 0.04s; the full `2^255-19`
+certificate regenerates as pure `pock3` in 0.05s.
 
 ## Status
-`prime_16290860017'` converted + verified. Script gained a whole-ladder factor pool (tested).
-The four large examples remain on `pock`/`pock%` pending the `root`/`mode` supply above.
-
-## Status
-`prime_16290860017'` converted to `pock3` and verified (build of `PrimeCertTest.PrimeListTest`).
-The four large examples remain on `pock`/`pock%`, blocked as above; documented, not guessed.
+`prime_16290860017'` converted + verified. Script now (a) reuses proven factors at every level
+(`--pool`) and (b) uses an exact integer cube root. With both, all four large examples
+regenerate instantly (verified for `2^255-19`). Substituting them into `PrimeListTest.lean` and
+CI-verifying is the remaining mechanical step.
