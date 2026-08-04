@@ -3,3 +3,4 @@ import PrimeCertTest.Pock3FieldsTest
 import PrimeCertTest.PrimeCertTacticTest
 import PrimeCertTest.PrimeListTest
 import PrimeCertTest.SieveLookupTest
+import PrimeCertTest.SieveVerify1e8
