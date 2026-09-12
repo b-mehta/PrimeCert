@@ -44,7 +44,7 @@ lemma land_split' {lo hi lo' hi' : ℕ} (hlo : lo < 256) (hlo' : lo' < 256) :
   grind
 
 /-- Masking a value shifted down, then shifting back up, masks with the mask shifted up. -/
-lemma shiftLeft_land_shiftRight :
+public theorem shiftLeft_land_shiftRight :
     ((v >>> s) &&& m) <<< s = v &&& (m <<< s) :=
   Nat.eq_of_testBit_eq fun j ↦ by grind
 
@@ -113,6 +113,16 @@ lemma byte_pipeline (hv : v < 256) :
     stageA v 1 < 256 ∧ stageB v 1 ≤ 68 ∧ stageB v 1 % 16 ≤ 4 ∧ stageC v 1 ≤ 8 ∧
       stageC v 1 = bitSum v 8 := by decide +kernel +revert
 
+lemma stageA_byte_lt (hv : v < 256) : stageA v 1 < 256 := (byte_pipeline hv).1
+
+lemma stageB_byte_le (hv : v < 256) : stageB v 1 ≤ 68 := (byte_pipeline hv).2.1
+
+lemma stageB_byte_mod_16 (hv : v < 256) : stageB v 1 % 16 ≤ 4 := (byte_pipeline hv).2.2.1
+
+lemma stageC_byte_le (hv : v < 256) : stageC v 1 ≤ 8 := (byte_pipeline hv).2.2.2.1
+
+lemma stageC_byte_eq (hv : v < 256) : stageC v 1 = bitSum v 8 := (byte_pipeline hv).2.2.2.2
+
 /-! ## Peeling one byte -/
 
 /-- `f v k`, read at `k + 1` bytes, is the value on the low byte of `v` plus 256 times the value on
@@ -155,23 +165,21 @@ lemma IsBytewise.shiftRight_land_rep (hf : IsBytewise f)
   exact IsBytewise.land hf isBytewise_rep hf' (by simp [hms])
 
 /-- Shifting a value down and masking with a repeated byte acts byte by byte. -/
-lemma isBytewise_shiftRight_land_rep (hs : s ≤ 8) (hm : m < 2 ^ (8 - s)) :
-    IsBytewise fun v k ↦ v >>> s &&& rep m k := by
-  refine IsBytewise.shiftRight_land_rep isBytewise_id (by simp) ?_
-  grw [Nat.shiftLeft_eq, hm, ← Nat.pow_add]
-  grind
+lemma isBytewise_shiftRight_land_rep (hms : m <<< s < 256) :
+    IsBytewise fun v k ↦ v >>> s &&& rep m k :=
+  IsBytewise.shiftRight_land_rep isBytewise_id (by simp) hms
 
 lemma isBytewise_stageA : IsBytewise stageA :=
-  isBytewise_id.sub (isBytewise_shiftRight_land_rep (by simp) (by simp))
+  isBytewise_id.sub (isBytewise_shiftRight_land_rep (by simp))
     (by grind [Nat.and_le_left, Nat.shiftRight_le])
 
 lemma isBytewise_stageB : IsBytewise stageB :=
-  (IsBytewise.land isBytewise_stageA isBytewise_rep (by grind [byte_pipeline]) (by simp)).add
-    (IsBytewise.shiftRight_land_rep isBytewise_stageA (by grind [byte_pipeline]) (by simp))
+  (IsBytewise.land isBytewise_stageA isBytewise_rep (fun _ ↦ stageA_byte_lt) (by simp)).add
+    (IsBytewise.shiftRight_land_rep isBytewise_stageA (fun _ ↦ stageA_byte_lt) (by simp))
 
 lemma stageB_mod_16 (v k : ℕ) : stageB v k % 16 ≤ 4 := by
   cases k with grind
-    [stageB_zero, isBytewise_stageB.eq, byte_pipeline (v := v % 256) (Nat.mod_lt _ (by lia))]
+    [stageB_zero, isBytewise_stageB.eq, stageB_byte_mod_16 (v := v % 256) (Nat.mod_lt _ (by lia))]
 
 /-- The last stage of a two-byte value splits into the stages of its bytes. -/
 lemma stageC_byte_split {lo hi : ℕ} (hlo : lo ≤ 68) (hhi : hi % 16 ≤ 4) :
@@ -187,7 +195,7 @@ lemma IsBytewise.add_shiftRight_land_15 (hf : IsBytewise f)
   simpa [hf v k] using stageC_byte_split (hbyte _ (Nat.mod_lt _ (by lia))) (hmod _ _)
 
 lemma isBytewise_stageC : IsBytewise stageC :=
-  isBytewise_stageB.add_shiftRight_land_15 (fun _ hv ↦ (byte_pipeline hv).2.1) stageB_mod_16
+  isBytewise_stageB.add_shiftRight_land_15 (fun _ ↦ stageB_byte_le) stageB_mod_16
 
 lemma stageC_succ :
     stageC v (k + 1) = stageC (v % 256) 1 + 256 * stageC (v / 256) k :=
@@ -216,6 +224,9 @@ public theorem bitSum_add {t : ℕ} : bitSum v (s + t) = bitSum v s + bitSum (v 
 
 /-- Zero has no set bits. -/
 @[simp] public theorem bitSum_zero_left : bitSum 0 n = 0 := by simp [bitSum]
+
+/-- An empty range of positions holds no set bits. -/
+@[simp] public theorem bitSum_zero_right : bitSum v 0 = 0 := by simp [bitSum]
 
 /-- Positions above the top set bit contribute nothing. -/
 public theorem bitSum_of_lt (hv : v < 2 ^ s) (hsn : s ≤ n) : bitSum v n = bitSum v s := by
@@ -267,14 +278,14 @@ lemma sum_digits_mul_rep (hv : v < 256 ^ (k + 1)) (h : (Nat.digits 256 v).sum < 
 
 /-- The last stage of a byte holds the count of that byte. -/
 lemma stageC_byte : stageC (v % 256) 1 = bitSum v 8 :=
-  (byte_pipeline (Nat.mod_lt _ (by lia))).2.2.2.2.trans (by simpa using bitSum_mod (s := 8))
+  (stageC_byte_eq (Nat.mod_lt _ (by lia))).trans (by simpa using bitSum_mod (s := 8))
 
 /-- The digits of the last stage sum to the count of the word. -/
 lemma sum_digits_stageC : (Nat.digits 256 (stageC v k)).sum = bitSum v (8 * k) := by
   induction k generalizing v with
   | zero => simp [bitSum]
   | succ k ih =>
-    have hb : stageC (v % 256) 1 ≤ 8 := (byte_pipeline (Nat.mod_lt _ (by lia))).2.2.2.1
+    have hb : stageC (v % 256) 1 ≤ 8 := stageC_byte_le (Nat.mod_lt _ (by lia))
     have hmod : stageC v (k + 1) % 256 = stageC (v % 256) 1 := by grind [stageC_succ]
     have hdiv : stageC v (k + 1) / 256 = stageC (v / 256) k := by grind [stageC_succ]
     grind [sum_digits_split, bitSum_add (s := 8), stageC_byte]
