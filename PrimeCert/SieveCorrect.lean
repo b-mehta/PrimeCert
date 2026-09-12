@@ -79,6 +79,19 @@ theorem value_startB {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) : value (index (p 
 /-- Every index is the index of its own number. -/
 @[simp, grind =] public theorem index_value (k : ℕ) : index (value k) = k := by grind [value, index]
 
+/-- Along the class of `r` modulo `m`, successive members sit `m / 3` indices apart. -/
+public theorem index_add {r m k : ℕ} (hr : r % 6 = 1 ∨ r % 6 = 5) (hm : m % 6 = 0) :
+    index (r + m * k) = index r + (m / 3) * k := by
+  obtain ⟨j, rfl⟩ : ∃ j, m = 6 * j := ⟨m / 6, by lia⟩
+  obtain ⟨c, hc⟩ : ∃ c, j * k = c := ⟨_, rfl⟩
+  have e1 : 6 * j * k = 6 * c := by rw [mul_assoc, hc]
+  have e3 : 6 * j / 3 = 2 * j := by lia
+  have e2 : 6 * j / 3 * k = 2 * c := by rw [e3, mul_assoc, hc]
+  rw [e1, e2]
+  unfold index
+  obtain ⟨i, hi⟩ : ∃ i, r = 6 * i + r % 6 := ⟨r / 6, by lia⟩
+  rcases hr with h | h <;> lia
+
 /-- The number at an index rises with the index. -/
 public theorem value_strictMono : StrictMono value := by grind [value, StrictMono]
 
@@ -341,5 +354,10 @@ public theorem IsSieve.prime {n lit t p : ℕ} (h : IsSieve n lit) (h1 : Nat.ble
     (h4 : p.ble n) (hbit : testBitK lit t) (hp : (valueK t).beq p) :
     Nat.Prime p := by
   grind [IsSieve, Nat.beq_eq, Nat.ble_eq]
+
+/-- A prime within the range of a sieve sets its own bit. -/
+public theorem IsSieve.testBit_of_prime {n lit p : ℕ} (h : IsSieve n lit) (hp : p.Prime)
+    (hb : p ≤ n) (hc : p % 6 = 1 ∨ p % 6 = 5) : lit.testBit (index p) := by
+  grind [IsSieve, index, value_index, hp.two_le]
 
 end PrimeCert.Sieve
