@@ -158,12 +158,12 @@ lemma IsBytewise.shiftRight_land_rep (hf : IsBytewise f)
     IsBytewise fun v k ↦ f v k >>> s &&& rep m k := by
   apply IsBytewise.of_shiftLeft (s := s)
   simp_rw [shiftLeft_land_shiftRight, rep_shiftLeft]
-  exact IsBytewise.land hf isBytewise_rep hf' (by simp [hms])
+  exact hf.land isBytewise_rep hf' (by simp [hms])
 
 /-- Shifting a value down and masking with a repeated byte acts byte by byte. -/
 lemma isBytewise_shiftRight_land_rep (hms : m <<< s < 256) :
     IsBytewise fun v k ↦ v >>> s &&& rep m k :=
-  IsBytewise.shiftRight_land_rep isBytewise_id (by simp) hms
+  isBytewise_id.shiftRight_land_rep (by simp) hms
 
 lemma isBytewise_stageA : IsBytewise stageA :=
   isBytewise_id.sub (isBytewise_shiftRight_land_rep (by simp))
