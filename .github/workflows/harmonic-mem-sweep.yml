@@ -1,0 +1,77 @@
+name: Memory of the reciprocal sum at 1e6
+
+on:
+  push:
+    branches:
+      - 'ci/harmonic-mem-sweep'
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the cases depend on
+        run: lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+
+      - name: Record the runner's memory and cores
+        run: |
+          free -m
+          nproc
+
+      - name: Run each case with its memory sampled every second
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          run_case() {
+            f=$1
+            tag=$2
+            lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+              "PrimeCertTest/HarmonicBench/$f.lean" > "out-$tag.txt" 2>&1 &
+            pid=$!
+            start=$(date +%s)
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              rss=$(grep VmRSS "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+              rss=${rss:-0}
+              avail=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+              if [ "$rss" -gt "$peak" ]; then peak=$rss; fi
+              t=$(( $(date +%s) - start ))
+              if [ $(( t % 5 )) -eq 0 ]; then
+                echo "$tag t=${t}s rss=$(( rss / 1024 )) MB available=$(( avail / 1024 )) MB"
+              fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$tag.txt" \
+              | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+            echo "RESULT $tag | exit $code | kernel total ${total}s | wall $(( $(date +%s) - start ))s | peak rss $(( peak / 1024 )) MB"
+            if [ "$code" -ne 0 ]; then
+              echo "RUN FAILED $tag" | tee -a bench-failures.txt
+              tail -5 "out-$tag.txt"
+            fi
+          }
+          for round in 1 2; do
+            run_case N1e6_B1280 "B1280-round$round"
+            run_case N1e6_B5120 "B5120-round$round"
+          done
+          run_case N1e6 "B20480-round1"
+
+      - name: Fail the job if any case failed
+        run: |
+          if [ -s bench-failures.txt ]; then
+            cat bench-failures.txt
+            exit 1
+          fi
