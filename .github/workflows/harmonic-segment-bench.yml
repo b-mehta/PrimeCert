@@ -1,0 +1,150 @@
+name: The reciprocal sum and the segmented sieve
+
+on:
+  push:
+    branches:
+      - 'ci/harmonic-segment-bench'
+  workflow_dispatch:
+
+jobs:
+  harmonic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the cases depend on
+        run: lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+
+      - name: Time the light cases, three rounds each, alternating
+        run: |
+          set -u
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for round in $(seq 1 3); do
+            for f in Base0_Startup N1e4 N1e5 N1e6; do
+              /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+                "PrimeCertTest/HarmonicBench/$f.lean" > "out-$f-$round.txt" 2> "time-$f-$round.txt" \
+                || echo "RUN FAILED $f round $round" | tee -a bench-failures.txt
+              total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$f-$round.txt" \
+                | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+              wall=$(grep 'Elapsed (wall clock)' "time-$f-$round.txt" | awk '{print $8}')
+              peak=$(grep 'Maximum resident set size' "time-$f-$round.txt" | awk '{print $6}')
+              echo "round $round | $f | kernel total ${total}s | wall $wall | peak ${peak} KB"
+            done
+          done
+
+      - name: Time the heavy cases, one round each
+        run: |
+          set -u
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for f in Base1_Sieve1e7 N1e7 Base2_Sieve1e8 N1e8; do
+            /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+              "PrimeCertTest/HarmonicBench/$f.lean" > "out-$f.txt" 2> "time-$f.txt" \
+              || echo "RUN FAILED $f" | tee -a bench-failures.txt
+            total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$f.txt" \
+              | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+            wall=$(grep 'Elapsed (wall clock)' "time-$f.txt" | awk '{print $8}')
+            peak=$(grep 'Maximum resident set size' "time-$f.txt" | awk '{print $6}')
+            echo "$f | kernel total ${total}s | wall $wall | peak ${peak} KB"
+            echo "--- eight slowest kernel entries in $f ---"
+            grep -o '\[Kernel\] \[[0-9.]*\].*' "out-$f.txt" \
+              | sed 's/\[Kernel\] \[\([0-9.]*\)\] */\1 /' | cut -c1-160 \
+              | sort -rn | head -8
+          done
+
+      - name: Fail the job if any case failed
+        run: |
+          if [ -s bench-failures.txt ]; then
+            cat bench-failures.txt
+            exit 1
+          fi
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonic-logs
+          path: |
+            out-*.txt
+            time-*.txt
+
+  segment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the cases depend on
+        run: lake build PrimeCert.SegmentedSieve
+
+      - name: Time every case but the two carrying the 1e8 sieve, three rounds each
+        run: |
+          set -u
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          cases=$(ls PrimeCertTest/SegBench/*.lean | grep -v -e 'E_Base1e8' -e 'Base1_Sieve1e8' | sort)
+          for round in $(seq 1 3); do
+            for path in $cases; do
+              f=$(basename "$path" .lean)
+              /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+                "$path" > "out-$f-$round.txt" 2> "time-$f-$round.txt" \
+                || echo "RUN FAILED $f round $round" | tee -a bench-failures.txt
+              total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$f-$round.txt" \
+                | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+              wall=$(grep 'Elapsed (wall clock)' "time-$f-$round.txt" | awk '{print $8}')
+              peak=$(grep 'Maximum resident set size' "time-$f-$round.txt" | awk '{print $6}')
+              echo "round $round | $f | kernel total ${total}s | wall $wall | peak ${peak} KB"
+            done
+          done
+
+      - name: Time the 1e8 sieve alone, then a segment on top of it, one round each
+        run: |
+          set -u
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for f in Base1_Sieve1e8 E_Base1e8; do
+            /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+              "PrimeCertTest/SegBench/$f.lean" > "out-$f.txt" 2> "time-$f.txt" \
+              || echo "RUN FAILED $f" | tee -a bench-failures.txt
+            total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$f.txt" \
+              | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+            wall=$(grep 'Elapsed (wall clock)' "time-$f.txt" | awk '{print $8}')
+            peak=$(grep 'Maximum resident set size' "time-$f.txt" | awk '{print $6}')
+            echo "$f | kernel total ${total}s | wall $wall | peak ${peak} KB"
+            echo "--- eight slowest kernel entries in $f ---"
+            grep -o '\[Kernel\] \[[0-9.]*\].*' "out-$f.txt" \
+              | sed 's/\[Kernel\] \[\([0-9.]*\)\] */\1 /' | cut -c1-160 \
+              | sort -rn | head -8
+          done
+
+      - name: Fail the job if any case failed
+        run: |
+          if [ -s bench-failures.txt ]; then
+            cat bench-failures.txt
+            exit 1
+          fi
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: segment-logs
+          path: |
+            out-*.txt
+            time-*.txt
