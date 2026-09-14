@@ -170,8 +170,8 @@ lemma isBytewise_stageA : IsBytewise stageA :=
     (by grind [Nat.and_le_left, Nat.shiftRight_le])
 
 lemma isBytewise_stageB : IsBytewise stageB :=
-  (IsBytewise.land isBytewise_stageA isBytewise_rep (fun _ ↦ stageA_byte_lt) (by simp)).add
-    (IsBytewise.shiftRight_land_rep isBytewise_stageA (fun _ ↦ stageA_byte_lt) (by simp))
+  (isBytewise_stageA.land isBytewise_rep (fun _ ↦ stageA_byte_lt) (by simp)).add
+    (isBytewise_stageA.shiftRight_land_rep (fun _ ↦ stageA_byte_lt) (by simp))
 
 lemma stageB_mod_16 (v k : ℕ) : stageB v k % 16 ≤ 4 := by
   cases k with grind
@@ -192,10 +192,6 @@ lemma IsBytewise.add_shiftRight_land_15 (hf : IsBytewise f)
 
 lemma isBytewise_stageC : IsBytewise stageC :=
   isBytewise_stageB.add_shiftRight_land_15 (fun _ ↦ stageB_byte_le) stageB_mod_16
-
-lemma stageC_succ :
-    stageC v (k + 1) = stageC (v % 256) 1 + 256 * stageC (v / 256) k :=
-  isBytewise_stageC.eq
 
 end Bytewise
 
@@ -257,9 +253,8 @@ lemma mul_rep_split (hv : v < 256 ^ (k + 1)) :
     have hw : v = v % 256 + 256 * (v / 256) := by lia
     refine ⟨v % 256 * rep 1 (k + 1) + 256 * L, T + v / 256, ?_, ?_⟩
     · have h2 : 256 * L ≤ (Nat.digits 256 (v / 256)).sum * rep 1 (k + 1) := by
-        grind [Nat.mul_le_mul_left 256 hL,
-          Nat.mul_le_mul_left (Nat.digits 256 (v / 256)).sum h1]
-      rw [sum_digits_split, add_mul]
+        grind [Nat.mul_le_mul_left 256 hL, Nat.mul_le_mul_left (Nat.digits 256 (v / 256)).sum h1]
+      rw [sum_digits_split]
       lia
     · grind [sum_digits_split, rep_succ_top]
 
@@ -282,8 +277,8 @@ lemma sum_digits_stageC : (Nat.digits 256 (stageC v k)).sum = bitSum v (8 * k) :
   | zero => simp [bitSum]
   | succ k ih =>
     have hb : stageC (v % 256) 1 ≤ 8 := stageC_byte_le (Nat.mod_lt _ (by lia))
-    have hmod : stageC v (k + 1) % 256 = stageC (v % 256) 1 := by grind [stageC_succ]
-    have hdiv : stageC v (k + 1) / 256 = stageC (v / 256) k := by grind [stageC_succ]
+    have hmod : stageC v (k + 1) % 256 = stageC (v % 256) 1 := by grind [isBytewise_stageC.eq]
+    have hdiv : stageC v (k + 1) / 256 = stageC (v / 256) k := by grind [isBytewise_stageC.eq]
     grind [sum_digits_split, bitSum_add (s := 8), stageC_byte]
 
 /-- The pipeline over `k + 1` bytes counts the set bits of those bytes. -/
