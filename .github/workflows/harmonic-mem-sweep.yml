@@ -63,11 +63,10 @@ jobs:
               tail -5 "out-$tag.txt"
             fi
           }
-          for round in 1 2; do
-            run_case N1e6_B1280 "B1280-round$round"
-            run_case N1e6_B5120 "B5120-round$round"
+          run_case N1e5 "N1e5"
+          for k in 2 3 4 5 6 7 8 9; do
+            run_case "Bound${k}e5" "N${k}e5"
           done
-          run_case N1e6 "B20480-round1"
 
       - name: Fail the job if any case failed
         run: |
