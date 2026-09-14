@@ -27,23 +27,19 @@ variable {v m s b k n : ℕ}
 
 /-! ## Splitting bitwise operations at a bit boundary -/
 
-/-- A bitwise and splits at any bit boundary. -/
 lemma land_split :
     v &&& m = (v % 2 ^ s &&& m % 2 ^ s) + 2 ^ s * (v / 2 ^ s &&& m / 2 ^ s) := by
   rw [← Nat.and_mod_two_pow, ← Nat.and_div_two_pow, Nat.mod_add_div]
 
-/-- The byte-wide split, the form the stages use. -/
 lemma land_split_byte :
     v &&& m = (v % 256 &&& m % 256) + 256 * (v / 256 &&& m / 256) :=
   land_split (s := 8)
 
-/-- Two values split at the byte boundary combine byte by byte under a bitwise and. -/
 lemma land_split' {lo hi lo' hi' : ℕ} (hlo : lo < 256) (hlo' : lo' < 256) :
     (lo + 256 * hi) &&& (lo' + 256 * hi') = (lo &&& lo') + 256 * (hi &&& hi') := by
   rw [land_split_byte]
   grind
 
-/-- Masking a value shifted down, then shifting back up, masks with the mask shifted up. -/
 public theorem shiftLeft_land_shiftRight :
     ((v >>> s) &&& m) <<< s = v &&& (m <<< s) :=
   Nat.eq_of_testBit_eq fun j ↦ by grind
