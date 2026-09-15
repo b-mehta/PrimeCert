@@ -64,11 +64,7 @@ jobs:
               tail -5 "out-$tag.txt"
             fi
           }
-          for k in 3 4; do
-            run_case "Bound${k}e5" "N${k}e5-unsplit"
-            run_case "ClassBound${k}e5" "N${k}e5-classes"
-          done
-          for f in ClassBound6e5 ClassBound8e5 ClassBound1e6; do
+          for f in Base1_Sieve1e7 ClassBound1e7 Base2_Sieve1e8 ClassBound1e8; do
             run_case "$f" "$f"
           done
 
