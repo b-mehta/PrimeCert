@@ -452,13 +452,13 @@ meta def emitWindowFold (foldName : Name) (fE : Expr) (gE : Nat → Nat → Expr
 
 /-- Enclose `∑ p ≤ bound, 1/p` at scale `10 ^ scaleExp` with every batch of `B` consecutive
 positions read through its own window of the sieve. `G` groups batches into segments (`0` for one
-chain), and `folds` is `2` for the reciprocal and count folds or `1` for the reciprocal fold alone,
-which bounds the count by the number of positions. -/
+chain), and `folds` is `2` for the reciprocal and count folds, `1` for the reciprocal fold alone,
+which bounds the count by the number of positions, or `3` for the two packed into one fold. -/
 meta def runHarmonicWindow (bound scaleExp B G folds : Nat) : MetaM Unit := do
   if bound < 5 then
     throwError "run_harmonic_window: the bound must be at least 5"
-  if folds != 1 && folds != 2 then
-    throwError "run_harmonic_window: the number of folds must be 1 or 2"
+  if folds != 1 && folds != 2 && folds != 3 then
+    throwError "run_harmonic_window: folds must be 1, 2 or 3"
   let B := Nat.max 1 B
   let some cache ← Sieve.findSieveCache bound
     | throwError "run_harmonic_window: no sieve cache in scope covers {bound}"
@@ -487,10 +487,32 @@ meta def runHarmonicWindow (bound scaleExp B G folds : Nat) : MetaM Unit := do
   let bRecip : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
     mkAppN (mkConst ``recip_window)
       #[sE, SE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
-  let foldName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowFold_{tag}"
-  let aTot ← emitWindowFold foldName fRecip gRecip bRecip (·.recip) wins winNames len G
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccWindow_{tag}"
   let side := #[mkRawNatLit cache.hi, mkRawNatLit bound, SE, sE, mkRawNatLit len]
+  if folds == 3 then
+    let P := len * S + 1
+    let PE := mkRawNatLit P
+    let fPack := mkApp3 (mkConst ``packAtK) sE SE PE
+    let gPack : Nat → Nat → Expr := fun w lo ↦
+      mkApp4 (mkConst ``packAtW) (mkRawNatLit w) (mkRawNatLit lo) SE PE
+    let bPack : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
+      mkAppN (mkConst ``pack_window)
+        #[sE, SE, PE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    let packName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowPack_{tag}"
+    let T ← emitWindowFold packName fPack gPack bPack (fun wb ↦ wb.recip + P * wb.count)
+      wins winNames len G
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipIcc)
+        #[mkRawNatLit bound, mkRawNatLit (T % P), mkRawNatLit (T / P), SE])
+      (mkAppN (mkConst ``primeRecipIcc_of_pack)
+        #[mkRawNatLit cache.hi, mkRawNatLit bound, SE, PE, sE, mkRawNatLit len, mkRawNatLit T,
+          mkConst cache.isSieveName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst packName])
+    logInfo s!"run_harmonic_window {bound}: {len} positions in {wins.size} windows of {B}, \
+segments of {G}, packed fold, sieve {cache.litName}; A = {T % P}, C = {T / P}"
+    return
+  let foldName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowFold_{tag}"
+  let aTot ← emitWindowFold foldName fRecip gRecip bRecip (·.recip) wins winNames len G
   if folds == 2 then
     let fCount := mkApp (mkConst ``bitAtK) sE
     let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
@@ -520,8 +542,8 @@ segments of {G}, one fold, sieve {cache.litName}; A = {aTot}, width {len} / S"
 
 /-- `run_harmonic_window bound e B G folds` encloses the sum of the reciprocals of the primes up to
 `bound` at scale `10 ^ e`, reading every batch of `B` positions through its own window of the sieve,
-with the batches grouped into segments of `G` (`0` for one chain) and `folds` equal to `1` or
-`2`. -/
+with the batches grouped into segments of `G` (`0` for one chain) and `folds` equal to `1`, `2`
+or `3` (see `runHarmonicWindow`). -/
 elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num : command =>
   liftTermElabM <|
     runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat

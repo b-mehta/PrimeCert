@@ -479,4 +479,74 @@ public theorem primeRecipIcc_of_single {Nb N S s len A : ℕ} (hs : Sieve.IsSiev
   refine ⟨hlo, hhi.trans ?_⟩
   gcongr
 
+/-! ## Packing both folds into one
+
+With `P` above every possible reciprocal total, the summand `S / value t + P` at a set bit carries
+the reciprocal fold in the residue of the packed total modulo `P` and the count fold in its
+quotient, so one fold does the work of two. -/
+
+/-- The packed summand: `S / value t + P` where the bit at `t` is set, `0` where it is clear. -/
+@[expose] public def packAtK (s S P t : ℕ) : ℕ :=
+  (Sieve.testBitK s t).rec 0 (Nat.add (S.div (Sieve.valueK t)) P)
+
+theorem packAtK_eq (s S P t : ℕ) : packAtK s S P t = recipAtK s S t + P * bitAtK s t := by
+  rw [packAtK, recipAtK_eq, bitAtK_eq, Bool.rec_eq, Sieve.testBitK_eq_testBit,
+    Sieve.valueK_eq_value, Nat.div_eq_div, Nat.add_eq]
+  split <;> simp
+
+/-- The packed fold is the reciprocal fold plus `P` times the count fold. -/
+public theorem sumB_pack (s S P start len step : ℕ) :
+    sumB (packAtK s S P) start len step
+      = sumB (recipAtK s S) start len step + P * sumB (bitAtK s) start len step := by
+  rw [sumB_eq_sum, sumB_eq_sum, sumB_eq_sum, Finset.mul_sum, ← Finset.sum_add_distrib]
+  exact Finset.sum_congr rfl fun n _ ↦ packAtK_eq s S P _
+
+theorem recipAtK_le (s S t : ℕ) : recipAtK s S t ≤ S := by
+  rw [recipAtK_eq]
+  split
+  · exact Nat.div_le_self _ _
+  · exact Nat.zero_le _
+
+/-- Each position contributes at most `S` to the reciprocal fold. -/
+public theorem sumB_recipAtK_le (s S start len step : ℕ) :
+    sumB (recipAtK s S) start len step ≤ len * S := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, Nat.succ_mul]
+    have := recipAtK_le s S ((n.mul step).add start)
+    omega
+
+/-- The packed summand at position `lo + i`, reading bit `i` of the window `w`. -/
+@[expose] public def packAtW (w lo S P i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0 (Nat.add (S.div (Sieve.valueK (Nat.add lo i))) P)
+
+/-- A windowed batch of the packed fold is the same batch read from the whole sieve. -/
+public theorem pack_window (s S P lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (packAtK s S P) lo B 1 = sumB (packAtW w lo S P) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo]
+  simp only [packAtK, packAtW, Sieve.testBitK_eq_testBit, Nat.add_eq, hb]
+
+/-- `primeRecipIcc_of` from the packed fold alone: with `len * S < P`, its total `T` holds the
+reciprocal fold as `T % P` and the count fold as `T / P`. -/
+public theorem primeRecipIcc_of_pack {Nb N S P s len T : ℕ} (hs : Sieve.IsSieve Nb s)
+    (hcov : Nat.ble N Nb = true) (hS : Nat.blt 0 S = true)
+    (hlen : Nat.ble (Sieve.valueK len) N = true)
+    (hlen' : Nat.blt N (Sieve.valueK (Nat.succ len)) = true)
+    (h5 : Nat.ble 5 N = true) (hP : Nat.blt (Nat.mul len S) P = true)
+    (hT : sumB (packAtK s S P) 1 len 1 = T) :
+    PrimeRecipIcc N (T % P) (T / P) S := by
+  rw [Nat.blt_eq, Nat.mul_eq] at hP
+  have hlt : sumB (recipAtK s S) 1 len 1 < P := (sumB_recipAtK_le s S 1 len 1).trans_lt hP
+  rw [sumB_pack] at hT
+  have hA : sumB (recipAtK s S) 1 len 1 = T % P := by
+    rw [← hT, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hlt]
+  have hC : sumB (bitAtK s) 1 len 1 = T / P := by
+    rw [← hT, Nat.add_mul_div_left _ _ (by omega), Nat.div_eq_of_lt hlt, Nat.zero_add]
+  exact primeRecipIcc_of hs hcov hS hlen hlen' h5 hA hC
+
 end PrimeCert
