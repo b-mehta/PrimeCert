@@ -438,6 +438,43 @@ structure RunNode where
 /-- The empty range, so that the elaborator can index arrays of ranges with `!`. -/
 meta instance : Inhabited RunNode := ⟨⟨0, 0, 0, Name.anonymous⟩⟩
 
+/-- Join adjacent proved ranges in a balanced tree, one `sumB_join` per declaration, and return the
+range covering them all. The ranges must be consecutive, the first starting where the previous
+ends. -/
+meta def joinNodes (parent : Name) (fE : Expr) (nodes : Array RunNode) : MetaM RunNode := do
+  if nodes.isEmpty then
+    throwError "joinNodes: no ranges to join"
+  let env ← getEnv
+  let oneE := mkRawNatLit 1
+  let mut cur := nodes
+  let mut level := 0
+  while cur.size > 1 do
+    let mut next : Array RunNode := #[]
+    let mut i := 0
+    while i < cur.size do
+      if i + 1 < cur.size then
+        let x := cur[i]!
+        let y := cur[i + 1]!
+        let tot := x.len + y.len
+        let t := x.tot + y.tot
+        let nm := mkPrivateName env (parent ++ Name.mkSimple s!"node_{level}_{i}")
+        addHarmonicThm nm
+          (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit x.lo, mkRawNatLit tot, oneE])
+            (mkRawNatLit t))
+          (mkAppN (mkConst ``sumB_join)
+            #[fE, mkRawNatLit x.lo, oneE, mkRawNatLit x.len, mkRawNatLit y.len, mkRawNatLit tot,
+              mkRawNatLit y.lo, mkRawNatLit x.tot, mkRawNatLit y.tot, mkRawNatLit t,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst x.name, mkConst y.name,
+              Lean.reflBoolTrue])
+        next := next.push { lo := x.lo, len := tot, tot := t, name := nm }
+        i := i + 2
+      else
+        next := next.push cur[i]!
+        i := i + 1
+    cur := next
+    level := level + 1
+  return cur[0]!
+
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
 in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
 and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and `n` the
@@ -467,35 +504,7 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
       (mkAppN (mkConst ``sumB_windowEq)
         #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
     nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
-  if nodes.isEmpty then
-    throwError "emitWindowRun: no batches to join"
-  let mut level := 0
-  while nodes.size > 1 do
-    let mut next : Array RunNode := #[]
-    let mut i := 0
-    while i < nodes.size do
-      if i + 1 < nodes.size then
-        let x := nodes[i]!
-        let y := nodes[i + 1]!
-        let tot := x.len + y.len
-        let t := x.tot + y.tot
-        let nm := mkPrivateName env (parent ++ Name.mkSimple s!"node_{level}_{i}")
-        addHarmonicThm nm
-          (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit x.lo, mkRawNatLit tot, oneE])
-            (mkRawNatLit t))
-          (mkAppN (mkConst ``sumB_join)
-            #[fE, mkRawNatLit x.lo, oneE, mkRawNatLit x.len, mkRawNatLit y.len, mkRawNatLit tot,
-              mkRawNatLit y.lo, mkRawNatLit x.tot, mkRawNatLit y.tot, mkRawNatLit t,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst x.name, mkConst y.name,
-              Lean.reflBoolTrue])
-        next := next.push { lo := x.lo, len := tot, tot := t, name := nm }
-        i := i + 2
-      else
-        next := next.push nodes[i]!
-        i := i + 1
-    nodes := next
-    level := level + 1
-  let root := nodes[0]!
+  let root ← joinNodes parent fE nodes
   return (root.tot, mkConst root.name)
 
 /-- Emit one windowed fold over all the batches and declare `foldName : sumB fE 1 len 1 = <total>`.
@@ -641,5 +650,125 @@ or `3` (see `runHarmonicWindow`). -/
 elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num : command =>
   liftTermElabM <|
     runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat
+
+/-! ## A windowed run split across files
+
+`run_harmonic_window` proves everything in one command, so one file and one core do all the kernel
+work. `run_harmonic_part` proves one share of the batches and `run_harmonic_merge` joins the shares,
+so the shares can be separate modules that the build runs at the same time.
+-/
+
+/-- The sieve literal, its `IsSieve` theorem and the top it covers, the number of wheel positions
+inside `bound`, and the batches of `B` positions with their windows. `cmd` names the caller in the
+error messages. -/
+meta def windowSetup (cmd : String) (bound scaleExp B : Nat) :
+    MetaM (Nat × Name × Name × Nat × Array WindowBatch) := do
+  if bound < 5 then
+    throwError "{cmd}: the bound must be at least 5"
+  let B := Nat.max 1 B
+  let some cache ← Sieve.findSieveCache bound
+    | throwError "{cmd}: no sieve cache in scope covers {bound}"
+  let mut len := twinIndex bound
+  for _ in [0:2] do
+    if twinValue len > bound then
+      len := len - 1
+  if len == 0 || twinValue len > bound || twinValue (len + 1) ≤ bound then
+    throwError "{cmd}: could not place the last wheel position inside {bound}"
+  let wins := twinWindows (wheelMarks len) (10 ^ scaleExp) len B
+  return (cache.hi, cache.litName, cache.isSieveName, len, wins)
+
+/-- The packed fold over the sieve `sE` at scale `S` with packing base `P`: the kernel function, the
+windowed function of a batch, the bridge from a batch's window theorem, and the batch total. -/
+meta def packPieces (sE : Expr) (S P : Nat) :
+    Expr × (Nat → Nat → Expr) × (Nat → Nat → Nat → Name → Expr) × (WindowBatch → Nat) :=
+  let SE := mkRawNatLit S
+  let PE := mkRawNatLit P
+  (mkApp3 (mkConst ``packAtK) sE SE PE,
+    fun w lo ↦ mkApp4 (mkConst ``packAtW) (mkRawNatLit w) (mkRawNatLit lo) SE PE,
+    fun lo n w nm ↦ mkAppN (mkConst ``pack_window)
+      #[sE, SE, PE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm],
+    fun wb ↦ wb.recip + P * wb.count)
+
+/-- The batches of part `i` of `M`, as a half-open range of batch indices. -/
+meta def partRange (nb M i : Nat) : Nat × Nat := (nb * i / M, nb * (i + 1) / M)
+
+/-- The theorem part `i` of `M` proves, for the run `bound`, `scaleExp`, `B`. -/
+meta def partName (bound scaleExp B M i : Nat) : Name :=
+  `PrimeCert ++ Name.mkSimple s!"harmonicWindowPart_{bound}_{scaleExp}_{B}_{M}_{i}"
+
+/-- Prove part `i` of `M` of the packed windowed run: the batches `partRange` gives it, each reading
+its own window, joined in a tree into `partName …  : sumB packAtK … lo n 1 = <total>`. -/
+meta def runHarmonicPart (bound scaleExp B M i : Nat) : MetaM Unit := do
+  if M == 0 || i ≥ M then
+    throwError "run_harmonic_part: {i} is not one of {M} parts"
+  let (_, litName, _, len, wins) ← windowSetup "run_harmonic_part" bound scaleExp B
+  let (a, b) := partRange wins.size M i
+  if a == b then
+    throwError "run_harmonic_part: part {i} of {M} has no batches"
+  let sE := mkConst litName
+  let (fE, gE, bridge, pick) := packPieces sE (10 ^ scaleExp) (len * 10 ^ scaleExp + 1)
+  let nm := partName bound scaleExp B M i
+  let env ← getEnv
+  let mut winNames : Array Name := #[]
+  for _ in [0:a] do
+    winNames := winNames.push Name.anonymous
+  for k in [a:b] do
+    let wb := wins[k]!
+    let wn := mkPrivateName env (nm ++ Name.mkSimple s!"w_{k}")
+    addHarmonicThm wn (mkWindowEq sE wb.lo wb.len wb.w) Lean.reflBoolTrue
+    winNames := winNames.push wn
+  let (tot, proof) ← emitWindowRun nm fE gE bridge pick wins winNames a b
+  addHarmonicThm nm (mkNatEq (mkSumB fE wins[a]!.lo (windowSpan wins a b) 1) (mkRawNatLit tot))
+    proof
+  logInfo s!"run_harmonic_part {bound}: part {i} of {M} is batches {a} to {b - 1}, \
+{windowSpan wins a b} positions from {wins[a]!.lo}, total {tot}"
+
+/-- Join the `M` parts of the packed windowed run in a tree and land
+`primeRecipIccWindow_… : PrimeRecipIcc bound A C (10 ^ scaleExp)`. The parts must be in scope, each
+proved by `run_harmonic_part` with the same `bound`, `scaleExp`, `B` and `M`. -/
+meta def runHarmonicMerge (bound scaleExp B M : Nat) : MetaM Unit := do
+  if M == 0 then
+    throwError "run_harmonic_merge: there must be at least one part"
+  let (hi, litName, isSieveName, len, wins) ← windowSetup "run_harmonic_merge" bound scaleExp B
+  let S := 10 ^ scaleExp
+  let P := len * S + 1
+  let sE := mkConst litName
+  let (fE, _, _, pick) := packPieces sE S P
+  let mut nodes : Array RunNode := #[]
+  for i in [0:M] do
+    let (a, b) := partRange wins.size M i
+    if a == b then
+      throwError "run_harmonic_merge: part {i} of {M} has no batches"
+    let mut t := 0
+    for k in [a:b] do
+      t := t + pick wins[k]!
+    nodes := nodes.push
+      { lo := wins[a]!.lo, len := windowSpan wins a b, tot := t,
+        name := partName bound scaleExp B M i }
+  let tag := s!"{bound}_{scaleExp}_{B}_{M}"
+  let root ← joinNodes (`PrimeCert ++ Name.mkSimple s!"harmonicWindowMerge_{tag}") fE nodes
+  let T := root.tot
+  let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccWindow_{tag}"
+  addHarmonicThm iccName
+    (mkAppN (mkConst ``PrimeRecipIcc)
+      #[mkRawNatLit bound, mkRawNatLit (T % P), mkRawNatLit (T / P), mkRawNatLit S])
+    (mkAppN (mkConst ``primeRecipIcc_of_pack)
+      #[mkRawNatLit hi, mkRawNatLit bound, mkRawNatLit S, mkRawNatLit P, sE, mkRawNatLit len,
+        mkRawNatLit T, mkConst isSieveName, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        mkConst root.name])
+  logInfo s!"run_harmonic_merge {bound}: {len} positions in {wins.size} windows of {B} across \
+{M} parts, sieve {litName}; A = {T % P}, C = {T / P}"
+
+/-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
+`∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/
+elab "run_harmonic_part" bStx:num eStx:num lStx:num mStx:num iStx:num : command =>
+  liftTermElabM <|
+    runHarmonicPart bStx.getNat eStx.getNat lStx.getNat mStx.getNat iStx.getNat
+
+/-- `run_harmonic_merge bound e B M` joins the `M` parts of that run and encloses the sum (see
+`runHarmonicMerge`). -/
+elab "run_harmonic_merge" bStx:num eStx:num lStx:num mStx:num : command =>
+  liftTermElabM <| runHarmonicMerge bStx.getNat eStx.getNat lStx.getNat mStx.getNat
 
 end PrimeCert
