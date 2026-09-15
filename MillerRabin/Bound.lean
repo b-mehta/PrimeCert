@@ -10,6 +10,8 @@ public import MillerRabin.Defs
 public import PrimeCert.SieveCorrect
 public import PrimeCert.ForallB
 
+import PrimeCert.ForMathlib
+
 /-! # The Wieferich condition along a residue class of a sieve
 
 `wieferichAtK s` reads the condition at one position of the sieve `s`, with `wieferichAtK_iff` as
@@ -66,7 +68,7 @@ public theorem not_wieferich_of_fold {n s p m len : ℕ} (hs : IsSieve n s) (hp 
     (hb : p ≤ n) (hm : m % 6 = 0) (hc : p.Coprime 6) (hk : p / m < len)
     (hfold : forallB (wieferichAtK s) (index (p % m)) len (m / 3)) : ¬ Wieferich p := by
   have hmod : p % m % 6 = p % 6 := Nat.mod_mod_of_dvd p (Nat.dvd_of_mod_eq_zero hm)
-  have hr : (p % m).Coprime 6 := by rwa [coprime6_mod, hmod, ← coprime6_mod]
+  have hr : (p % m).Coprime 6 := by rwa [Nat.coprime_six_iff, hmod, ← Nat.coprime_six_iff]
   refine not_wieferich_of_check hs hp hb hc ?_
   have := eval_of_class (k := p / m) hr hm hk hfold
   rwa [Nat.mod_add_div] at this
@@ -78,7 +80,7 @@ public theorem not_wieferich_of_fold_offset {n s p m d j len : ℕ} (hs : IsSiev
     (hj : j ≤ p / m) (hk : p / m - j < len)
     (hfold : forallB (wieferichAtK s) (index (p % m) + d * j) len d) : ¬ Wieferich p := by
   have hmod : p % m % 6 = p % 6 := Nat.mod_mod_of_dvd p (Nat.dvd_of_mod_eq_zero hm)
-  have hr : (p % m).Coprime 6 := by rwa [coprime6_mod, hmod, ← coprime6_mod]
+  have hr : (p % m).Coprime 6 := by rwa [Nat.coprime_six_iff, hmod, ← Nat.coprime_six_iff]
   refine not_wieferich_of_check hs hp hb hc ?_
   have := eval_of_offset (k := p / m) hr hm hd hj hk hfold
   rwa [Nat.mod_add_div] at this
