@@ -456,6 +456,27 @@ public theorem sumB_lastVia (f g : ℕ → ℕ) (L start step len acc acc' : ℕ
     L = acc' := by
   grind [Nat.beq_eq]
 
+/-- One chain link whose every position and length is a plain literal: `tot` is the run still to go,
+`start'` the next run's first position, both supplied as literals and checked by `Nat.beq`, so that
+consecutive links match without the checker having to relate `start + len * step` to a literal. -/
+public theorem sumB_chainEqL (f : ℕ → ℕ) (L start step len rest tot start' acc a acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start tot step))
+    (htot : Nat.beq (Nat.add len rest) tot = true)
+    (hs : Nat.beq (Nat.add (Nat.mul len step) start) start' = true)
+    (h : sumB f start len step = a)
+    (hadd : Nat.beq (Nat.add acc a) acc' = true) :
+    L = Nat.add acc' (sumB f start' rest step) := by
+  grind [sumB_add, Nat.beq_eq]
+
+/-- Close a chain of literal links. -/
+public theorem sumB_lastEqL (f : ℕ → ℕ) (L start step len tot acc a acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start tot step))
+    (htot : Nat.beq len tot = true)
+    (h : sumB f start len step = a)
+    (hadd : Nat.beq (Nat.add acc a) acc' = true) :
+    L = acc' := by
+  grind [Nat.beq_eq]
+
 /-- One chain link consuming a proved equation for a whole segment, for chaining segments of
 batches rather than batches. -/
 public theorem sumB_chainEq (f : ℕ → ℕ) (L start step len rest acc a acc' : ℕ)

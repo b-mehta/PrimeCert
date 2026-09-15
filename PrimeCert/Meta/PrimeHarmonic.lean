@@ -462,13 +462,16 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
       (mkAppN (mkConst ``sumB_windowEq)
         #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
     proof := if owed == wb.len then
-        mkAppN (mkConst ``sumB_lastEq)
-          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, accE, mkRawNatLit t,
-            mkRawNatLit next, proof, mkConst eqName, Lean.reflBoolTrue]
+        mkAppN (mkConst ``sumB_lastEqL)
+          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, mkRawNatLit owed, accE,
+            mkRawNatLit t, mkRawNatLit next, proof, Lean.reflBoolTrue, mkConst eqName,
+            Lean.reflBoolTrue]
       else
-        mkAppN (mkConst ``sumB_chainEq)
+        mkAppN (mkConst ``sumB_chainEqL)
           #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, mkRawNatLit (owed - wb.len),
-            accE, mkRawNatLit t, mkRawNatLit next, proof, mkConst eqName, Lean.reflBoolTrue]
+            mkRawNatLit owed, mkRawNatLit (wb.lo + wb.len), accE, mkRawNatLit t,
+            mkRawNatLit next, proof, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst eqName,
+            Lean.reflBoolTrue]
     owed := owed - wb.len
     acc := next
     accE := mkRawNatLit next
@@ -504,13 +507,15 @@ meta def emitWindowFold (foldName : Name) (fE : Expr) (gE : Nat → Nat → Expr
       segProof
     let next := acc + segTot
     proof := if owed == segLen then
-        mkAppN (mkConst ``sumB_lastEq)
-          #[fE, lhs, mkRawNatLit segLo, oneE, mkRawNatLit segLen, accE, mkRawNatLit segTot,
-            mkRawNatLit next, proof, mkConst segName, Lean.reflBoolTrue]
+        mkAppN (mkConst ``sumB_lastEqL)
+          #[fE, lhs, mkRawNatLit segLo, oneE, mkRawNatLit segLen, mkRawNatLit owed, accE,
+            mkRawNatLit segTot, mkRawNatLit next, proof, Lean.reflBoolTrue, mkConst segName,
+            Lean.reflBoolTrue]
       else
-        mkAppN (mkConst ``sumB_chainEq)
+        mkAppN (mkConst ``sumB_chainEqL)
           #[fE, lhs, mkRawNatLit segLo, oneE, mkRawNatLit segLen, mkRawNatLit (owed - segLen),
-            accE, mkRawNatLit segTot, mkRawNatLit next, proof, mkConst segName,
+            mkRawNatLit owed, mkRawNatLit (segLo + segLen), accE, mkRawNatLit segTot,
+            mkRawNatLit next, proof, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segName,
             Lean.reflBoolTrue]
     owed := owed - segLen
     acc := next
