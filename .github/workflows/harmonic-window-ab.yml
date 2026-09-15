@@ -17,6 +17,9 @@ jobs:
           - n: "scale"
             rounds: 1
             cases: "Win5e7_B20480_F3_E14 Win5e7_B20480_F3"
+          - n: "word"
+            rounds: 1
+            cases: "Win5e7_B20480_F2_E18 Win5e7_B20480_F2_E19"
     steps:
       - uses: actions/checkout@v7
 
