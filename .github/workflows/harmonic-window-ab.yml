@@ -30,7 +30,9 @@ jobs:
         run: lake exe cache get
 
       - name: Build what the cases depend on
-        run: lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
 
       - name: Record the runner
         run: |
