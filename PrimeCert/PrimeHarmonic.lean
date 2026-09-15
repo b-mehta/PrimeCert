@@ -53,7 +53,9 @@ open Finset
 @[expose] public def sumB (f : ℕ → ℕ) (start len step : ℕ) : ℕ :=
   len.rec 0 fun n b ↦ (f ((n.mul step).add start)).add b
 
-@[simp, grind =] theorem sumB_zero (f : ℕ → ℕ) (start step : ℕ) : sumB f start 0 step = 0 := rfl
+@[simp, grind =] public theorem sumB_zero (f : ℕ → ℕ) (start step : ℕ) :
+    sumB f start 0 step = 0 :=
+  rfl
 
 @[simp, grind =] theorem sumB_succ (f : ℕ → ℕ) (start len step : ℕ) :
     sumB f start (len + 1) step = f ((len.mul step).add start) + sumB f start len step :=
@@ -303,6 +305,51 @@ public theorem sumB_last (f : ℕ → ℕ) (L start step len acc acc' : ℕ)
     (hP : L = Nat.add acc (sumB f start len step))
     (h : Nat.beq (Nat.add acc (sumB f start len step)) acc' = true) :
     L = acc' := by
+  grind [Nat.beq_eq]
+
+/-! ## Splitting one fold into residue classes of the position
+
+`run_harmonic_classes` cuts the unit-step run of `C * L + R` positions from `1` into the `C` runs of
+`L` positions stepping by `C`, one per residue class of the position modulo `C`, followed by the
+`R` positions left over. Each class is its own chain of batches. `classAcc_step` adds the class
+totals one at a time, so the emitted proof never unfolds a `Finset` sum. -/
+
+/-- The first `k` of the `C` classes, each a run of `L` positions from `c + start` stepping by
+`C`. -/
+@[expose] public def classAcc (f : ℕ → ℕ) (start L C k : ℕ) : ℕ :=
+  ∑ c ∈ range k, sumB f (Nat.add c start) L C
+
+/-- Open the class chain: no classes added yet. -/
+public theorem classAcc_zero (f : ℕ → ℕ) (start L C : ℕ) : classAcc f start L C 0 = 0 := by
+  simp [classAcc]
+
+/-- One class link: the class total `a` and a kernel-checked addition move the running total from
+the first `k` classes to the first `k + 1`. -/
+public theorem classAcc_step (f : ℕ → ℕ) (start L C k acc a acc' : ℕ)
+    (h : classAcc f start L C k = acc) (hc : sumB f (Nat.add k start) L C = a)
+    (hadd : Nat.beq (Nat.add acc a) acc' = true) :
+    classAcc f start L C (Nat.add k 1) = acc' := by
+  have e : classAcc f start L C (Nat.add k 1)
+      = classAcc f start L C k + sumB f (Nat.add k start) L C := by
+    simp only [classAcc, Nat.add_eq, Finset.sum_range_succ]
+  grind [Nat.beq_eq]
+
+/-- The unit-step run of `C * L + R` positions from `1` is its `C` classes followed by the `R`
+positions left over. -/
+public theorem sumB_classSplit (f : ℕ → ℕ) (C L R : ℕ) :
+    sumB f 1 (Nat.add (Nat.mul C L) R) 1
+      = Nat.add (classAcc f 1 L C C) (sumB f (Nat.add (Nat.mul C L) 1) R 1) := by
+  simp only [Nat.add_eq, Nat.mul_eq]
+  rw [sumB_add, sumB_split, Nat.mul_one]
+  simp only [classAcc, Nat.add_eq]
+
+/-- Close the class split: the chained class total, the leftover run and one kernel-checked
+addition give the value of the whole fold. -/
+public theorem sumB_classSplit_close (f : ℕ → ℕ) (C L R A1 A2 A : ℕ)
+    (hacc : classAcc f 1 L C C = A1) (hrem : sumB f (Nat.add (Nat.mul C L) 1) R 1 = A2)
+    (hsum : Nat.beq (Nat.add A1 A2) A = true) :
+    sumB f 1 (Nat.add (Nat.mul C L) R) 1 = A := by
+  rw [sumB_classSplit, hacc, hrem]
   grind [Nat.beq_eq]
 
 /-! ## Packaging a pair of chained folds as an interval
