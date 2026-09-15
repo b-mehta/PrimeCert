@@ -14,15 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "1e6"
-            rounds: 3
-            cases: "ClassBound1e6 Win1e6_B20480_G0_F2 Win1e6_B20480_G0_F1 Win1e6_B20480_G4_F2 Win1e6_B8192_G0_F2 Win1e6_B65536_G0_F2"
-          - n: "1e7"
+          - n: "diag"
             rounds: 1
-            cases: "Win1e7_B20480_G0_F2 Win1e7_B20480_G0_F1 Win1e7_B20480_G16_F2 ClassBound1e7"
-          - n: "1e8"
-            rounds: 1
-            cases: "Base2_Sieve1e8 Sieve1e8_Len4 Win1e8_B20480_G64_F2 Win1e8_B20480_G64_F1"
+            cases: "ClassBound5e7 ClassBound1e8"
     steps:
       - uses: actions/checkout@v7
 
