@@ -133,13 +133,13 @@ jobs:
           nproc
           swapon --show || true
 
-      - name: Build one part of the 1e8 split with nothing beside it
+      - name: Build a copy of the first quarter of 1e8 with nothing beside it
         run: |
           set +e +o pipefail
           start=$(date +%s)
-          lake build PrimeCertTest.HarmonicBench.Split1e8_P0 > out-split-alone.txt 2>&1
+          lake build PrimeCertTest.HarmonicBench.Split1e8_P0Alone > out-split-alone.txt 2>&1
           code=$?
-          echo "RESULT split | 1e8 part 0 alone | exit $code | wall $(( $(date +%s) - start ))s"
+          echo "RESULT split | 1e8 quarter 0 alone | exit $code | wall $(( $(date +%s) - start ))s"
           tail -5 out-split-alone.txt
 
       - name: Build the four parts at once and merge them, at both sizes
