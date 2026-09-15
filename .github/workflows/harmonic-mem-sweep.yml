@@ -37,7 +37,8 @@ jobs:
           run_case() {
             f=$1
             tag=$2
-            lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+            extra=${3:-}
+            lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 $extra \
               "PrimeCertTest/HarmonicBench/$f.lean" > "out-$tag.txt" 2>&1 &
             pid=$!
             start=$(date +%s)
@@ -63,9 +64,12 @@ jobs:
               tail -5 "out-$tag.txt"
             fi
           }
-          run_case N1e5 "N1e5"
-          for k in 2 3 4 5 6 7 8 9; do
-            run_case "Bound${k}e5" "N${k}e5"
+          for k in 3 4; do
+            run_case "Bound${k}e5" "N${k}e5-infile"
+            run_case "Bound${k}e5" "N${k}e5-flag" "-DElab.async=false"
+          done
+          for k in 5 6; do
+            run_case "Bound${k}e5" "N${k}e5-flag" "-DElab.async=false"
           done
 
       - name: Fail the job if any case failed
