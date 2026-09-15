@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "scale"
+          - n: "B"
             rounds: 1
-            cases: "Win5e7_B20480_F3_E14 Win5e7_B20480_F3"
-          - n: "word"
-            rounds: 1
-            cases: "Win5e7_B20480_F2_E18 Win5e7_B20480_F2_E19"
+            cases: "Win1e8_B8192_F3 Win1e8_B20480_F3 Win1e8_B40960_F3"
     steps:
       - uses: actions/checkout@v7
 
