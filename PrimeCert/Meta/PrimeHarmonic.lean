@@ -234,31 +234,51 @@ meta def progress (msg : String) : IO Unit := do
     e.flush
 
 /-- Emit one fold split into the `C` position classes modulo `C`, each a run of `L` positions, and
-the `R` positions left over, and declare `foldName : sumB fE 1 len 1 = <total>`. The count fold
-takes the second component of the twin's totals, the reciprocal fold the first. -/
+the `R` positions left over, and declare `foldName : sumB fE 1 len 1 = <total>`. `pick` turns the
+twin's pair of totals (reciprocal, count) into this fold's total. The class totals are added in two
+levels: blocks of about `√C` classes, each block its own theorem, then the blocks. -/
 meta def emitClassFold (foldName : Name) (fE : Expr) (mark : ByteArray) (S C L R len batch : Nat)
-    (useCount : Bool) : MetaM Nat := do
-  let pick : Nat × Nat → Nat := fun p ↦ if useCount then p.2 else p.1
+    (pick : Nat × Nat → Nat) : MetaM Nat := do
   let oneE := mkRawNatLit 1
   let CE := mkRawNatLit C
   let LE := mkRawNatLit L
+  let D := Nat.sqrt C + 1
   let mut accE := mkRawNatLit 0
   let mut acc := 0
   let mut proof := mkAppN (mkConst ``classAcc_zero) #[fE, oneE, LE, CE]
-  for k in [0:C] do
-    progress s!"{foldName} class {k}: start"
-    let kE := mkRawNatLit k
-    let startE := mkApp2 (mkConst ``Nat.add) kE oneE
-    let totals := (twinRunBatches mark S (k + 1) L C batch).map pick
-    let className := foldName ++ Name.mkSimple s!"class_{k}"
-    let (a, aProof) ← emitRunChain className fE startE (k + 1) L C batch totals
-    addHarmonicThm className
-      (mkNatEq (mkAppN (mkConst ``sumB) #[fE, startE, LE, CE]) (mkRawNatLit a)) aProof
-    progress s!"{foldName} class {k}: declared"
-    let next := acc + a
-    proof := mkAppN (mkConst ``classAcc_step)
-      #[fE, oneE, LE, CE, kE, accE, mkRawNatLit a, mkRawNatLit next, proof, mkConst className,
-        Lean.reflBoolTrue]
+  for b in [0:(C + D - 1) / D] do
+    let a := b * D
+    let n := Nat.min D (C - a)
+    let aE := mkRawNatLit a
+    let mut bAccE := mkRawNatLit 0
+    let mut bAcc := 0
+    let mut bProof := mkAppN (mkConst ``classBlock_zero) #[fE, oneE, LE, CE, aE]
+    for i in [0:n] do
+      let k := a + i
+      progress s!"{foldName} class {k}: start"
+      let iE := mkRawNatLit i
+      let startE := mkApp2 (mkConst ``Nat.add) (mkApp2 (mkConst ``Nat.add) aE iE) oneE
+      let totals := (twinRunBatches mark S (k + 1) L C batch).map pick
+      let className := foldName ++ Name.mkSimple s!"class_{k}"
+      let (x, xProof) ← emitRunChain className fE startE (k + 1) L C batch totals
+      addHarmonicThm className
+        (mkNatEq (mkAppN (mkConst ``sumB) #[fE, startE, LE, CE]) (mkRawNatLit x)) xProof
+      progress s!"{foldName} class {k}: declared"
+      let next := bAcc + x
+      bProof := mkAppN (mkConst ``classBlock_step)
+        #[fE, oneE, LE, CE, aE, iE, bAccE, mkRawNatLit x, mkRawNatLit next, bProof,
+          mkConst className, Lean.reflBoolTrue]
+      bAcc := next
+      bAccE := mkRawNatLit next
+    let blockName := foldName ++ Name.mkSimple s!"block_{b}"
+    addHarmonicThm blockName
+      (mkNatEq (mkAppN (mkConst ``classBlock) #[fE, oneE, LE, CE, aE, mkRawNatLit n])
+        (mkRawNatLit bAcc))
+      bProof
+    let next := acc + bAcc
+    proof := mkAppN (mkConst ``classAcc_block)
+      #[fE, oneE, LE, CE, aE, mkRawNatLit n, accE, mkRawNatLit bAcc, mkRawNatLit next, proof,
+        mkConst blockName, Lean.reflBoolTrue]
     acc := next
     accE := mkRawNatLit next
   let accName := foldName ++ `classes
@@ -283,12 +303,15 @@ meta def emitClassFold (foldName : Name) (fE : Expr) (mark : ByteArray) (S C L R
   return total
 
 /-- Enclose `∑ p ≤ bound, 1/p` as `run_harmonic` does, with each fold split into the `C` residue
-classes of the position modulo `C`, every class cut into batches of `batch` positions. -/
-meta def runHarmonicClasses (bound scaleExp C batch : Nat) : MetaM Unit := do
+classes of the position modulo `C`, every class cut into batches of `batch` positions. `folds` is
+`2` for the reciprocal and count folds, or `3` for the two packed into one fold. -/
+meta def runHarmonicClasses (bound scaleExp C batch folds : Nat) : MetaM Unit := do
   if bound < 5 then
     throwError "run_harmonic_classes: the bound must be at least 5"
   if C == 0 then
     throwError "run_harmonic_classes: the number of classes must be positive"
+  if folds != 2 && folds != 3 then
+    throwError "run_harmonic_classes: folds must be 2 or 3"
   let batch := Nat.max 1 batch
   let some cache ← Sieve.findSieveCache bound
     | throwError "run_harmonic_classes: no sieve cache in scope covers {bound}"
@@ -307,14 +330,31 @@ meta def runHarmonicClasses (bound scaleExp C batch : Nat) : MetaM Unit := do
   let mark := wheelMarks len
   progress s!"run_harmonic_classes {bound}: twin sieve done, {mark.size} bytes"
   let sE := mkConst cache.litName
-  let fRecip := mkApp2 (mkConst ``recipAtK) sE (mkRawNatLit S)
+  let SE := mkRawNatLit S
+  let fRecip := mkApp2 (mkConst ``recipAtK) sE SE
   let fCount := mkApp (mkConst ``bitAtK) sE
-  let tag := s!"{bound}_{scaleExp}_{C}_{batch}"
+  let tag := s!"{bound}_{scaleExp}_{C}_{batch}_{folds}"
   let foldName := `PrimeCert ++ Name.mkSimple s!"harmonicClassFold_{tag}"
   let countName := `PrimeCert ++ Name.mkSimple s!"harmonicClassCount_{tag}"
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccClasses_{tag}"
-  let aTot ← emitClassFold foldName fRecip mark S C L R len batch false
-  let cTot ← emitClassFold countName fCount mark S C L R len batch true
+  if folds == 3 then
+    let P := len * S + 1
+    let PE := mkRawNatLit P
+    let fPack := mkApp3 (mkConst ``packAtK) sE SE PE
+    let packName := `PrimeCert ++ Name.mkSimple s!"harmonicClassPack_{tag}"
+    let T ← emitClassFold packName fPack mark S C L R len batch (fun p ↦ p.1 + P * p.2)
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipIcc)
+        #[mkRawNatLit bound, mkRawNatLit (T % P), mkRawNatLit (T / P), SE])
+      (mkAppN (mkConst ``primeRecipIcc_of_pack)
+        #[mkRawNatLit cache.hi, mkRawNatLit bound, SE, PE, sE, mkRawNatLit len, mkRawNatLit T,
+          mkConst cache.isSieveName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst packName])
+    logInfo s!"run_harmonic_classes {bound}: {len} positions in {C} classes of {L} plus {R}, \
+batches of {batch}, packed fold, sieve {cache.litName}; A = {T % P}, C = {T / P}"
+    return
+  let aTot ← emitClassFold foldName fRecip mark S C L R len batch (·.1)
+  let cTot ← emitClassFold countName fCount mark S C L R len batch (·.2)
   let iccProof := mkAppN (mkConst ``primeRecipIcc_of)
     #[mkRawNatLit cache.hi, mkRawNatLit bound, mkRawNatLit S, sE, mkRawNatLit len,
       mkRawNatLit aTot, mkRawNatLit cTot, mkConst cache.isSieveName,
@@ -327,11 +367,13 @@ meta def runHarmonicClasses (bound scaleExp C batch : Nat) : MetaM Unit := do
   logInfo s!"run_harmonic_classes {bound}: {len} positions in {C} classes of {L} plus {R}, \
 batches of {batch}, sieve {cache.litName}; A = {aTot}, C = {cTot}"
 
-/-- `run_harmonic_classes bound e C len` encloses the sum of the reciprocals of the primes up to
-`bound` at scale `10 ^ e`, with each fold split into the `C` residue classes of the position modulo
-`C` and every class cut into batches of `len` positions. -/
-elab "run_harmonic_classes" bStx:num eStx:num cStx:num lStx:num : command =>
+/-- `run_harmonic_classes bound e C len folds?` encloses the sum of the reciprocals of the primes up
+to `bound` at scale `10 ^ e`, with each fold split into the `C` residue classes of the position
+modulo `C` and every class cut into batches of `len` positions; `folds` is `2` (the default) or `3`
+(packed). -/
+elab "run_harmonic_classes" bStx:num eStx:num cStx:num lStx:num fStx:(num)? : command =>
   liftTermElabM <| runHarmonicClasses bStx.getNat eStx.getNat cStx.getNat lStx.getNat
+    ((fStx.map (·.getNat)).getD 2)
 
 /-! ## Reading each batch through a window of the sieve -/
 

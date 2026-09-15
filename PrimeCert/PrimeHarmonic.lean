@@ -334,6 +334,39 @@ public theorem classAcc_step (f : ℕ → ℕ) (start L C k acc a acc' : ℕ)
     simp only [classAcc, Nat.add_eq, Finset.sum_range_succ]
   grind [Nat.beq_eq]
 
+/-- The classes `a … a + n - 1`, each a run of `L` positions from `(a + c) + start` stepping by
+`C`. Blocks of classes let the class totals be added in two levels, so no chain of links grows
+with the number of classes. -/
+@[expose] public def classBlock (f : ℕ → ℕ) (start L C a n : ℕ) : ℕ :=
+  ∑ c ∈ range n, sumB f (Nat.add (Nat.add a c) start) L C
+
+/-- Open a block: no classes added yet. -/
+public theorem classBlock_zero (f : ℕ → ℕ) (start L C a : ℕ) :
+    classBlock f start L C a 0 = 0 := by
+  simp [classBlock]
+
+/-- One link inside a block: the class total `x` of class `a + n` and a kernel-checked addition move
+the block's running total forward by one class. -/
+public theorem classBlock_step (f : ℕ → ℕ) (start L C a n acc x acc' : ℕ)
+    (h : classBlock f start L C a n = acc)
+    (hc : sumB f (Nat.add (Nat.add a n) start) L C = x)
+    (hadd : Nat.beq (Nat.add acc x) acc' = true) :
+    classBlock f start L C a (Nat.add n 1) = acc' := by
+  have e : classBlock f start L C a (Nat.add n 1)
+      = classBlock f start L C a n + sumB f (Nat.add (Nat.add a n) start) L C := by
+    simp only [classBlock, Nat.add_eq, Finset.sum_range_succ]
+  grind [Nat.beq_eq]
+
+/-- One link between blocks: the first `a` classes followed by the block of the next `n`. -/
+public theorem classAcc_block (f : ℕ → ℕ) (start L C a n acc x acc' : ℕ)
+    (h : classAcc f start L C a = acc) (hb : classBlock f start L C a n = x)
+    (hadd : Nat.beq (Nat.add acc x) acc' = true) :
+    classAcc f start L C (Nat.add a n) = acc' := by
+  have e : classAcc f start L C (Nat.add a n)
+      = classAcc f start L C a + classBlock f start L C a n := by
+    simp only [classAcc, classBlock, Nat.add_eq, Finset.sum_range_add]
+  grind [Nat.beq_eq]
+
 /-- The unit-step run of `C * L + R` positions from `1` is its `C` classes followed by the `R`
 positions left over. -/
 public theorem sumB_classSplit (f : ℕ → ℕ) (C L R : ℕ) :
