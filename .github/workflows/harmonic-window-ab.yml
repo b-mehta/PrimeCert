@@ -1,0 +1,109 @@
+name: A/B of the windowed sum of 1/p
+
+on:
+  push:
+    branches:
+      - 'ci/harmonic-window-ab'
+  workflow_dispatch:
+
+jobs:
+  ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - n: "1e6"
+            rounds: 3
+            cases: "ClassBound1e6 Win1e6_B20480_G0_F2 Win1e6_B20480_G0_F1 Win1e6_B20480_G4_F2 Win1e6_B8192_G0_F2 Win1e6_B65536_G0_F2"
+          - n: "1e7"
+            rounds: 1
+            cases: "Win1e7_B20480_G0_F2 Win1e7_B20480_G0_F1 Win1e7_B20480_G16_F2 ClassBound1e7"
+          - n: "1e8"
+            rounds: 1
+            cases: "Base2_Sieve1e8 Sieve1e8_Len4 Win1e8_B20480_G64_F2 Win1e8_B20480_G64_F1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the cases depend on
+        run: lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+
+      - name: Record the runner
+        run: |
+          free -m
+          nproc
+          swapon --show || true
+
+      - name: Run the cases, a discarded warm-up first, the order rotated each round
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          limit=18000
+          run_case() {
+            f=$1
+            tag=$2
+            lean -M 12000 -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
+              "PrimeCertTest/HarmonicBench/$f.lean" > "out-$tag.txt" 2>&1 &
+            pid=$!
+            start=$(date +%s)
+            hwm=0
+            swap=0
+            while kill -0 "$pid" 2>/dev/null; do
+              h=$(grep VmHWM "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+              s=$(grep VmSwap "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+              if [ -n "$h" ]; then hwm=$h; fi
+              if [ -n "$s" ] && [ "$s" -gt "$swap" ]; then swap=$s; fi
+              t=$(( $(date +%s) - start ))
+              if [ $(( t % 30 )) -eq 0 ]; then
+                echo "$tag t=${t}s hwm=$(( hwm / 1024 )) MB swap=$(( swap / 1024 )) MB"
+              fi
+              if [ "$t" -gt "$limit" ]; then
+                kill "$pid"
+                echo "$tag killed at the ${limit}s limit"
+              fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "out-$tag.txt" \
+              | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
+            entries=$(grep -c '\[Kernel\] \[' "out-$tag.txt")
+            echo "RESULT ${{ matrix.n }} | $tag | exit $code | kernel ${total}s over ${entries} entries | wall $(( $(date +%s) - start ))s | peak ${hwm} KB | swap ${swap} KB"
+            if [ "$code" -ne 0 ]; then
+              echo "RUN FAILED $tag" | tee -a bench-failures.txt
+              grep -E "error|memory" "out-$tag.txt" | tail -5
+            fi
+          }
+          read -ra arr <<< "${{ matrix.cases }}"
+          n=${#arr[@]}
+          run_case Base0_Startup warmup
+          for r in $(seq 1 ${{ matrix.rounds }}); do
+            for k in $(seq 0 $(( n - 1 ))); do
+              f=${arr[$(( (k + r - 1) % n ))]}
+              run_case "$f" "$f-round$r"
+            done
+          done
+
+      - name: Fail the job if any case failed
+        run: |
+          if [ -s bench-failures.txt ]; then
+            cat bench-failures.txt
+            exit 1
+          fi
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-${{ matrix.n }}
+          path: out-*.txt
