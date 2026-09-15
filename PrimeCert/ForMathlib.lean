@@ -132,3 +132,9 @@ public theorem Nat.Prime.mod_six_eq_one_or_five {p : ℕ} (hp : p.Prime) (hp₂ 
     rw [ne_eq, ← Nat.dvd_iff_mod_eq_zero, Nat.dvd_prime_two_le hp (by lia)]
     lia
   lia
+
+/-- A prime other than `2` and `3` is coprime to 6. -/
+public theorem Nat.Prime.coprime_six {p : ℕ} (hp : p.Prime) (hp₂ : p ≠ 2) (hp₃ : p ≠ 3) :
+    p.Coprime 6 := by
+  rw [Nat.Coprime, Nat.gcd_comm, Nat.gcd_rec]
+  rcases hp.mod_six_eq_one_or_five hp₂ hp₃ with h | h <;> simp [h]
