@@ -14,12 +14,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - n: "1e7"
+            rounds: 1
+            cases: "ClassBound1e7_P ClassBound1e7"
           - n: "5e7"
             rounds: 1
-            cases: "ClassBound5e7_B2048 ClassBound5e7_B512"
+            cases: "ClassBound5e7_C3850_P ClassBound5e7_C3850"
           - n: "1e8"
             rounds: 1
-            cases: "ClassBound1e8_B2048 ClassBound1e8_B512"
+            cases: "ClassBound1e8_C15400_P ClassBound1e8_C7700_P"
     steps:
       - uses: actions/checkout@v7
 
