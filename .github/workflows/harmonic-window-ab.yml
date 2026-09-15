@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "B"
+          - n: "Bsmall"
             rounds: 1
-            cases: "Win1e8_B8192_F3 Win1e8_B20480_F3 Win1e8_B40960_F3"
+            cases: "Win1e8_B4096_F3 Win1e8_B2048_F3 Win1e8_B1024_F3"
     steps:
       - uses: actions/checkout@v7
 
