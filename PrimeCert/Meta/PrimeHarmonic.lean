@@ -216,6 +216,23 @@ meta def emitRunChain (parent : Name) (fE startE : Expr) (start len step batch :
     accE := mkRawNatLit next
   return (acc, proof)
 
+/-- The resident memory of this process in kibibytes, read from `/proc/self/status`, or `0` where
+that file is unavailable. -/
+meta def rssKb : IO Nat := do
+  let s ← try IO.FS.readFile "/proc/self/status" catch _ => pure ""
+  for line in s.splitOn "\n" do
+    if line.startsWith "VmRSS:" then
+      return (String.ofList (line.toList.filter Char.isDigit)).toNat!
+  return 0
+
+/-- When the environment variable `PRIMECERT_PROGRESS` is set, write one line to stderr with the
+elapsed monotonic time and the resident memory, flushed at once so that it survives an abort. -/
+meta def progress (msg : String) : IO Unit := do
+  if (← IO.getEnv "PRIMECERT_PROGRESS").isSome then
+    let e ← IO.getStderr
+    e.putStrLn s!"[progress {← IO.monoMsNow} ms, rss {← rssKb} KB] {msg}"
+    e.flush
+
 /-- Emit one fold split into the `C` position classes modulo `C`, each a run of `L` positions, and
 the `R` positions left over, and declare `foldName : sumB fE 1 len 1 = <total>`. The count fold
 takes the second component of the twin's totals, the reciprocal fold the first. -/
@@ -229,6 +246,7 @@ meta def emitClassFold (foldName : Name) (fE : Expr) (mark : ByteArray) (S C L R
   let mut acc := 0
   let mut proof := mkAppN (mkConst ``classAcc_zero) #[fE, oneE, LE, CE]
   for k in [0:C] do
+    progress s!"{foldName} class {k}: start"
     let kE := mkRawNatLit k
     let startE := mkApp2 (mkConst ``Nat.add) kE oneE
     let totals := (twinRunBatches mark S (k + 1) L C batch).map pick
@@ -236,6 +254,7 @@ meta def emitClassFold (foldName : Name) (fE : Expr) (mark : ByteArray) (S C L R
     let (a, aProof) ← emitRunChain className fE startE (k + 1) L C batch totals
     addHarmonicThm className
       (mkNatEq (mkAppN (mkConst ``sumB) #[fE, startE, LE, CE]) (mkRawNatLit a)) aProof
+    progress s!"{foldName} class {k}: declared"
     let next := acc + a
     proof := mkAppN (mkConst ``classAcc_step)
       #[fE, oneE, LE, CE, kE, accE, mkRawNatLit a, mkRawNatLit next, proof, mkConst className,
@@ -284,7 +303,9 @@ meta def runHarmonicClasses (bound scaleExp C batch : Nat) : MetaM Unit := do
   let R := len % C
   if L == 0 then
     throwError "run_harmonic_classes: {len} positions is fewer than {C} classes"
+  progress s!"run_harmonic_classes {bound}: twin sieve over {len} positions"
   let mark := wheelMarks len
+  progress s!"run_harmonic_classes {bound}: twin sieve done, {mark.size} bytes"
   let sE := mkConst cache.litName
   let fRecip := mkApp2 (mkConst ``recipAtK) sE (mkRawNatLit S)
   let fCount := mkApp (mkConst ``bitAtK) sE
