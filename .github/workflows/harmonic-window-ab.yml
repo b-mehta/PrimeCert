@@ -14,9 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "diag"
+          - n: "5e7"
             rounds: 1
-            cases: "ClassBound5e7 ClassBound1e8"
+            cases: "ClassBound5e7_B2048 ClassBound5e7_B512"
+          - n: "1e8"
+            rounds: 1
+            cases: "ClassBound1e8_B2048 ClassBound1e8_B512"
     steps:
       - uses: actions/checkout@v7
 
