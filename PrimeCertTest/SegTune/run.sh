@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
 # Usage: run.sh <rounds> <case>...
-# Times each case file PrimeCertTest/SegTune/<case>.lean, all cases once per round, rounds in
-# sequence, and appends every failed case to bench-failures.txt. A watchdog kills the lean process
-# once its resident memory passes LIMIT_KB kibibytes (default 14000000), so a case that would
-# exhaust the runner fails on its own and the job carries on.
+# Times each case file PrimeCertTest/SegTune/<case>.lean. Every round runs every case once, and the
+# first case moves along by one each round, so no case always runs first. Every failed case is
+# appended to bench-failures.txt. A watchdog kills the lean process once its resident memory
+# passes LIMIT_KB kibibytes (default 14000000), so a case that would exhaust the runner fails on
+# its own and the job carries on.
+#
+# Reported per case: the sum of every [Kernel] entry; the sum over the window's batch lemmas
+# (names containing `segEqV_…step_`); the sum over its base-sieve slice lemmas (`segEqV_…chunk_`);
+# wall clock and peak resident memory of lean from /usr/bin/time; the number of batch lemmas.
 set +e +o pipefail
 rounds=$1
 shift
+cases=("$@")
+n=${#cases[@]}
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
+
+# ksum <file> <pattern>: the sum of the [Kernel] seconds on lines matching the pattern.
+ksum() {
+  grep -o "\[Kernel\] \[[0-9.]*\].*$2" "$1" | grep -o '^\[Kernel\] \[[0-9.]*\]' \
+    | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}'
+}
+
 for round in $(seq 1 "$rounds"); do
-  for f in "$@"; do
+  for k in $(seq 0 $((n - 1))); do
+    f=${cases[$(( (k + round - 1) % n ))]}
     out="out-$f-$round.txt"
     tim="time-$f-$round.txt"
-    /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 \
+    /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
       "PrimeCertTest/SegTune/$f.lean" > "$out" 2> "$tim" &
     tpid=$!
     killed=0
@@ -35,11 +50,13 @@ for round in $(seq 1 "$rounds"); do
       echo "RUN FAILED $f round $round exit $status" | tee -a bench-failures.txt
       grep -E 'error' "$out" | head -5
     fi
-    total=$(grep -o '\[Kernel\] \[[0-9.]*\]' "$out" | grep -o '[0-9]\+\.[0-9]\+' \
-      | awk '{s+=$1} END {printf "%.3f", s}')
+    total=$(ksum "$out" "")
+    steps=$(ksum "$out" "segEqV_.*step_")
+    chunks=$(ksum "$out" "segEqV_.*chunk_")
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
-    steps=$(grep -c 'typechecking declarations \[.*step_' "$out")
-    echo "round $round | $f | kernel total ${total}s | wall $wall | peak ${peak} KiB | step lemmas $steps"
+    nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
+    echo "round $round | $f | kernel total ${total}s | batch lemmas ${steps}s | slice lemmas" \
+      "${chunks}s | wall $wall | peak ${peak} KiB | batch lemma count $nsteps"
   done
 done
