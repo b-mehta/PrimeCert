@@ -85,6 +85,86 @@ public theorem segLoopK_last {L s lo Wm1 b b' start len : Nat}
     L = b' := by
   grind [Nat.beq_eq]
 
+/-! ## Draft variants, for timing
+
+Two changes to the loop above, kept beside it so that `run_segment_variant` can time them against
+it. Each computes the same window as `segLoopK` on every window `seg < 2 ^ (Wm1 + 1)`; that
+agreement is checked per batch against the same compiled twin, and is not proved here. -/
+
+/-- `2 ^ A` when `A ≤ M`, and `0` otherwise: a seed bit, dropped when it lies above the window. -/
+@[expose] public noncomputable def seedK (A M : Nat) : Nat :=
+  (Nat.ble A M).rec 0 (Nat.shiftLeft 1 A)
+
+/-- `seg` with the bits of `hit` cleared, where `hit` is a subset of `seg`; `seg` itself when
+`hit = 0`. -/
+@[expose] public noncomputable def clearHitK (seg hit : Nat) : Nat :=
+  (Nat.ble 1 hit).rec seg (seg.sub hit)
+
+/-- `buildMaskK` with both seeds passed through `seedK`. -/
+@[expose] public noncomputable def buildMaskCK (p M A B n : Nat) : Nat :=
+  Nat.rec
+    ((seedK A M).lor (seedK B M))
+    (fun i Mk =>
+      ((p.shiftLeft i.succ).ble M).rec Mk
+        (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
+    n
+
+/-- `segMarkK` with seeds dropped outside the window, `n` doubling rounds, no rounds at all when
+`2 * p > Wm1` (only the seeds can then land in the window), and no subtraction when nothing hits. -/
+@[expose] public noncomputable def segMarkCK (seg p lo Wm1 n : Nat) : Nat :=
+  ((p.mul 2).ble Wm1).rec
+    (clearHitK seg (seg.land
+      ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
+        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))))
+    (clearHitK seg (seg.land
+      (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)))
+
+/-- `segLoopK` marking with `segMarkCK`. -/
+@[expose] public noncomputable def segLoopCK (s lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK s (start.add i)).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
+
+/-- `segLoopK` reading the base primes from a slice `c` of the base sieve: bit `i` of `c` stands for
+base index `start + i`. -/
+@[expose] public noncomputable def segLoopSK (c lo Wm1 seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkK b (valueK (start.add i)) lo Wm1)
+
+/-- `segLoopSK` marking with `segMarkCK`. -/
+@[expose] public noncomputable def segLoopSCK (c lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
+
+/-- Loop recurrence for `segLoopCK`. -/
+public theorem segLoopCK_succ {s lo Wm1 n seg start fuel : Nat} :
+    segLoopCK s lo Wm1 n seg start (fuel + 1)
+      = Bool.rec (segLoopCK s lo Wm1 n seg start fuel)
+          (segMarkCK (segLoopCK s lo Wm1 n seg start fuel) (valueK (start + fuel)) lo Wm1 n)
+          (testBitK s (start + fuel)) := rfl
+
+/-- Fuel additivity for `segLoopCK`. -/
+public theorem segLoopCK_add {s lo Wm1 n seg start a b : Nat} :
+    segLoopCK s lo Wm1 n seg start (a + b)
+      = segLoopCK s lo Wm1 n (segLoopCK s lo Wm1 n seg start a) (start + a) b := by
+  induction b with
+  | zero => rfl
+  | succ b ih => grind [segLoopCK_succ]
+
+/-- One chain step for `segLoopCK`. -/
+public theorem segLoopCK_chain {L s lo Wm1 n b b' start len rest : Nat}
+    (hP : L = segLoopCK s lo Wm1 n b start (len.add rest))
+    (h : (segLoopCK s lo Wm1 n b start len).beq b') :
+    L = segLoopCK s lo Wm1 n b' (start.add len) rest := by
+  grind [segLoopCK_add, Nat.beq_eq]
+
+/-- Last chain step for `segLoopCK`. -/
+public theorem segLoopCK_last {L s lo Wm1 n b b' start len : Nat}
+    (hP : L = segLoopCK s lo Wm1 n b start len)
+    (h : (segLoopCK s lo Wm1 n b start len).beq b') :
+    L = b' := by
+  grind [Nat.beq_eq]
+
 /-! ## What the window holds
 
 The two facts below are the arithmetic that segmentation actually adds: the local seed is the
@@ -233,6 +313,99 @@ elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
       | none => ``sieveBits_1000000
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegment (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
+
+/-- `runSegment` with a choice of loop, for timing the draft variants against each other. `mode`
+0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK` and 3 is `segLoopSCK`. Modes 0 and 1 chain
+their batches into `ns.segEqV_{tag}`. Modes 2 and 3 emit, per batch, one lemma checking the slice
+of the base sieve (`…chunk_{i}`) and one checking the batch (`…step_{i}`), and no chain, since the
+lemma turning a slice back into `segLoopK` is not written. Every batch literal comes from the
+`segLoop` twin, so every mode is checked against the same values. -/
+meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
+  if a % 6 ≠ 1 && a % 6 ≠ 5 then
+    throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
+  if W = 0 then throwError "run_segment_variant: the window is empty"
+  if mode > 3 then throwError "run_segment_variant: mode {mode} is not 0, 1, 2 or 3"
+  let env ← getEnv
+  let some info := env.find? baseLit
+    | throwError "run_segment_variant: no base sieve {baseLit}"
+  let some sVal := info.value?.bind Expr.rawNatLit?
+    | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
+  let clamped := mode == 1 || mode == 3
+  let slice := mode == 2 || mode == 3
+  let lo := index a
+  let wm1 := W - 1
+  let rounds := Nat.log2 wm1 + 1
+  let step0 := Nat.max 1 len
+  let sE := mkConst baseLit
+  let loE := mkRawNatLit lo
+  let wE := mkRawNatLit wm1
+  let nE := mkRawNatLit rounds
+  let initE := mkApp (mkConst ``initSegK) (mkRawNatLit W)
+  let loopE (segE : Expr) (start n : Nat) : Expr :=
+    if clamped then
+      mkAppN (mkConst ``segLoopCK) #[sE, loE, wE, nE, segE, mkRawNatLit start, mkRawNatLit n]
+    else mkSegLoopK sE loE wE segE start n
+  let lhsLoop := loopE initE 1 fuel
+  let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
+  let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
+  let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  let mut bits := initSeg W
+  let mut bitsE := initE
+  let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
+  for i in [0:(fuel + step0 - 1) / step0] do
+    let start := 1 + i * step0
+    let owed := fuel - i * step0
+    let stepN := Nat.min step0 owed
+    let next := segLoop sVal lo wm1 bits start stepN
+    let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+    if slice then
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let cE := mkRawNatLit cVal
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}"))
+        (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let batchE := if clamped then
+          mkAppN (mkConst ``segLoopSCK)
+            #[cE, loE, wE, nE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
+        else
+          mkAppN (mkConst ``segLoopSK) #[cE, loE, wE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+    else
+      addSegThm stepName (mkSegBeqTrue (loopE bitsE start stepN) (mkRawNatLit next))
+        Lean.reflBoolTrue
+      proof := match clamped, owed == stepN with
+        | false, true => mkAppN (mkConst ``segLoopK_last)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start,
+              mkRawNatLit stepN, proof, mkConst stepName]
+        | false, false => mkAppN (mkConst ``segLoopK_chain)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start,
+              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
+        | true, true => mkAppN (mkConst ``segLoopCK_last)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
+              mkRawNatLit stepN, proof, mkConst stepName]
+        | true, false => mkAppN (mkConst ``segLoopCK_chain)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
+              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
+    bits := next
+    bitsE := mkRawNatLit next
+  unless slice do
+    addDecl <| Declaration.defnDecl
+      { name := litName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    addSegThm parent (mkNatEq lhsLoop (mkConst litName)) proof
+
+/-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop
+chosen by `mode` (see `runSegmentV`), with the same optional trailing base-sieve bound. -/
+elab "run_segment_variant" mStx:num aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
+  liftTermElabM <| do
+    let base := match bStx with
+      | none => ``sieveBits_1000000
+      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
+    runSegmentV (← getCurrNamespace) base mStx.getNat aStx.getNat wStx.getNat fStx.getNat
+      lStx.getNat
 
 /-! ## Worked instances
 
