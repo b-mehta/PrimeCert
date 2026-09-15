@@ -7,39 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  size-at-1e6:
-    runs-on: ubuntu-latest
-    timeout-minutes: 350
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install elan
-        run: |
-          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          ./elan-init -y --default-toolchain none
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Fetch the mathlib build cache
-        run: lake exe cache get
-      - name: Build what the cases depend on
-        run: lake build PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Segment size, divisors up to 1e6, three rounds
-        run: >
-          bash PrimeCertTest/SegTune/run.sh 3 Base0_Startup
-          T6_W16384 T6_W65536 T6_W262144 T6_W1048576 T6_W4194304
-      - name: Fail the job if any case failed
-        run: |
-          if [ -s bench-failures.txt ]; then
-            cat bench-failures.txt
-            exit 1
-          fi
-      - name: Keep the logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: size-at-1e6-logs
-          path: |
-            out-*.txt
-            time-*.txt
-
   batch-at-1e7:
     runs-on: ubuntu-latest
     timeout-minutes: 350
@@ -57,7 +24,7 @@ jobs:
       - name: Batch length, divisors up to 1e7, one round
         run: >
           bash PrimeCertTest/SegTune/run.sh 1 Base0_Startup S7_Sieve
-          L7_L16384 L7_L8192 L7_L4096 L7_L2048 L7_L1536
+          L7_L1536 L7_L2048 L7_L4096 L7_L8192 L7_L16384
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then
@@ -73,7 +40,7 @@ jobs:
             out-*.txt
             time-*.txt
 
-  size-at-1e7:
+  large-size-at-1e7:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -87,10 +54,10 @@ jobs:
         run: lake exe cache get
       - name: Build what the cases depend on
         run: lake build PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Segment size, divisors up to 1e7, one round
+      - name: Large segments, divisors up to 1e7, one round
         run: >
           bash PrimeCertTest/SegTune/run.sh 1 Base0_Startup S7_Sieve
-          W7_W1024 W7_W16384 W7_W262144 W7_W1048576
+          W7_W1048576 W7_W4194304 W7_W16777216
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then
@@ -101,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: size-at-1e7-logs
+          name: large-size-at-1e7-logs
           path: |
             out-*.txt
             time-*.txt
