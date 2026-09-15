@@ -10,6 +10,7 @@ public import PrimeCert.Sieve
 public import PrimeCert.SieveCorrect
 public import PrimeCert.SieveBase
 public import PrimeCert.ForMathlib
+public import Mathlib.Data.Nat.Bitwise
 
 /-!
 # A segmented sieve prototype
@@ -625,6 +626,7 @@ public theorem testBit_mask_of_dvd {q lo j c X : Nat} (hq : 0 < q)
   exact ⟨by lia, ⟨c - c0, by lia⟩⟩
 
 /-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
+set_option maxHeartbeats 1000000 in
 public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (hB1 : 1 ≤ B) (h7B : 7 * B ≤ a) :
     SegmentSound s B a W := by
@@ -642,10 +644,10 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
   have hkcop : Nat.Coprime k 6 := Nat.Coprime.coprime_dvd_left ⟨q, by lia⟩ hcop
   have hk6 : k % 6 = 1 ∨ k % 6 = 5 := coprime6_mod.mp hkcop
   have hk2 : 2 ≤ k := by
-    match k with
-    | 0 => lia
-    | 1 => lia
-    | (n + 2) => lia
+    by_contra hlt
+    have h1 : k ≤ 1 := by lia
+    have h2 : q * k ≤ q * 1 := Nat.mul_le_mul_left q h1
+    lia
   have hk5 : 5 ≤ k := by lia
   -- the base index of `q`, and its bit in the base sieve
   have hvq : value (index q) = q := value_index hq6
@@ -674,6 +676,7 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         have heq : value (index a + j) = value (index (q * 7) + 2 * (q * c)) := by lia
         have := value_strictMono.injective heq
         lia
+      have h7q : q * 7 ≤ B * 7 := Nat.mul_le_mul_right 7 hqB
       have hX : index (q * 7) ≤ index a := by
         unfold index
         lia
@@ -687,6 +690,9 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         have := value_add_two_mul (k := index (q * 5)) (m := q * c)
         have heq : value (index a + j) = value (index (q * 5) + 2 * (q * c)) := by lia
         have := value_strictMono.injective heq
+        lia
+      have h5q : q * 5 ≤ B * 7 := by
+        have := Nat.mul_le_mul_right 5 hqB
         lia
       have hX : index (q * 5) ≤ index a := by
         unfold index
