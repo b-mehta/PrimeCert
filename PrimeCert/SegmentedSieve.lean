@@ -9,6 +9,7 @@ import Lean.Elab.Command
 public import PrimeCert.Sieve
 public import PrimeCert.SieveCorrect
 public import PrimeCert.SieveBase
+public import PrimeCert.ForMathlib
 
 /-!
 # A segmented sieve prototype
@@ -600,32 +601,32 @@ public theorem testBit_of_testBit_segLoopK {s lo Wm1 seg start fuel j : Nat}
       rw [hb] at h
       exact ih h
     | true =>
-      rw [hb, testBit_segMarkK] at h
-      exact ih (by simpa using h)
+      rw [hb, testBit_segMarkK, Bool.and_eq_true] at h
+      exact ih h.1
 
 /-- The offset of a multiple of `p` inside the window lies in one of the two progressions the mask
 draws, so the mask covers it. -/
-public theorem testBit_mask_of_dvd {q lo Wm1 j c X : Nat} (hq : 0 < q)
+public theorem testBit_mask_of_dvd {q lo j c X : Nat} (hq : 0 < q)
     (hX : X ≤ lo) (hstep : lo + j = X + 2 * q * c) :
-    (firstLocK X lo (q * 2)) ≤ j ∧ 2 * q ∣ j - firstLocK X lo (q * 2) := by
+    firstLocK X lo (q * 2) ≤ j ∧ 2 * q ∣ j - firstLocK X lo (q * 2) := by
   have hm : 0 < q * 2 := by lia
   obtain ⟨c0, hc0⟩ := firstLocK_spec (A := X) (lo := lo) hm hX
   have hA : firstLocK X lo (q * 2) < q * 2 := firstLocK_lt hm
-  have h1 : lo + j ≡ X [MOD q * 2] := ⟨c, by lia⟩
-  have h2 : lo + firstLocK X lo (q * 2) ≡ X [MOD q * 2] := ⟨c0, by lia⟩
-  have h3 : lo + j ≡ lo + firstLocK X lo (q * 2) [MOD q * 2] := h1.trans h2.symm
-  have h4 : j % (q * 2) = firstLocK X lo (q * 2) % (q * 2) :=
-    Nat.ModEq.add_left_cancel' lo h3
-  have h5 : firstLocK X lo (q * 2) % (q * 2) = firstLocK X lo (q * 2) := Nat.mod_eq_of_lt hA
-  have h6 : j % (q * 2) = firstLocK X lo (q * 2) := by rw [h4, h5]
-  refine ⟨by lia, ?_⟩
-  refine ⟨j / (q * 2), ?_⟩
-  have h7 : q * 2 * (j / (q * 2)) + j % (q * 2) = j := Nat.div_add_mod j (q * 2)
-  lia
+  have hcc : c0 ≤ c := by
+    by_contra hlt
+    have h1 : c + 1 ≤ c0 := by lia
+    have h2 : q * 2 * (c + 1) ≤ q * 2 * c0 := Nat.mul_le_mul_left _ h1
+    have h3 : q * 2 * (c + 1) = q * 2 * c + q * 2 := by rw [Nat.mul_add, Nat.mul_one]
+    lia
+  have hsplit : q * 2 * c = q * 2 * c0 + q * 2 * (c - c0) := by
+    rw [← Nat.mul_add]
+    congr 1
+    lia
+  exact ⟨by lia, ⟨c - c0, by lia⟩⟩
 
 /-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
 public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
-    (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (h5B : 5 * B ≤ a) :
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (hB1 : 1 ≤ B) (h7B : 7 * B ≤ a) :
     SegmentSound s B a W := by
   intro j hj hbit q hqB hq hdvd
   have hlo : value (index a) = a := value_index ha
@@ -635,29 +636,29 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
   have hcop : Nat.Coprime (value (index a + j)) 6 := value_coprime6
   have hqcop : Nat.Coprime q 6 := Nat.Coprime.coprime_dvd_left hdvd hcop
   have hq6 : q % 6 = 1 ∨ q % 6 = 5 := coprime6_mod.mp hqcop
-  have hq5 : 5 ≤ q := by
-    rcases hq6 with h | h
-    · have := hq.two_le
-      rcases Nat.lt_or_ge q 5 with hlt | hge
-      · interval_cases q <;> simp_all
-      · exact hge
-    · rcases Nat.lt_or_ge q 5 with hlt | hge
-      · interval_cases q <;> simp_all
-      · exact hge
+  have hq2 : 2 ≤ q := hq.two_le
+  have hq5 : 5 ≤ q := by lia
   obtain ⟨k, hk⟩ := hdvd
   have hkcop : Nat.Coprime k 6 := Nat.Coprime.coprime_dvd_left ⟨q, by lia⟩ hcop
   have hk6 : k % 6 = 1 ∨ k % 6 = 5 := coprime6_mod.mp hkcop
-  have hk5 : 5 ≤ k := by
-    rcases Nat.lt_or_ge k 5 with hlt | hge
-    · interval_cases k <;> lia
-    · exact hge
+  have hk2 : 2 ≤ k := by
+    match k with
+    | 0 => lia
+    | 1 => lia
+    | (n + 2) => lia
+  have hk5 : 5 ≤ k := by lia
   -- the base index of `q`, and its bit in the base sieve
   have hvq : value (index q) = q := value_index hq6
-  have ht0 : index q ≠ 0 := by grind [index]
-  have htB : index q ≤ index B := by grind [index]
+  have ht0 : index q ≠ 0 := by
+    unfold index
+    lia
+  have htB : index q ≤ index B := by
+    unfold index
+    lia
   have hbitq : s.testBit (index q) := by
-    have := (hs (index q) ht0 (by lia)).mpr (by rwa [hvq])
-    exact this
+    have hle : value (index q) ≤ B := by lia
+    have hpr : (value (index q)).Prime := by rwa [hvq]
+    exact (hs (index q) ht0 hle).mpr hpr
   -- the mask built at `q` covers `j`
   have hmask : (buildMaskK q (W - 1) (firstLocK (indexK (q * 5)) (index a) (q * 2))
       (firstLocK (indexK (q * 7)) (index a) (q * 2)) 32).testBit j := by
@@ -673,7 +674,9 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         have heq : value (index a + j) = value (index (q * 7) + 2 * (q * c)) := by lia
         have := value_strictMono.injective heq
         lia
-      have hX : index (q * 7) ≤ index a := by grind [index]
+      have hX : index (q * 7) ≤ index a := by
+        unfold index
+        lia
       simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
     · left
       obtain ⟨c, rfl⟩ : ∃ c, k = 5 + 6 * c := ⟨(k - 5) / 6, by lia⟩
@@ -685,7 +688,9 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         have heq : value (index a + j) = value (index (q * 5) + 2 * (q * c)) := by lia
         have := value_strictMono.injective heq
         lia
-      have hX : index (q * 5) ≤ index a := by grind [index]
+      have hX : index (q * 5) ≤ index a := by
+        unfold index
+        lia
       simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
   -- split the run at `q`'s index, where the bit is cleared
   obtain ⟨r, hr⟩ : ∃ r, index B = (index q - 1) + (1 + r) := ⟨index B - index q, by lia⟩
