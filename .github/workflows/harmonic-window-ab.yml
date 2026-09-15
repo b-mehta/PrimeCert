@@ -42,6 +42,7 @@ jobs:
         run: |
           set +e +o pipefail
           export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          export PRIMECERT_PROGRESS=1
           limit=18000
           run_case() {
             f=$1
