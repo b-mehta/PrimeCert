@@ -572,6 +572,138 @@ public def SegmentSound (s B a W : ℕ) : Prop :=
   ∀ j < W, (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j →
     ∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)
 
+/-! ## Correctness of a segment
+
+A surviving bit names a number with no prime factor among the base primes. The argument: for a
+prime `q` dividing the number at position `j`, the run reaches `q`'s own base index with `q`'s bit
+set in the base sieve, the mask built there covers `j`, and every later step only clears bits. -/
+
+/-- A step clears exactly the bits of the mask. -/
+public theorem testBit_segMarkK {seg p lo Wm1 j : Nat} :
+    (segMarkK seg p lo Wm1).testBit j
+      = (seg.testBit j && !(buildMaskK p Wm1 (firstLocK (indexK (p * 5)) lo (p * 2))
+          (firstLocK (indexK (p * 7)) lo (p * 2)) 32).testBit j) := by
+  have hraw : segMarkK seg p lo Wm1
+      = seg - (seg &&& buildMaskK p Wm1 (firstLocK (indexK (p * 5)) lo (p * 2))
+          (firstLocK (indexK (p * 7)) lo (p * 2)) 32) := rfl
+  rw [hraw, Nat.sub_and_eq_ldiff, Nat.testBit_ldiff]
+
+/-- A run only clears bits: a bit set at the end was set at the start. -/
+public theorem testBit_of_testBit_segLoopK {s lo Wm1 seg start fuel j : Nat}
+    (h : (segLoopK s lo Wm1 seg start fuel).testBit j) : seg.testBit j := by
+  induction fuel with
+  | zero => exact h
+  | succ n ih =>
+    rw [segLoopK_succ] at h
+    cases hb : testBitK s (start + n) with
+    | false =>
+      rw [hb] at h
+      exact ih h
+    | true =>
+      rw [hb, testBit_segMarkK] at h
+      exact ih (by simpa using h)
+
+/-- The offset of a multiple of `p` inside the window lies in one of the two progressions the mask
+draws, so the mask covers it. -/
+public theorem testBit_mask_of_dvd {q lo Wm1 j c X : Nat} (hq : 0 < q)
+    (hX : X ≤ lo) (hstep : lo + j = X + 2 * q * c) :
+    (firstLocK X lo (q * 2)) ≤ j ∧ 2 * q ∣ j - firstLocK X lo (q * 2) := by
+  have hm : 0 < q * 2 := by lia
+  obtain ⟨c0, hc0⟩ := firstLocK_spec (A := X) (lo := lo) hm hX
+  have hA : firstLocK X lo (q * 2) < q * 2 := firstLocK_lt hm
+  have h1 : lo + j ≡ X [MOD q * 2] := ⟨c, by lia⟩
+  have h2 : lo + firstLocK X lo (q * 2) ≡ X [MOD q * 2] := ⟨c0, by lia⟩
+  have h3 : lo + j ≡ lo + firstLocK X lo (q * 2) [MOD q * 2] := h1.trans h2.symm
+  have h4 : j % (q * 2) = firstLocK X lo (q * 2) % (q * 2) :=
+    Nat.ModEq.add_left_cancel' lo h3
+  have h5 : firstLocK X lo (q * 2) % (q * 2) = firstLocK X lo (q * 2) := Nat.mod_eq_of_lt hA
+  have h6 : j % (q * 2) = firstLocK X lo (q * 2) := by rw [h4, h5]
+  refine ⟨by lia, ?_⟩
+  refine ⟨j / (q * 2), ?_⟩
+  have h7 : q * 2 * (j / (q * 2)) + j % (q * 2) = j := Nat.div_add_mod j (q * 2)
+  lia
+
+/-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
+public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (h5B : 5 * B ≤ a) :
+    SegmentSound s B a W := by
+  intro j hj hbit q hqB hq hdvd
+  have hlo : value (index a) = a := value_index ha
+  have hjval : a ≤ value (index a + j) := by
+    have := value_strictMono.monotone (Nat.le_add_right (index a) j)
+    lia
+  have hcop : Nat.Coprime (value (index a + j)) 6 := value_coprime6
+  have hqcop : Nat.Coprime q 6 := Nat.Coprime.coprime_dvd_left hdvd hcop
+  have hq6 : q % 6 = 1 ∨ q % 6 = 5 := coprime6_mod.mp hqcop
+  have hq5 : 5 ≤ q := by
+    rcases hq6 with h | h
+    · have := hq.two_le
+      rcases Nat.lt_or_ge q 5 with hlt | hge
+      · interval_cases q <;> simp_all
+      · exact hge
+    · rcases Nat.lt_or_ge q 5 with hlt | hge
+      · interval_cases q <;> simp_all
+      · exact hge
+  obtain ⟨k, hk⟩ := hdvd
+  have hkcop : Nat.Coprime k 6 := Nat.Coprime.coprime_dvd_left ⟨q, by lia⟩ hcop
+  have hk6 : k % 6 = 1 ∨ k % 6 = 5 := coprime6_mod.mp hkcop
+  have hk5 : 5 ≤ k := by
+    rcases Nat.lt_or_ge k 5 with hlt | hge
+    · interval_cases k <;> lia
+    · exact hge
+  -- the base index of `q`, and its bit in the base sieve
+  have hvq : value (index q) = q := value_index hq6
+  have ht0 : index q ≠ 0 := by grind [index]
+  have htB : index q ≤ index B := by grind [index]
+  have hbitq : s.testBit (index q) := by
+    have := (hs (index q) ht0 (by lia)).mpr (by rwa [hvq])
+    exact this
+  -- the mask built at `q` covers `j`
+  have hmask : (buildMaskK q (W - 1) (firstLocK (indexK (q * 5)) (index a) (q * 2))
+      (firstLocK (indexK (q * 7)) (index a) (q * 2)) 32).testBit j := by
+    rw [testBit_buildMaskK (by lia) (by lia) hW]
+    rcases hk6 with h1 | h5
+    · right
+      obtain ⟨c, rfl⟩ : ∃ c, k = 7 + 6 * c := ⟨(k - 7) / 6, by lia⟩
+      have hval : value (index a + j) = value (index (q * 7)) + 6 * (q * c) := by
+        rw [value_startB hq6]
+        lia
+      have hstep : index a + j = index (q * 7) + 2 * q * c := by
+        have := value_add_two_mul (k := index (q * 7)) (m := q * c)
+        have heq : value (index a + j) = value (index (q * 7) + 2 * (q * c)) := by lia
+        have := value_strictMono.injective heq
+        lia
+      have hX : index (q * 7) ≤ index a := by grind [index]
+      simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
+    · left
+      obtain ⟨c, rfl⟩ : ∃ c, k = 5 + 6 * c := ⟨(k - 5) / 6, by lia⟩
+      have hval : value (index a + j) = value (index (q * 5)) + 6 * (q * c) := by
+        rw [value_startA hq6]
+        lia
+      have hstep : index a + j = index (q * 5) + 2 * q * c := by
+        have := value_add_two_mul (k := index (q * 5)) (m := q * c)
+        have heq : value (index a + j) = value (index (q * 5) + 2 * (q * c)) := by lia
+        have := value_strictMono.injective heq
+        lia
+      have hX : index (q * 5) ≤ index a := by grind [index]
+      simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
+  -- split the run at `q`'s index, where the bit is cleared
+  obtain ⟨r, hr⟩ : ∃ r, index B = (index q - 1) + (1 + r) := ⟨index B - index q, by lia⟩
+  rw [hr, segLoopK_add, segLoopK_add] at hbit
+  have hstep : segLoopK s (index a) (W - 1)
+      (segLoopK s (index a) (W - 1) (initSegK W) 1 (index q - 1)) (1 + (index q - 1)) 1
+      = segMarkK (segLoopK s (index a) (W - 1) (initSegK W) 1 (index q - 1)) q (index a) (W - 1) := by
+    rw [segLoopK_succ]
+    have h1 : 1 + (index q - 1) + 0 = index q := by lia
+    rw [h1]
+    have h2 : testBitK s (index q) = true := by rwa [testBitK_eq_testBit]
+    rw [h2, valueK_eq_value, hvq]
+  rw [hstep] at hbit
+  have hcleared := testBit_of_testBit_segLoopK hbit
+  rw [testBit_segMarkK] at hcleared
+  simp only [Bool.and_eq_true, Bool.not_eq_true'] at hcleared
+  exact absurd hmask (by simpa using hcleared.2)
+
 /-! ## Compiled twins
 
 Executable copies of the definitions above, used by `run_segment` to compute the batch literals.
