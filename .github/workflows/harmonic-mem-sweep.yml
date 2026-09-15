@@ -38,7 +38,7 @@ jobs:
             f=$1
             tag=$2
             extra=${3:-}
-            lean -Dtrace.profiler=true -Dtrace.profiler.threshold=1 $extra \
+            lean -Dtrace.profiler=true -Dtrace.profiler.threshold=0 $extra \
               "PrimeCertTest/HarmonicBench/$f.lean" > "out-$tag.txt" 2>&1 &
             pid=$!
             start=$(date +%s)
@@ -64,7 +64,7 @@ jobs:
               tail -5 "out-$tag.txt"
             fi
           }
-          for f in Base1_Sieve1e7 ClassBound1e7 Base2_Sieve1e8 ClassBound1e8; do
+          for f in Base3_Sieve2e7 ClassBound2e7 Base4_Sieve5e7 ClassBound5e7; do
             run_case "$f" "$f"
           done
 
