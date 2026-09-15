@@ -124,7 +124,7 @@ public theorem Nat.and_add_ldiff {a b : ℕ} : (a &&& b) + a.ldiff b = a := by
 public theorem Nat.sub_and_eq_ldiff {a b : ℕ} : a - (a &&& b) = a.ldiff b := by
   grind [Nat.and_add_ldiff]
 
-/-- A prime other than `2` and `3` is coprime to 6. -/
+/-- A prime other than `2` and `3` is 1 or 5 modulo 6. -/
 public theorem Nat.Prime.mod_six_eq_one_or_five {p : ℕ} (hp : p.Prime) (hp₂ : p ≠ 2) (hp₃ : p ≠ 3) :
     p % 6 = 1 ∨ p % 6 = 5 := by
   have h₂ : p % 2 = 1 := Nat.odd_iff.mp (hp.eq_two_or_odd'.resolve_left (by lia))
@@ -133,8 +133,16 @@ public theorem Nat.Prime.mod_six_eq_one_or_five {p : ℕ} (hp : p.Prime) (hp₂ 
     lia
   lia
 
+/-- A natural number is coprime to 6 exactly when it is 1 or 5 modulo 6. -/
+@[grind =]
+public theorem Nat.coprime_six_iff {m : ℕ} : m.Coprime 6 ↔ m % 6 = 1 ∨ m % 6 = 5 := by
+  have : ∀ t < 6, t.gcd 6 = 1 ↔ t % 6 = 1 ∨ t % 6 = 5 := by decide
+  simpa using this (m % 6) (Nat.mod_lt _ (by simp))
+
+public alias ⟨Nat.Coprime.mod_six_eq_one_or_five, _⟩ := Nat.coprime_six_iff
+attribute [grind .] Nat.Coprime.mod_six_eq_one_or_five
+
 /-- A prime other than `2` and `3` is coprime to 6. -/
 public theorem Nat.Prime.coprime_six {p : ℕ} (hp : p.Prime) (hp₂ : p ≠ 2) (hp₃ : p ≠ 3) :
-    p.Coprime 6 := by
-  rw [Nat.Coprime, Nat.gcd_comm, Nat.gcd_rec]
-  rcases hp.mod_six_eq_one_or_five hp₂ hp₃ with h | h <;> simp [h]
+    p.Coprime 6 :=
+  Nat.coprime_six_iff.2 (hp.mod_six_eq_one_or_five hp₂ hp₃)
