@@ -165,6 +165,57 @@ public theorem segLoopCK_last {L s lo Wm1 n b b' start len : Nat}
     L = b' := by
   grind [Nat.beq_eq]
 
+/-! ### From a slice of the base sieve back to the base sieve
+
+`segLoopSK` reads a slice, so a batch equation about it says nothing about the base sieve until
+the slice is tied back. The two lemmas below do that: a slice agreeing with the base sieve on the
+batch's positions gives the same run, and the slice the emitter uses does agree. -/
+
+/-- Loop recurrence for `segLoopSK`. -/
+public theorem segLoopSK_succ {c lo Wm1 seg start fuel : Nat} :
+    segLoopSK c lo Wm1 seg start (fuel + 1)
+      = Bool.rec (segLoopSK c lo Wm1 seg start fuel)
+          (segMarkK (segLoopSK c lo Wm1 seg start fuel) (valueK (start + fuel)) lo Wm1)
+          (testBitK c fuel) := rfl
+
+/-- A slice that agrees with the base sieve on the batch's positions runs the batch the same way. -/
+public theorem segLoopSK_eq {c s lo Wm1 seg start len : Nat}
+    (h : ∀ i < len, testBitK c i = testBitK s (start + i)) :
+    segLoopSK c lo Wm1 seg start len = segLoopK s lo Wm1 seg start len := by
+  induction len with
+  | zero => rfl
+  | succ n ih =>
+    rw [segLoopSK_succ, segLoopK_succ, ih fun i hi => h i (by lia), h n (by lia)]
+
+/-- The slice `(s >>> start) &&& (2 ^ len - 1)` agrees with `s` on the batch's positions. -/
+public theorem testBitK_slice {s start len i : Nat} (hi : i < len) :
+    testBitK (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)) i
+      = testBitK s (start + i) := by
+  simp [testBitK_eq_testBit, Nat.shiftLeft_eq, Nat.testBit_shiftRight, hi]
+
+/-- One chain step from a slice batch: the slice equation and the batch equation together move the
+run forward by `len` steps of the base sieve. -/
+public theorem segLoopSK_chain {L s lo Wm1 b b' c start len rest : Nat}
+    (hP : L = segLoopK s lo Wm1 b start (len.add rest))
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segLoopSK c lo Wm1 b start len).beq b') :
+    L = segLoopK s lo Wm1 b' (start.add len) rest := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segLoopSK_eq fun i hi => testBitK_slice hi] at h
+  exact segLoopK_chain hP h
+
+/-- Last chain step from a slice batch. -/
+public theorem segLoopSK_last {L s lo Wm1 b b' c start len : Nat}
+    (hP : L = segLoopK s lo Wm1 b start len)
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segLoopSK c lo Wm1 b start len).beq b') :
+    L = b' := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segLoopSK_eq fun i hi => testBitK_slice hi] at h
+  exact segLoopK_last hP h
+
 /-! ## What the window holds
 
 The two facts below are the arithmetic that segmentation actually adds: the local seed is the
@@ -315,10 +366,11 @@ elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
     runSegment (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
 
 /-- `runSegment` with a choice of loop, for timing the draft variants against each other. `mode`
-0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK` and 3 is `segLoopSCK`. Modes 0 and 1 chain
-their batches into `ns.segEqV_{tag}`. Modes 2 and 3 emit, per batch, one lemma checking the slice
-of the base sieve (`…chunk_{i}`) and one checking the batch (`…step_{i}`), and no chain, since the
-lemma turning a slice back into `segLoopK` is not written. Every batch literal comes from the
+0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK` and 3 is `segLoopSCK`. Modes 2 and 3 emit one
+lemma checking the slice of the base sieve (`…chunk_{i}`) per batch as well as the batch lemma
+(`…step_{i}`). Modes 0, 1 and 2 chain their batches into `ns.segEqV_{tag}`, mode 2 through
+`segLoopSK_chain`, which carries the slice equation. Mode 3 stops at the per-batch lemmas, since
+the bridge from `segMarkCK` to `segMarkK` is not written. Every batch literal comes from the
 `segLoop` twin, so every mode is checked against the same values. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
@@ -365,14 +417,24 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
         (mkApp2 (mkConst ``Nat.sub)
           (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
-      addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}"))
-        (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
       let batchE := if clamped then
           mkAppN (mkConst ``segLoopSCK)
             #[cE, loE, wE, nE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
         else
           mkAppN (mkConst ``segLoopSK) #[cE, loE, wE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      unless clamped do
+        proof := if owed == stepN then
+            mkAppN (mkConst ``segLoopSK_last)
+              #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+                mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
+          else
+            mkAppN (mkConst ``segLoopSK_chain)
+              #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+                mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
+                mkConst stepName]
     else
       addSegThm stepName (mkSegBeqTrue (loopE bitsE start stepN) (mkRawNatLit next))
         Lean.reflBoolTrue
@@ -391,7 +453,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
               mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
-  unless slice do
+  unless slice && clamped do
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
