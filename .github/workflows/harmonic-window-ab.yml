@@ -123,11 +123,12 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
 
-      - name: Build what the parts depend on, the sieve included
+      - name: Build what the parts depend on, the sieves included
         run: |
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCertTest.HarmonicBench.SplitSieve5e7
+          lake build PrimeCertTest.HarmonicBench.SplitSieve1e8
 
       - name: Record the runner
         run: |
@@ -135,31 +136,38 @@ jobs:
           nproc
           swapon --show || true
 
-      - name: Build the four parts at once and merge them
+      - name: Build the four parts at once and merge them, at both sizes
         run: |
           set +e +o pipefail
-          start=$(date +%s)
-          lake build -j 4 PrimeCertTest.HarmonicBench.Split5e7_M > out-split.txt 2>&1 &
-          pid=$!
-          peak=0
-          while kill -0 "$pid" 2>/dev/null; do
-            r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
-            if [ "$r" -gt "$peak" ]; then peak=$r; fi
-            t=$(( $(date +%s) - start ))
-            if [ $(( t % 60 )) -eq 0 ]; then
-              echo "t=${t}s lean processes $(pgrep -c -x lean || echo 0) rss $(( r / 1024 )) MB"
-            fi
-            sleep 1
-          done
-          wait "$pid"
-          code=$?
-          echo "RESULT split | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
-          tail -40 out-split.txt
-          exit "$code"
+          fail=0
+          run_split() {
+            tag=$1
+            start=$(date +%s)
+            lake build "PrimeCertTest.HarmonicBench.Split${tag}_M" > "out-split-$tag.txt" 2>&1 &
+            pid=$!
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+              if [ "$r" -gt "$peak" ]; then peak=$r; fi
+              t=$(( $(date +%s) - start ))
+              if [ $(( t % 60 )) -eq 0 ]; then
+                echo "$tag t=${t}s lean processes $(pgrep -c -x lean || echo 0) rss $(( r / 1024 )) MB"
+              fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            echo "RESULT split | $tag | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
+            tail -20 "out-split-$tag.txt"
+            if [ "$code" -ne 0 ]; then fail=1; fi
+          }
+          run_split 5e7
+          run_split 1e8
+          exit "$fail"
 
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: window-split
-          path: out-split.txt
+          path: out-split-*.txt
