@@ -312,4 +312,218 @@ batches of {batch}, sieve {cache.litName}; A = {aTot}, C = {cTot}"
 elab "run_harmonic_classes" bStx:num eStx:num cStx:num lStx:num : command =>
   liftTermElabM <| runHarmonicClasses bStx.getNat eStx.getNat cStx.getNat lStx.getNat
 
+/-! ## Reading each batch through a window of the sieve -/
+
+/-- One batch of consecutive positions: its first position, its length, the window literal holding
+the twin's marks for those positions, and the batch totals of the two folds. -/
+structure WindowBatch where
+  lo : Nat
+  len : Nat
+  w : Nat
+  recip : Nat
+  count : Nat
+
+/-- The empty batch, so that the elaborator can index arrays of batches with `!`. -/
+meta instance : Inhabited WindowBatch := ⟨⟨0, 0, 0, 0, 0⟩⟩
+
+/-- The window literal for the positions `lo … lo + n - 1`: bit `i` is the twin's mark at
+`lo + i`. -/
+meta def twinWindow (mark : ByteArray) (lo n : Nat) : Nat := Id.run do
+  let mut w := 0
+  for i in [0:n] do
+    w := 2 * w + (if mark.get! (lo + n - 1 - i) == 1 then 1 else 0)
+  return w
+
+/-- The batches of `B` consecutive positions covering `1 … len`, with their windows and totals. -/
+meta def twinWindows (mark : ByteArray) (S len B : Nat) : Array WindowBatch := Id.run do
+  let mut out : Array WindowBatch := #[]
+  for i in [0:(len + B - 1) / B] do
+    let lo := 1 + i * B
+    let n := Nat.min B (len - i * B)
+    let mut r := 0
+    let mut c := 0
+    for j in [0:n] do
+      if mark.get! (lo + j) == 1 then
+        r := r + S / twinValue (lo + j)
+        c := c + 1
+    out := out.push { lo, len := n, w := twinWindow mark lo n, recip := r, count := c }
+  return out
+
+/-- The proposition that `w` is the `B` bits of `sE` from position `lo`. -/
+meta def mkWindowEq (sE : Expr) (lo B w : Nat) : Expr :=
+  mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+    (mkApp2 (mkConst ``Nat.land) (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit lo))
+      (mkApp2 (mkConst ``Nat.sub)
+        (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit B)) (mkRawNatLit 1)))
+    (mkRawNatLit w))
+
+/-- The number of positions in the batches `a … b - 1`. -/
+meta def windowSpan (wins : Array WindowBatch) (a b : Nat) : Nat := Id.run do
+  let mut n := 0
+  for k in [a:b] do
+    n := n + wins[k]!.len
+  return n
+
+/-- Emit one batch equation per batch `a … b - 1` of one fold, each reading its window, and return
+the total with a chained proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of
+batch `a` and `n` the number of positions covered. `gE w lo` is the windowed fold function of a
+batch and `bridge lo n w name` its bridge equation from the window theorem `name`. -/
+meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
+    (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
+    (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
+  let env ← getEnv
+  let oneE := mkRawNatLit 1
+  let zeroE := mkRawNatLit 0
+  let lo0 := wins[a]!.lo
+  let n := windowSpan wins a b
+  let lhs := mkAppN (mkConst ``sumB) #[fE, mkRawNatLit lo0, mkRawNatLit n, oneE]
+  let mut accE := zeroE
+  let mut acc := 0
+  let mut owed := n
+  let mut proof := mkAppN (mkConst ``sumB_seed) #[fE, mkRawNatLit lo0, mkRawNatLit n, oneE]
+  for k in [a:b] do
+    let wb := wins[k]!
+    let gw := gE wb.w wb.lo
+    let next := acc + pick wb
+    let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{k}")
+    addHarmonicThm stepName
+      (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+        (mkApp2 (mkConst ``Nat.add) accE
+          (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]))
+        (mkRawNatLit next)))
+      Lean.reflBoolTrue
+    let hb := bridge wb.lo wb.len wb.w winNames[k]!
+    proof := if owed == wb.len then
+        mkAppN (mkConst ``sumB_lastVia)
+          #[fE, gw, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, accE, mkRawNatLit next,
+            proof, hb, mkConst stepName]
+      else
+        mkAppN (mkConst ``sumB_chainVia)
+          #[fE, gw, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len,
+            mkRawNatLit (owed - wb.len), accE, mkRawNatLit next, proof, hb, mkConst stepName]
+    owed := owed - wb.len
+    acc := next
+    accE := mkRawNatLit next
+  return (acc, proof)
+
+/-- Emit one windowed fold over all the batches and declare `foldName : sumB fE 1 len 1 = <total>`.
+With `G = 0` the batches form one chain; otherwise they are grouped into segments of `G` batches,
+each segment its own theorem, and the segments are chained. -/
+meta def emitWindowFold (foldName : Name) (fE : Expr) (gE : Nat → Nat → Expr)
+    (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
+    (wins : Array WindowBatch) (winNames : Array Name) (len G : Nat) : MetaM Nat := do
+  let nb := wins.size
+  let lhs := mkSumB fE 1 len 1
+  if G == 0 || nb ≤ G then
+    let (tot, proof) ← emitWindowRun foldName fE gE bridge pick wins winNames 0 nb
+    addHarmonicThm foldName (mkNatEq lhs (mkRawNatLit tot)) proof
+    return tot
+  let oneE := mkRawNatLit 1
+  let mut accE := mkRawNatLit 0
+  let mut acc := 0
+  let mut owed := len
+  let mut proof := mkAppN (mkConst ``sumB_seed) #[fE, oneE, mkRawNatLit len, oneE]
+  for g in [0:(nb + G - 1) / G] do
+    let a := g * G
+    let b := Nat.min nb (a + G)
+    let segName := foldName ++ Name.mkSimple s!"seg_{g}"
+    let (segTot, segProof) ← emitWindowRun segName fE gE bridge pick wins winNames a b
+    let segLo := wins[a]!.lo
+    let segLen := windowSpan wins a b
+    addHarmonicThm segName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit segLo, mkRawNatLit segLen, oneE])
+        (mkRawNatLit segTot))
+      segProof
+    let next := acc + segTot
+    proof := if owed == segLen then
+        mkAppN (mkConst ``sumB_lastEq)
+          #[fE, lhs, mkRawNatLit segLo, oneE, mkRawNatLit segLen, accE, mkRawNatLit segTot,
+            mkRawNatLit next, proof, mkConst segName, Lean.reflBoolTrue]
+      else
+        mkAppN (mkConst ``sumB_chainEq)
+          #[fE, lhs, mkRawNatLit segLo, oneE, mkRawNatLit segLen, mkRawNatLit (owed - segLen),
+            accE, mkRawNatLit segTot, mkRawNatLit next, proof, mkConst segName,
+            Lean.reflBoolTrue]
+    owed := owed - segLen
+    acc := next
+    accE := mkRawNatLit next
+  addHarmonicThm foldName (mkNatEq lhs (mkRawNatLit acc)) proof
+  return acc
+
+/-- Enclose `∑ p ≤ bound, 1/p` at scale `10 ^ scaleExp` with every batch of `B` consecutive
+positions read through its own window of the sieve. `G` groups batches into segments (`0` for one
+chain), and `folds` is `2` for the reciprocal and count folds or `1` for the reciprocal fold alone,
+which bounds the count by the number of positions. -/
+meta def runHarmonicWindow (bound scaleExp B G folds : Nat) : MetaM Unit := do
+  if bound < 5 then
+    throwError "run_harmonic_window: the bound must be at least 5"
+  if folds != 1 && folds != 2 then
+    throwError "run_harmonic_window: the number of folds must be 1 or 2"
+  let B := Nat.max 1 B
+  let some cache ← Sieve.findSieveCache bound
+    | throwError "run_harmonic_window: no sieve cache in scope covers {bound}"
+  let S := 10 ^ scaleExp
+  let mut len := twinIndex bound
+  for _ in [0:2] do
+    if twinValue len > bound then
+      len := len - 1
+  if len == 0 || twinValue len > bound || twinValue (len + 1) ≤ bound then
+    throwError "run_harmonic_window: could not place the last wheel position inside {bound}"
+  let wins := twinWindows (wheelMarks len) S len B
+  let sE := mkConst cache.litName
+  let SE := mkRawNatLit S
+  let tag := s!"{bound}_{scaleExp}_{B}_{G}_{folds}"
+  let env ← getEnv
+  let winBase := `PrimeCert ++ Name.mkSimple s!"harmonicWindow_{tag}"
+  let mut winNames : Array Name := #[]
+  for k in [0:wins.size] do
+    let wb := wins[k]!
+    let nm := mkPrivateName env (winBase ++ Name.mkSimple s!"w_{k}")
+    addHarmonicThm nm (mkWindowEq sE wb.lo wb.len wb.w) Lean.reflBoolTrue
+    winNames := winNames.push nm
+  let fRecip := mkApp2 (mkConst ``recipAtK) sE SE
+  let gRecip : Nat → Nat → Expr := fun w lo ↦
+    mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit lo) SE
+  let bRecip : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
+    mkAppN (mkConst ``recip_window)
+      #[sE, SE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+  let foldName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowFold_{tag}"
+  let aTot ← emitWindowFold foldName fRecip gRecip bRecip (·.recip) wins winNames len G
+  let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccWindow_{tag}"
+  let side := #[mkRawNatLit cache.hi, mkRawNatLit bound, SE, sE, mkRawNatLit len]
+  if folds == 2 then
+    let fCount := mkApp (mkConst ``bitAtK) sE
+    let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+    let bCount : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
+      mkAppN (mkConst ``bit_window) #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    let countName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowCount_{tag}"
+    let cTot ← emitWindowFold countName fCount gCount bCount (·.count) wins winNames len G
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipIcc)
+        #[mkRawNatLit bound, mkRawNatLit aTot, mkRawNatLit cTot, SE])
+      (mkAppN (mkConst ``primeRecipIcc_of)
+        (side ++ #[mkRawNatLit aTot, mkRawNatLit cTot, mkConst cache.isSieveName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, mkConst foldName, mkConst countName]))
+    logInfo s!"run_harmonic_window {bound}: {len} positions in {wins.size} windows of {B}, \
+segments of {G}, two folds, sieve {cache.litName}; A = {aTot}, C = {cTot}"
+  else
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipIcc)
+        #[mkRawNatLit bound, mkRawNatLit aTot, mkRawNatLit len, SE])
+      (mkAppN (mkConst ``primeRecipIcc_of_single)
+        (side ++ #[mkRawNatLit aTot, mkConst cache.isSieveName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, mkConst foldName]))
+    logInfo s!"run_harmonic_window {bound}: {len} positions in {wins.size} windows of {B}, \
+segments of {G}, one fold, sieve {cache.litName}; A = {aTot}, width {len} / S"
+
+/-- `run_harmonic_window bound e B G folds` encloses the sum of the reciprocals of the primes up to
+`bound` at scale `10 ^ e`, reading every batch of `B` positions through its own window of the sieve,
+with the batches grouped into segments of `G` (`0` for one chain) and `folds` equal to `1` or
+`2`. -/
+elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num : command =>
+  liftTermElabM <|
+    runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat
+
 end PrimeCert

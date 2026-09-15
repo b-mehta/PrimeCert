@@ -352,6 +352,83 @@ public theorem sumB_classSplit_close (f : ℕ → ℕ) (C L R A1 A2 A : ℕ)
   rw [sumB_classSplit, hacc, hrem]
   grind [Nat.beq_eq]
 
+/-! ## Reading each batch through a window of the sieve
+
+`run_harmonic_window` gives every batch of `B` consecutive positions from `lo` its own literal `w`,
+the `B` bits of the sieve from position `lo`, certified once by
+`Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true`. The batch
+folds then read bit `i` of `w` for the position `lo + i`, and `recip_window` and `bit_window`
+identify each windowed batch with the same batch read from the whole sieve. -/
+
+/-- The scaled reciprocal at position `lo + i`, reading bit `i` of the window `w`. -/
+@[expose] public def recipAtW (w lo S i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
+
+/-- `1` where bit `i` of the window `w` is set, `0` where it is clear. -/
+@[expose] public def bitAtW (w i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0 1
+
+theorem window_testBit {s lo B w i : ℕ}
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true)
+    (hi : i < B) : w.testBit i = s.testBit (lo + i) := by
+  rw [Nat.beq_eq] at hw
+  subst hw
+  simp only [Nat.land_eq, Nat.shiftRight_eq', Nat.shiftLeft_eq', Nat.one_shiftLeft, Nat.sub_eq,
+    Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  simp [hi]
+
+/-- A windowed batch of the reciprocal fold is the same batch read from the whole sieve. -/
+public theorem recip_window (s S lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (recipAtK s S) lo B 1 = sumB (recipAtW w lo S) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, recipAtK_eq, recipAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.div_eq_div, Nat.add_eq, hb]
+
+/-- A windowed batch of the count fold is the same batch read from the whole sieve. -/
+public theorem bit_window (s lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (bitAtK s) lo B 1 = sumB (bitAtW w) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, bitAtK_eq, bitAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, hb]
+
+/-- One chain link through a bridge: the batch of `len` positions from `start` equals a fold `g`
+over `0 … len - 1`, and a kernel-checked batch equation on `g` moves the running total forward. -/
+public theorem sumB_chainVia (f g : ℕ → ℕ) (L start step len rest acc acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start (Nat.add len rest) step))
+    (hb : sumB f start len step = sumB g 0 len 1)
+    (h : Nat.beq (Nat.add acc (sumB g 0 len 1)) acc' = true) :
+    L = Nat.add acc' (sumB f (Nat.add (Nat.mul len step) start) rest step) := by
+  grind [sumB_add, Nat.beq_eq]
+
+/-- Close a chain through a bridge. -/
+public theorem sumB_lastVia (f g : ℕ → ℕ) (L start step len acc acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start len step))
+    (hb : sumB f start len step = sumB g 0 len 1)
+    (h : Nat.beq (Nat.add acc (sumB g 0 len 1)) acc' = true) :
+    L = acc' := by
+  grind [Nat.beq_eq]
+
+/-- One chain link consuming a proved equation for a whole segment, for chaining segments of
+batches rather than batches. -/
+public theorem sumB_chainEq (f : ℕ → ℕ) (L start step len rest acc a acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start (Nat.add len rest) step))
+    (h : sumB f start len step = a) (hadd : Nat.beq (Nat.add acc a) acc' = true) :
+    L = Nat.add acc' (sumB f (Nat.add (Nat.mul len step) start) rest step) := by
+  grind [sumB_add, Nat.beq_eq]
+
+/-- Close a chain of segments. -/
+public theorem sumB_lastEq (f : ℕ → ℕ) (L start step len acc a acc' : ℕ)
+    (hP : L = Nat.add acc (sumB f start len step))
+    (h : sumB f start len step = a) (hadd : Nat.beq (Nat.add acc a) acc' = true) :
+    L = acc' := by
+  grind [Nat.beq_eq]
+
 /-! ## Packaging a pair of chained folds as an interval
 
 `PrimeRecipIcc` names the conclusion so that the emitter builds the emitted statement out of four
@@ -385,5 +462,21 @@ public theorem primeRecipIcc_of {Nb N S s len A C : ℕ} (hs : Sieve.IsSieve Nb 
   rw [PrimeRecipIcc, primeSum_eq h5, h23]
   obtain ⟨hlo, hhi⟩ := hmem
   exact ⟨by linarith, by linarith⟩
+
+/-- `primeRecipIcc_of` with the reciprocal fold alone: the count of contributing positions is at
+most the number of positions scanned, so the interval has width `len / S`. -/
+public theorem primeRecipIcc_of_single {Nb N S s len A : ℕ} (hs : Sieve.IsSieve Nb s)
+    (hcov : Nat.ble N Nb = true) (hS : Nat.blt 0 S = true)
+    (hlen : Nat.ble (Sieve.valueK len) N = true)
+    (hlen' : Nat.blt N (Sieve.valueK (Nat.succ len)) = true)
+    (h5 : Nat.ble 5 N = true)
+    (hA : sumB (recipAtK s S) 1 len 1 = A) :
+    PrimeRecipIcc N A len S := by
+  have hC : sumB (bitAtK s) 1 len 1 ≤ len := sumB_bitAtK_le s 1 len 1
+  have h := primeRecipIcc_of hs hcov hS hlen hlen' h5 hA rfl
+  rw [PrimeRecipIcc] at h ⊢
+  obtain ⟨hlo, hhi⟩ := h
+  refine ⟨hlo, hhi.trans ?_⟩
+  gcongr
 
 end PrimeCert
