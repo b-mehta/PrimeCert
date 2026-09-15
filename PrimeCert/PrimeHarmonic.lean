@@ -430,6 +430,15 @@ public theorem bit_window (s lo B w : ℕ)
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, bitAtK_eq, bitAtW, Bool.rec_eq,
     Sieve.testBitK_eq_testBit, hb]
 
+/-- One windowed batch as its own equation: the batch of `len` positions from `start` equals the
+fold `g` over `0 … len - 1`, whose kernel-checked value is `t`. Declaring this on its own keeps the
+bridge out of the chain, so no declaration carries both a bridge and a chain. -/
+public theorem sumB_windowEq (f g : ℕ → ℕ) (start len t : ℕ)
+    (hb : sumB f start len 1 = sumB g 0 len 1)
+    (h : Nat.beq (sumB g 0 len 1) t = true) :
+    sumB f start len 1 = t := by
+  grind [Nat.beq_eq]
+
 /-- One chain link through a bridge: the batch of `len` positions from `start` equals a fold `g`
 over `0 … len - 1`, and a kernel-checked batch equation on `g` moves the running total forward. -/
 public theorem sumB_chainVia (f g : ℕ → ℕ) (L start step len rest acc acc' : ℕ)

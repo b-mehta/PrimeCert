@@ -447,23 +447,28 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
   for k in [a:b] do
     let wb := wins[k]!
     let gw := gE wb.w wb.lo
-    let next := acc + pick wb
+    let t := pick wb
+    let next := acc + t
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{k}")
     addHarmonicThm stepName
       (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
-        (mkApp2 (mkConst ``Nat.add) accE
-          (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]))
-        (mkRawNatLit next)))
+        (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t)))
       Lean.reflBoolTrue
     let hb := bridge wb.lo wb.len wb.w winNames[k]!
+    let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
+    addHarmonicThm eqName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
+        (mkRawNatLit t))
+      (mkAppN (mkConst ``sumB_windowEq)
+        #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
     proof := if owed == wb.len then
-        mkAppN (mkConst ``sumB_lastVia)
-          #[fE, gw, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, accE, mkRawNatLit next,
-            proof, hb, mkConst stepName]
+        mkAppN (mkConst ``sumB_lastEq)
+          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, accE, mkRawNatLit t,
+            mkRawNatLit next, proof, mkConst eqName, Lean.reflBoolTrue]
       else
-        mkAppN (mkConst ``sumB_chainVia)
-          #[fE, gw, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len,
-            mkRawNatLit (owed - wb.len), accE, mkRawNatLit next, proof, hb, mkConst stepName]
+        mkAppN (mkConst ``sumB_chainEq)
+          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, mkRawNatLit (owed - wb.len),
+            accE, mkRawNatLit t, mkRawNatLit next, proof, mkConst eqName, Lean.reflBoolTrue]
     owed := owed - wb.len
     acc := next
     accE := mkRawNatLit next
