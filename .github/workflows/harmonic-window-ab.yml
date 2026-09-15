@@ -167,8 +167,8 @@ jobs:
             tail -20 "out-split-$tag.txt"
             if [ "$code" -ne 0 ]; then fail=1; fi
           }
-          run_split 5e7
           run_split 1e8
+          run_split 1e8W
           exit "$fail"
 
       - name: Keep the logs
