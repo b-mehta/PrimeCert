@@ -165,6 +165,38 @@ public theorem segLoopCK_last {L s lo Wm1 n b b' start len : Nat}
     L = b' := by
   grind [Nat.beq_eq]
 
+/-! ### Joining two stretches of a run
+
+The chain lemmas above move one batch at a time, so a run of `k` batches is a term nesting `k`
+deep. These two join a pair of neighbouring stretches instead, so the emitter can combine batches
+in a tree, each node its own declaration. -/
+
+/-- A batch equation in `Eq` form. -/
+public theorem segLoopK_of_beq {s lo Wm1 b b' start len : Nat}
+    (h : (segLoopK s lo Wm1 b start len).beq b') : segLoopK s lo Wm1 b start len = b' :=
+  Nat.beq_eq.mp h
+
+/-- A clamped batch equation in `Eq` form. -/
+public theorem segLoopCK_of_beq {s lo Wm1 n b b' start len : Nat}
+    (h : (segLoopCK s lo Wm1 n b start len).beq b') : segLoopCK s lo Wm1 n b start len = b' :=
+  Nat.beq_eq.mp h
+
+/-- Two neighbouring stretches join into one. -/
+public theorem segLoopK_join {s lo Wm1 b b' b'' start len rest : Nat}
+    (h1 : segLoopK s lo Wm1 b start len = b')
+    (h2 : segLoopK s lo Wm1 b' (start.add len) rest = b'') :
+    segLoopK s lo Wm1 b start (len.add rest) = b'' := by
+  rw [Nat.add_eq, segLoopK_add, h1]
+  rwa [Nat.add_eq] at h2
+
+/-- Two neighbouring clamped stretches join into one. -/
+public theorem segLoopCK_join {s lo Wm1 n b b' b'' start len rest : Nat}
+    (h1 : segLoopCK s lo Wm1 n b start len = b')
+    (h2 : segLoopCK s lo Wm1 n b' (start.add len) rest = b'') :
+    segLoopCK s lo Wm1 n b start (len.add rest) = b'' := by
+  rw [Nat.add_eq, segLoopCK_add, h1]
+  rwa [Nat.add_eq] at h2
+
 /-! ### From the clamped marking back to `segMarkK`
 
 `segMarkCK` drops seed bits above the window, runs `n` doubling rounds in place of 32, skips the
@@ -449,6 +481,26 @@ public theorem segLoopSK_last {L s lo Wm1 b b' c start len : Nat}
   rw [segLoopSK_eq fun i hi => testBitK_slice hi] at h
   exact segLoopK_last hP h
 
+/-- A slice batch as a standalone equation about the base sieve, for the join tree. -/
+public theorem segLoopSK_leaf {s lo Wm1 b b' c start len : Nat}
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segLoopSK c lo Wm1 b start len).beq b') :
+    segLoopK s lo Wm1 b start len = b' := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segLoopSK_eq fun i hi => testBitK_slice hi] at h
+  exact Nat.beq_eq.mp h
+
+/-- A clamped slice batch as a standalone equation, for the join tree. -/
+public theorem segLoopSCK_leaf {s lo Wm1 n b b' c start len : Nat}
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segLoopSCK c lo Wm1 n b start len).beq b') :
+    segLoopCK s lo Wm1 n b start len = b' := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segLoopSCK_eq fun i hi => testBitK_slice hi] at h
+  exact Nat.beq_eq.mp h
+
 /-- One chain step from a clamped slice batch. -/
 public theorem segLoopSCK_chain {L s lo Wm1 n b b' c start len rest : Nat}
     (hP : L = segLoopCK s lo Wm1 n b start (len.add rest))
@@ -620,25 +672,28 @@ elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegment (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
 
-/-- `runSegment` with a choice of loop, for timing the draft variants against each other. `mode`
-0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK` and 3 is `segLoopSCK`. Modes 2 and 3 emit one
-lemma checking the slice of the base sieve (`…chunk_{i}`) per batch as well as the batch lemma
-(`…step_{i}`). Every mode chains its batches into `ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`,
-the same statement in every mode: the slice modes through `segLoopSK_chain` / `segLoopSCK_chain`,
-which carry the slice equation, and the clamped modes through `segEq_of_clamped`. Every batch
-literal comes from the `segLoop` twin, so every mode is checked against the same values. -/
+/-- `runSegment` with a choice of loop and of batch assembly, for timing the draft variants
+against each other. The loop is `mode % 4`: 0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK`
+and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the base sieve
+(`…chunk_{i}`) per batch as well as the batch lemma (`…step_{i}`). Modes 0 to 3 assemble the
+batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}` equation and each
+`…join_{level}_{j}` combines two neighbours. Every mode ends at
+`ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
+Every batch literal comes from the `segLoop` twin, so every mode is checked against the same
+values. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 3 then throwError "run_segment_variant: mode {mode} is not 0, 1, 2 or 3"
+  if mode > 7 then throwError "run_segment_variant: mode {mode} is not 0 to 7"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
-  let clamped := mode == 1 || mode == 3
-  let slice := mode == 2 || mode == 3
+  let clamped := mode % 4 == 1 || mode % 4 == 3
+  let slice := mode % 4 == 2 || mode % 4 == 3
+  let tree := mode ≥ 4
   let lo := index a
   let wm1 := W - 1
   let rounds := Nat.log2 wm1 + 1
@@ -659,20 +714,21 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let mut bits := initSeg W
   let mut bitsE := initE
   let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
+  let mut nodes : Array (Name × Nat × Nat × Nat × Nat) := #[]
   for i in [0:(fuel + step0 - 1) / step0] do
     let start := 1 + i * step0
     let owed := fuel - i * step0
     let stepN := Nat.min step0 owed
     let next := segLoop sVal lo wm1 bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+    let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+    let cE := mkRawNatLit cVal
+    let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
     if slice then
-      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
-      let cE := mkRawNatLit cVal
       let sliceE := mkApp2 (mkConst ``Nat.land)
         (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
         (mkApp2 (mkConst ``Nat.sub)
           (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
-      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
       addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
       let batchE := if clamped then
           mkAppN (mkConst ``segLoopSCK)
@@ -680,39 +736,83 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         else
           mkAppN (mkConst ``segLoopSK) #[cE, loE, wE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
-      proof := match clamped, owed == stepN with
-        | false, true => mkAppN (mkConst ``segLoopSK_last)
-            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
-              mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
-        | false, false => mkAppN (mkConst ``segLoopSK_chain)
-            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
-              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
-              mkConst stepName]
-        | true, true => mkAppN (mkConst ``segLoopSCK_last)
-            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
-              mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
-        | true, false => mkAppN (mkConst ``segLoopSCK_chain)
-            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
-              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
-              mkConst stepName]
     else
       addSegThm stepName (mkSegBeqTrue (loopE bitsE start stepN) (mkRawNatLit next))
         Lean.reflBoolTrue
-      proof := match clamped, owed == stepN with
-        | false, true => mkAppN (mkConst ``segLoopK_last)
+    if tree then
+      let leafName := mkPrivateName env (parent ++ Name.mkSimple s!"leaf_{i}")
+      let leafProof := match clamped, slice with
+        | false, false => mkAppN (mkConst ``segLoopK_of_beq)
+            #[sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              mkConst stepName]
+        | true, false => mkAppN (mkConst ``segLoopCK_of_beq)
+            #[sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              mkConst stepName]
+        | false, true => mkAppN (mkConst ``segLoopSK_leaf)
+            #[sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start, mkRawNatLit stepN,
+              mkConst chunkName, mkConst stepName]
+        | true, true => mkAppN (mkConst ``segLoopSCK_leaf)
+            #[sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, mkConst chunkName, mkConst stepName]
+      addSegThm leafName (mkNatEq (loopE bitsE start stepN) (mkRawNatLit next)) leafProof
+      nodes := nodes.push (leafName, start, stepN, bits, next)
+    else
+      proof := match clamped, slice, owed == stepN with
+        | false, false, true => mkAppN (mkConst ``segLoopK_last)
             #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start,
               mkRawNatLit stepN, proof, mkConst stepName]
-        | false, false => mkAppN (mkConst ``segLoopK_chain)
+        | false, false, false => mkAppN (mkConst ``segLoopK_chain)
             #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start,
               mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
-        | true, true => mkAppN (mkConst ``segLoopCK_last)
+        | true, false, true => mkAppN (mkConst ``segLoopCK_last)
             #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
               mkRawNatLit stepN, proof, mkConst stepName]
-        | true, false => mkAppN (mkConst ``segLoopCK_chain)
+        | true, false, false => mkAppN (mkConst ``segLoopCK_chain)
             #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
               mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
+        | false, true, true => mkAppN (mkConst ``segLoopSK_last)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
+        | false, true, false => mkAppN (mkConst ``segLoopSK_chain)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
+              mkConst stepName]
+        | true, true, true => mkAppN (mkConst ``segLoopSCK_last)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
+        | true, true, false => mkAppN (mkConst ``segLoopSCK_chain)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
+              mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
+  if tree then
+    let mut level := 0
+    while nodes.size > 1 do
+      let mut next : Array (Name × Nat × Nat × Nat × Nat) := #[]
+      for j in [0:(nodes.size + 1) / 2] do
+        if 2 * j + 1 < nodes.size then
+          let (n1, s1, l1, b1, m1) := nodes[2 * j]!
+          let (n2, _, l2, _, b2) := nodes[2 * j + 1]!
+          let joinName := mkPrivateName env (parent ++ Name.mkSimple s!"join_{level}_{j}")
+          let joinProof := if clamped then
+              mkAppN (mkConst ``segLoopCK_join)
+                #[sE, loE, wE, nE, mkRawNatLit b1, mkRawNatLit m1, mkRawNatLit b2,
+                  mkRawNatLit s1, mkRawNatLit l1, mkRawNatLit l2, mkConst n1, mkConst n2]
+            else
+              mkAppN (mkConst ``segLoopK_join)
+                #[sE, loE, wE, mkRawNatLit b1, mkRawNatLit m1, mkRawNatLit b2,
+                  mkRawNatLit s1, mkRawNatLit l1, mkRawNatLit l2, mkConst n1, mkConst n2]
+          addSegThm joinName
+            (mkNatEq (loopE (mkRawNatLit b1) s1 (l1 + l2)) (mkRawNatLit b2)) joinProof
+          next := next.push (joinName, s1, l1 + l2, b1, b2)
+        else
+          next := next.push nodes[2 * j]!
+      nodes := next
+      level := level + 1
+    let some (topName, _, _, _, _) := nodes[0]?
+      | throwError "run_segment_variant: the join tree is empty"
+    proof := mkConst topName
   addDecl <| Declaration.defnDecl
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
