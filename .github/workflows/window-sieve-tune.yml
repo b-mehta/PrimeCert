@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  mode3-sizes-at-1e7:
+  chained-at-1e7:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -21,11 +21,10 @@ jobs:
         run: lake exe cache get
       - name: Build what the cases depend on
         run: lake build PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Mode 3 at four window and batch settings, divisors up to 1e7, one round
+      - name: Four loop variants with mode 2 chained, divisors up to 1e7, two rounds
         run: >
-          bash PrimeCertTest/SegTune/run.sh 1 S7_Sieve V7_M3
-          X7_M3_W8388608_L1536 X7_M3_W4194304_L4096 X7_M3_W8388608_L4096
-          X7_M3_W16777216_L1536
+          bash PrimeCertTest/SegTune/run.sh 2 S7_Sieve
+          V7_M0a V7_M1 V7_M2 V7_M3 V7_M0b
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then
@@ -36,7 +35,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mode3-sizes-at-1e7-logs
+          name: chained-at-1e7-logs
           path: |
             out-*.txt
             time-*.txt
