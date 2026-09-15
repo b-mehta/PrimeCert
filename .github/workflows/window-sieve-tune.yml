@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  tree-at-1e7:
+  short-batches-at-1e7:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -21,10 +21,10 @@ jobs:
         run: lake exe cache get
       - name: Build what the cases depend on
         run: lake build PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Chain against tree, and two larger windows, divisors up to 1e7, one round
+      - name: Batch length under a tree, divisors up to 1e7, one round
         run: >
-          bash PrimeCertTest/SegTune/run.sh 1 S7_Sieve V7_M0a V7_M3
-          T7_M4 T7_M5 T7_M6 T7_M7 T7_M7_W8388608 T7_M7_W16777216
+          bash PrimeCertTest/SegTune/run.sh 1 S7_Sieve T7_M7
+          T7_M7_L512 T7_M7_L256 T7_M7_L128 T7_M7_W8388608_L256
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then
@@ -35,7 +35,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tree-at-1e7-logs
+          name: short-batches-at-1e7-logs
           path: |
             out-*.txt
             time-*.txt
