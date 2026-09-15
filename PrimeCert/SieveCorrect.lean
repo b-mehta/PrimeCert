@@ -55,14 +55,17 @@ theorem testBit_initK {M t : ℕ} :
 
 /-- Adding an even amount `2*m` to the index adds `6*m` to the number. -/
 @[grind =]
-theorem value_add_two_mul {k m : ℕ} : value (k + 2 * m) = value k + 6 * m := by grind [value]
+public theorem value_add_two_mul {k m : ℕ} : value (k + 2 * m) = value k + 6 * m := by
+  grind [value]
 
 @[grind =]
-theorem value_startA {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) : value (index (p * 5)) = 5 * p := by
+public theorem value_startA {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) :
+    value (index (p * 5)) = 5 * p := by
   grind [value, index]
 
 @[grind =]
-theorem value_startB {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) : value (index (p * 7)) = 7 * p := by
+public theorem value_startB {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) :
+    value (index (p * 7)) = 7 * p := by
   grind [value, index]
 
 /-- Every number in the sieve is 1 or 5 modulo 6. -/
@@ -136,7 +139,7 @@ theorem prog_iff_dvd {c t p B : ℕ} (hB : t < 2 * p * B) :
     have hlt : 2 * p * k < 2 * p * B := by lia
     exact Nat.lt_of_mul_lt_mul_left hlt
 
-theorem testBit_buildMaskK {p M A B n t : ℕ} (hp : p ≠ 0) (ht : t ≤ M) (hM : M < 2 ^ n) :
+public theorem testBit_buildMaskK {p M A B n t : ℕ} (hp : p ≠ 0) (ht : t ≤ M) (hM : M < 2 ^ n) :
     (buildMaskK p M A B n).testBit t ↔
       (A ≤ t ∧ 2 * p ∣ t - A) ∨ (B ≤ t ∧ 2 * p ∣ t - B) := by
   have : t < 2 * p * 2 ^ n := by
@@ -146,7 +149,7 @@ theorem testBit_buildMaskK {p M A B n t : ℕ} (hp : p ≠ 0) (ht : t ≤ M) (hM
 
 /-- `buildMaskK` started at the indices of `5*p` and `7*p`, the form `markMaskK` uses, marks
 index `t` iff `value t` is a coprime-to-6 multiple `p*k` with `k ≥ 5`. -/
-theorem mask_iff {p M t : ℕ} (hp6 : p % 6 = 1 ∨ p % 6 = 5)
+public theorem mask_iff {p M t : ℕ} (hp6 : p % 6 = 1 ∨ p % 6 = 5)
     (hM : M < 2 ^ 32) (ht : t ≤ M) :
     (buildMaskK p M (index (p * 5)) (index (p * 7)) 32).testBit t ↔
       ∃ k, 5 ≤ k ∧ (k % 6 = 1 ∨ k % 6 = 5) ∧ value t = p * k := by
@@ -256,12 +259,12 @@ theorem sieveLoopK_clears {M start t j m : ℕ} (hstart : start ≠ 0)
 
 /-! ### Soundness number theory -/
 
-theorem value_coprime6 {t : ℕ} : Nat.Coprime (value t) 6 := by
+public theorem value_coprime6 {t : ℕ} : Nat.Coprime (value t) 6 := by
   have h := value_mod6 (k := t)
   rw [Nat.Coprime, Nat.gcd_comm, Nat.gcd_rec]
   rcases h with h | h <;> simp [h]
 
-theorem coprime6_mod {m : ℕ} : m.Coprime 6 ↔ m % 6 = 1 ∨ m % 6 = 5 := by
+public theorem coprime6_mod {m : ℕ} : m.Coprime 6 ↔ m % 6 = 1 ∨ m % 6 = 5 := by
   have : ∀ t < 6, t.gcd 6 = 1 ↔ t % 6 = 1 ∨ t % 6 = 5 := by decide
   simpa using this (m % 6) (Nat.mod_lt _ (by simp))
 

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  window-size-at-1e7:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - name: Install elan
@@ -19,23 +19,5 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Fetch the mathlib build cache
         run: lake exe cache get
-      - name: Build what the cases depend on
-        run: lake build PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Window size under both changes, divisors up to 1e7, two rounds
-        run: >
-          bash PrimeCertTest/SegTune/run.sh 2 S7_Sieve
-          T7_M7_W262144 T7_M7_W1048576 T7_M7
-      - name: Fail the job if any case failed
-        run: |
-          if [ -s bench-failures.txt ]; then
-            cat bench-failures.txt
-            exit 1
-          fi
-      - name: Keep the logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: window-size-at-1e7-logs
-          path: |
-            out-*.txt
-            time-*.txt
+      - name: Build the sieve and its correctness file
+        run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
