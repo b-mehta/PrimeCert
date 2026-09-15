@@ -15,4 +15,4 @@ public import PrimeCertTest.HarmonicBench.Split1e8_P3
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_merge 100000000 20 8192 4
+run_harmonic_merge 100000000 20 2048 4

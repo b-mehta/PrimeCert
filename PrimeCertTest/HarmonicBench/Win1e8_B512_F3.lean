@@ -6,10 +6,15 @@ Authors: Bhavik Mehta
 module
 
 public meta import PrimeCert.Meta.PrimeHarmonic
-public import PrimeCertTest.HarmonicBench.SplitSieve1e8
 
-/-! # The third quarter of the run to `10 ^ 8` -/
+/-! # Bound `10 ^ 8`, windows of 512 positions, packed fold -/
+
+namespace PrimeCert.Sieve
+
+run_sieve 100000000
+
+end PrimeCert.Sieve
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_part 100000000 20 2048 4 2
+run_harmonic_window 100000000 20 512 0 3

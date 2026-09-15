@@ -17,4 +17,4 @@ alongside `Split1e8_P0`.
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_part 100000000 20 8192 4 0
+run_harmonic_part 100000000 20 2048 4 0
