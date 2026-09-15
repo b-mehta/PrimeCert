@@ -456,6 +456,17 @@ public theorem sumB_lastVia (f g : ℕ → ℕ) (L start step len acc acc' : ℕ
     L = acc' := by
   grind [Nat.beq_eq]
 
+/-- Join two adjacent runs into one, with every position and length a plain literal checked by
+`Nat.beq`. A tree of these puts exactly one join in each declaration. -/
+public theorem sumB_join (f : ℕ → ℕ) (start step len₁ len₂ tot start₂ a₁ a₂ a : ℕ)
+    (hstart : Nat.beq (Nat.add (Nat.mul len₁ step) start) start₂ = true)
+    (htot : Nat.beq (Nat.add len₁ len₂) tot = true)
+    (h₁ : sumB f start len₁ step = a₁)
+    (h₂ : sumB f start₂ len₂ step = a₂)
+    (hadd : Nat.beq (Nat.add a₁ a₂) a = true) :
+    sumB f start tot step = a := by
+  grind [sumB_add, Nat.beq_eq]
+
 /-- One chain link whose every position and length is a plain literal: `tot` is the run still to go,
 `start'` the next run's first position, both supplied as literals and checked by `Nat.beq`, so that
 consecutive links match without the checker having to relate `start + len * step` to a literal. -/

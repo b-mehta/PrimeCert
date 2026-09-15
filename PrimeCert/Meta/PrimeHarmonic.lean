@@ -427,28 +427,33 @@ meta def windowSpan (wins : Array WindowBatch) (a b : Nat) : Nat := Id.run do
     n := n + wins[k]!.len
   return n
 
-/-- Emit one batch equation per batch `a … b - 1` of one fold, each reading its window, and return
-the total with a chained proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of
-batch `a` and `n` the number of positions covered. `gE w lo` is the windowed fold function of a
-batch and `bridge lo n w name` its bridge equation from the window theorem `name`. -/
+/-- One proved range: the positions `lo … lo + len - 1`, their total, and the declaration proving
+`sumB fE lo len 1 = tot`. -/
+structure RunNode where
+  lo : Nat
+  len : Nat
+  tot : Nat
+  name : Name
+
+/-- The empty range, so that the elaborator can index arrays of ranges with `!`. -/
+meta instance : Inhabited RunNode := ⟨⟨0, 0, 0, Name.anonymous⟩⟩
+
+/-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
+in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
+and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and `n` the
+number of positions covered. `gE w lo` is the windowed fold function of a batch and
+`bridge lo n w name` its bridge equation from the window theorem `name`. -/
 meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
     (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
   let env ← getEnv
   let oneE := mkRawNatLit 1
   let zeroE := mkRawNatLit 0
-  let lo0 := wins[a]!.lo
-  let n := windowSpan wins a b
-  let lhs := mkAppN (mkConst ``sumB) #[fE, mkRawNatLit lo0, mkRawNatLit n, oneE]
-  let mut accE := zeroE
-  let mut acc := 0
-  let mut owed := n
-  let mut proof := mkAppN (mkConst ``sumB_seed) #[fE, mkRawNatLit lo0, mkRawNatLit n, oneE]
+  let mut nodes : Array RunNode := #[]
   for k in [a:b] do
     let wb := wins[k]!
     let gw := gE wb.w wb.lo
     let t := pick wb
-    let next := acc + t
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{k}")
     addHarmonicThm stepName
       (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
@@ -461,21 +466,37 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
         (mkRawNatLit t))
       (mkAppN (mkConst ``sumB_windowEq)
         #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
-    proof := if owed == wb.len then
-        mkAppN (mkConst ``sumB_lastEqL)
-          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, mkRawNatLit owed, accE,
-            mkRawNatLit t, mkRawNatLit next, proof, Lean.reflBoolTrue, mkConst eqName,
-            Lean.reflBoolTrue]
+    nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
+  if nodes.isEmpty then
+    throwError "emitWindowRun: no batches to join"
+  let mut level := 0
+  while nodes.size > 1 do
+    let mut next : Array RunNode := #[]
+    let mut i := 0
+    while i < nodes.size do
+      if i + 1 < nodes.size then
+        let x := nodes[i]!
+        let y := nodes[i + 1]!
+        let tot := x.len + y.len
+        let t := x.tot + y.tot
+        let nm := mkPrivateName env (parent ++ Name.mkSimple s!"node_{level}_{i}")
+        addHarmonicThm nm
+          (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit x.lo, mkRawNatLit tot, oneE])
+            (mkRawNatLit t))
+          (mkAppN (mkConst ``sumB_join)
+            #[fE, mkRawNatLit x.lo, oneE, mkRawNatLit x.len, mkRawNatLit y.len, mkRawNatLit tot,
+              mkRawNatLit y.lo, mkRawNatLit x.tot, mkRawNatLit y.tot, mkRawNatLit t,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst x.name, mkConst y.name,
+              Lean.reflBoolTrue])
+        next := next.push { lo := x.lo, len := tot, tot := t, name := nm }
+        i := i + 2
       else
-        mkAppN (mkConst ``sumB_chainEqL)
-          #[fE, lhs, mkRawNatLit wb.lo, oneE, mkRawNatLit wb.len, mkRawNatLit (owed - wb.len),
-            mkRawNatLit owed, mkRawNatLit (wb.lo + wb.len), accE, mkRawNatLit t,
-            mkRawNatLit next, proof, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst eqName,
-            Lean.reflBoolTrue]
-    owed := owed - wb.len
-    acc := next
-    accE := mkRawNatLit next
-  return (acc, proof)
+        next := next.push nodes[i]!
+        i := i + 1
+    nodes := next
+    level := level + 1
+  let root := nodes[0]!
+  return (root.tot, mkConst root.name)
 
 /-- Emit one windowed fold over all the batches and declare `foldName : sumB fE 1 len 1 = <total>`.
 With `G = 0` the batches form one chain; otherwise they are grouped into segments of `G` batches,
