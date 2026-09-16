@@ -127,6 +127,24 @@ public theorem sumB_bitAtK_le (s start len step : ℕ) : sumB (bitAtK s) start l
     have := bitAtK_le_one s ((n.mul step).add start)
     omega
 
+/-! ## Numbers with no small factor
+
+A sieve segment above the base range certifies that a surviving number has no prime factor up to the
+base bound. Where the number is below the square of that bound, this makes it prime, which is what
+the sum over a segment needs. -/
+
+/-- A number below `B ^ 2` with no prime factor at most `B` is prime. -/
+public theorem prime_of_no_small_factor {n B : ℕ} (hn : 2 ≤ n) (hB : n < B ^ 2)
+    (h : ∀ q ≤ B, q.Prime → ¬ q ∣ n) : n.Prime := by
+  by_contra hnp
+  have hq : (n.minFac).Prime := Nat.minFac_prime (by omega)
+  have hsq : n.minFac ^ 2 ≤ n := Nat.minFac_sq_le_self (by omega) hnp
+  have hle : n.minFac ≤ B := by
+    by_contra hgt
+    have : B ^ 2 < n.minFac ^ 2 := Nat.pow_lt_pow_left (by omega) (by omega)
+    omega
+  exact h n.minFac hle hq (Nat.minFac_dvd n)
+
 /-! ## Positions that share a quotient
 
 High up the sieve the truncated quotient `S / value t` is constant over long runs of positions, so
