@@ -148,12 +148,12 @@ Returns the proof of the last prime certified.
 ```lean
 theorem prime_60digit :
     Nat.Prime 236684654874665389773181956283167565443541280517430278333971 := prime_cert%
-  [small {2; 3; 7; 11; 29; 31},
-   pock3 (73471, 3, 1, 7, 2 * 31),
-   pock3 (32560621, 2, 1, 7, 2 ^ 2 * 3 * 29),
-   pock3 (3586530508831189, 2, 1, 11, 2 ^ 2 * 73471),
+  [small {2; 3; 29; 31},
+   pock3 (73471, 3, 1, interval, 2 * 31),
+   pock3 (32560621, 2, 1, interval, 2 ^ 2 * 3 * 29),
+   pock3 (3586530508831189, 2, 1, interval, 2 ^ 2 * 73471),
    pock3 (236684654874665389773181956283167565443541280517430278333971,
-     2, 1, 3, 2 * 32560621 * 3586530508831189)]
+     2, 1, interval, 2 * 32560621 * 3586530508831189)]
 ```
 -/
 elab "prime_cert% " "[" grps:step_group,+ "]" : term => do
@@ -192,8 +192,8 @@ conjunction of such (each prime must be certified by the ladder).
 
 ```lean
 theorem prime_pair : Nat.Prime 32560621 ∧ Nat.Prime 73471 := by
-  prime_cert [small {2; 3; 7; 29; 31}, pock3 (73471, 3, 1, 7, 2 * 31),
-    pock3 (32560621, 2, 1, 7, 2 ^ 2 * 3 * 29)]
+  prime_cert [small {2; 3; 29; 31}, pock3 (73471, 3, 1, interval, 2 * 31),
+    pock3 (32560621, 2, 1, interval, 2 ^ 2 * 3 * 29)]
 ```
 -/
 elab "prime_cert" ppSpace "[" grps:step_group,+ "]" : tactic =>

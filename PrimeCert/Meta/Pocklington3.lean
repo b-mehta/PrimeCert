@@ -23,23 +23,22 @@ open Lean Meta Qq
 
 /-- Syntax for the non-square certificate mode in `pock3`:
 - A numeric literal `0` means `s = 0`
-- A numeric literal `p` (prime, `p > 2`) means `r² - 8s` is a quadratic non-residue mod `p`
 - `<` means `r² < 8s`
-- `interval w` supplies `w² < r² - 8s < (w+1)²` -/
-public syntax pock3_mode := num <|> "<" <|> (&"interval " num)
+- `interval w` supplies `w² < r² - 8s < (w+1)²`
+- `interval` computes `w` during elaboration; only its literal is checked by the kernel -/
+public syntax pock3_mode := num <|> "<" <|> (&"interval" (ppSpace num)?)
 
-meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) (r s : Nat) :
+meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (r s : Nat) :
     MetaM Q(Pocklington3CertMode) := match stx with
   | `(pock3_mode| $n:num) =>
-    have n := n.getNat
-    if n = 0 then return q(.zero) else do
-      have nE : Q(ℕ) := mkNatLit n
-      let pf : Q(($nE).Prime) ← dict.getM n
-      return q(.prime $nE $pf)
+    if n.getNat = 0 then return q(.zero) else
+      throwError "pock3: prime-QNR modes have been replaced; use `interval` or `interval w`"
   | `(pock3_mode| <) => return q(.lt)
-  | `(pock3_mode| interval $w:num) => do
+  | `(pock3_mode| interval $[$w:num]?) => do
     let d := r * r - 8 * s
-    let v := w.getNat
+    let v := match w with
+      | some w => w.getNat
+      | none => Nat.sqrt d
     unless v * v < d && d < (v + 1) * (v + 1) do
       throwError "pock3: interval {v} does not strictly contain discriminant {d}"
     have wE : Q(ℕ) := mkNatLit v
@@ -59,14 +58,14 @@ automatically as the smallest valid value. A legacy 5-field form `(N, root, m, m
 an explicit `m` still parses and behaves identically.
 
 ```lean
--- Certify 73471: root 3, non-square witness 7, F = 2 * 31
-pock3 (73471, 3, 7, 2 * 31)
+-- Certify 73471: root 3, automatically computed interval, F = 2 * 31
+pock3 (73471, 3, interval, 2 * 31)
 
--- An interval witness avoids the auxiliary prime proof:
+-- Supply the interval witness explicitly:
 pock3 (73471, 3, interval 68, 2 * 31)
 
 -- With higher power of 2 and multiple odd factors:
-pock3 (32560621, 2, 7, 2 ^ 2 * 3 * 29)
+pock3 (32560621, 2, interval, 2 ^ 2 * 3 * 29)
 ```
 -/
 declare_syntax_cat pock3_spec
@@ -151,7 +150,7 @@ meta def parsePock3Spec : PrimeCertMethod `pock3_spec := fun stx dict ↦ do
         throwError "pock3: could not find a valid sieve bound for N = {N}; F may be too small"
       pure m
   have mE : Q(ℕ) := mkNatLit m
-  let mode ← parsePock3Mode mode dict (R % twoF) (R / twoF)
+  let mode ← parsePock3Mode mode (R % twoF) (R / twoF)
   have pf : Q(Nat.Prime $NE) := mkAppN (mkConst ``pocklington3_certK)
     #[NE, rootE, mE, eE, F'E, mode, reflBoolTrue]
   return ⟨N, NE, pf⟩

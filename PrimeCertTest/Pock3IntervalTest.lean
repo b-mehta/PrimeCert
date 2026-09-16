@@ -37,5 +37,21 @@ example : Nat.Prime (2 ^ 255 - 19) := prime_cert%
 example : Nat.Prime 73471 := prime_cert%
   [small {2; 31}, pock3 (73471, 3, interval 69, 2 * 31)]
 
+/-- error: pock3: prime-QNR modes have been replaced; use `interval` or `interval w` -/
+#guard_msgs in
+example : Nat.Prime 73471 := prime_cert%
+  [small {2; 31}, pock3 (73471, 3, 7, 2 * 31)]
+
+-- Computing the witness does not turn a square discriminant into a certificate.
+/-- error: pock3: interval 3 does not strictly contain discriminant 9 -/
+#guard_msgs in
+example : Nat.Prime 15687 := prime_cert%
+  [small {2; 31}, pock3 (15687, 3, interval, 2 * 31)]
+
+/-- error: pock3: interval 0 does not strictly contain discriminant 0 -/
+#guard_msgs in
+example : Nat.Prime 7751 := prime_cert%
+  [small {2; 31}, pock3 (7751, 3, interval, 2 * 31)]
+
 -- The mode keyword does not reserve an ordinary identifier.
 public def interval : Nat := 68

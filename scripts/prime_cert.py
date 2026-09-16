@@ -21,7 +21,7 @@ ALPERTRON = "https://www.alpertron.com.ar/ECM.HTM"
 
 def is_prime(n):
     """Deterministic Miller-Rabin, correct for all n < 3.3 × 10^24.
-    Only used internally on small numbers (QNR witnesses, rho cofactors)."""
+    Only used internally on small numbers (rho cofactors)."""
     if n < 2: return False
     if n in (2, 3, 5, 7, 11, 13): return True
     if any(n % p == 0 for p in (2, 3, 5, 7, 11, 13)): return False
@@ -179,10 +179,10 @@ def certify(N, nm1_factors=None, pool=None):
         elif r*r < 8*s: mode = "<"
         else:
             v = r*r - 8*s
-            for w in range(3, 10000, 2):
-                if is_prime(w) and pow(v, (w-1)//2, w) == w - 1:
-                    smalls.add(w); mode = str(w); break
-            else: raise ValueError(f"no QNR witness for r={r}, s={s}")
+            w = math.isqrt(v)
+            if w * w == v:
+                raise ValueError(f"square discriminant for r={r}, s={s}")
+            mode = f"interval {w}"
 
         for q, _ in sel: go(q)
         exps = [(p - 1) // q for q in [2] + [q for q, _ in sel]]
