@@ -820,21 +820,22 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     by_contra hmask
     rw [Bool.not_eq_false] at hmask
     rw [valueK_eq_value, indexK_eq_index] at hmask
-    have ht0 : t ≠ 0 := by lia
+    have ht0 : t ≠ 0 := Nat.one_le_iff_ne_zero.mp h1
     have ht5 : 5 ≤ value t := five_le_value ht0
-    have htle : t ≤ index B := by lia
-    have htB : value t ≤ B := by
-      have hmono := value_strictMono.monotone htle
-      lia
+    have h2' : t < index B + 1 := by rw [Nat.add_comm] at h2; exact h2
+    have hmono := value_strictMono.monotone (Nat.lt_succ_iff.mp h2')
+    have htB : value t ≤ B := by rw [hvB] at hmono; exact hmono
     have hbit' : s.testBit t = true := by rwa [testBitK_eq_testBit] at hbit
     have hprime : (value t).Prime := (hs t ht0 htB).mp hbit'
-    have h6 : value t % 6 = 1 ∨ value t % 6 = 5 := value_mod6 t
-    have hmul : value t * 7 ≤ a := by lia
+    have hmul : value t * 7 ≤ a :=
+      calc value t * 7 = 7 * value t := Nat.mul_comm _ _
+        _ ≤ 7 * B := Nat.mul_le_mul_left 7 htB
+        _ ≤ a := h7B
     have hlo : index (value t * 7) ≤ index a := by
       unfold index
       exact Nat.div_le_div_right (Nat.sub_le_sub_right hmul 1)
     exact hno (value t) htB hprime
-      (dvd_of_testBit_mask h6 ht5 hlo (by lia) hW hmask)
+      (dvd_of_testBit_mask (value_mod6 t) ht5 hlo (Nat.le_sub_one_of_lt hj) hW hmask)
 
 /-! ## Compiled twins
 
