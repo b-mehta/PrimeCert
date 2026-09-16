@@ -940,7 +940,7 @@ the bitset `baseLit`, scanning `fuel` base indices in batches of `len`. Emits
 `ns.segBits_{a}_{W}_{fuel}_{len} : Nat` and `ns.segEq_{a}_{W}_{fuel}_{len} : segLoopK … =
 segBits_…`, the latter chained from one kernel-checked `Nat.beq` lemma per batch. `ns` is the
 namespace the call sits in, so the same window can be built in two modules without a clash. -/
-meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit := do
+public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment: the window is empty"
