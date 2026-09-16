@@ -498,7 +498,7 @@ public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
         unfold segAccK
         have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
         rw [hor, Nat.lor_comm]
-      rw [hstep, ih, hacc]
+      rw [hacc, hstep, ih]
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
