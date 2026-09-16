@@ -566,6 +566,31 @@ public theorem value_index_add {a k : ℕ} (ha : a % 6 = 1 ∨ a % 6 = 5) :
     value (index a + 2 * k) = a + 6 * k := by
   grind [value, index]
 
+/-- The completed run over the window of `W` positions from `a`, sieved by the base primes up to
+`B`, in terms of `a`, `W` and `B` themselves. This is the form the correctness statements speak in
+and the form `run_segment` emits alongside the numeral one, through `segRun_of`. -/
+@[expose] public def segRun (s a W B : ℕ) : ℕ :=
+  segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)
+
+/-- `segRun` in the raw form the batch lemmas chain to. -/
+public theorem segRun_eq {s a W B : ℕ} :
+    segRun s a W B = segLoopK s (index a) (W - 1) (initSegK W) 1 (index B) := rfl
+
+/-- The numeral form the batches produce carries over to `segRun`, given that the numerals are the
+ones `a`, `W` and `B` compute to. -/
+public theorem segRun_of {s a lo W wm1 B fuel b : ℕ} (hlo : Nat.beq (indexK a) lo = true)
+    (hw : Nat.beq (Nat.sub W 1) wm1 = true) (hf : Nat.beq (indexK B) fuel = true)
+    (h : segLoopK s lo wm1 (initSegK W) 1 fuel = b) : segRun s a W B = b := by
+  have h1 : index a = lo := by
+    have hb := Nat.eq_of_beq_eq_true hlo
+    rwa [indexK_eq_index] at hb
+  have h2 : W - 1 = wm1 := Nat.eq_of_beq_eq_true hw
+  have h3 : index B = fuel := by
+    have hb := Nat.eq_of_beq_eq_true hf
+    rwa [indexK_eq_index] at hb
+  rw [segRun_eq, h1, h2, h3]
+  exact h
+
 /-- Every surviving bit of the window names a number with no prime factor among the base primes,
 proved by `segmentSound_of`. One direction only: a cleared bit is left unclassified, so this gives
 primality of the survivors exactly when the window sits below the square of the base bound. -/
@@ -959,6 +984,14 @@ meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit := do
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
   addSegThm parent (mkNatEq lhsLoop (mkConst litName)) proof
+  let bVal := value fuel
+  addSegThm (ns ++ Name.mkSimple s!"segEqI_{a}_{W}_{fuel}_{step0}")
+    (mkNatEq (mkAppN (mkConst ``segRun)
+        #[sE, mkRawNatLit a, mkRawNatLit W, mkRawNatLit bVal]) (mkConst litName))
+    (mkAppN (mkConst ``segRun_of)
+      #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bVal, mkRawNatLit fuel,
+        mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        mkConst parent])
 
 /-- `run_segment a W fuel len` sieves the window of `W` wheel positions from `a` by the base
 primes at wheel indices `1 … fuel`, in batches of `len` steps. A trailing numeral names another
@@ -1125,6 +1158,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, proof]
     else proof
   addSegThm parent (mkNatEq (mkSegLoopK sE loE wE initE 1 fuel) (mkConst litName)) finalProof
+  let bVal := value fuel
+  addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
+    (mkNatEq (mkAppN (mkConst ``segRun)
+        #[sE, mkRawNatLit a, mkRawNatLit W, mkRawNatLit bVal]) (mkConst litName))
+    (mkAppN (mkConst ``segRun_of)
+      #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bVal, mkRawNatLit fuel,
+        mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        mkConst parent])
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
 the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
