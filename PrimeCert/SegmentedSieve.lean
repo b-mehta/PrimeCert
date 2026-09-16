@@ -758,7 +758,7 @@ public theorem dvd_of_testBit_mask {p lo Wm1 j : Nat} (hp6 : p % 6 = 1 ∨ p % 6
   have hm : 0 < p * 2 := by lia
   have h57 : index (p * 5) ≤ index (p * 7) := by
     unfold index
-    lia
+    exact Nat.div_le_div_right (Nat.sub_le_sub_right (by lia) 1)
   have h5lo : index (p * 5) ≤ lo := by lia
   have h5 : value (index (p * 5)) = p * 5 := value_index (by lia)
   have h7 : value (index (p * 7)) = p * 7 := value_index (by lia)
@@ -813,6 +813,7 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
       have hsl : Nat.shiftLeft 1 W = 1 <<< W := rfl
       have h : (1 : Nat) <<< W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
       rw [hsl, h]
+      rfl
     rw [hs1, Nat.testBit_two_pow_sub_one]
     simpa using hj
   · intro t h1 h2 hbit
@@ -821,15 +822,17 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     rw [valueK_eq_value, indexK_eq_index] at hmask
     have ht0 : t ≠ 0 := by lia
     have ht5 : 5 ≤ value t := five_le_value ht0
+    have htle : t ≤ index B := by lia
     have htB : value t ≤ B := by
-      have := value_strictMono.monotone (show t ≤ index B by lia)
+      have hmono := value_strictMono.monotone htle
       lia
     have hbit' : s.testBit t = true := by rwa [testBitK_eq_testBit] at hbit
     have hprime : (value t).Prime := (hs t ht0 htB).mp hbit'
     have h6 : value t % 6 = 1 ∨ value t % 6 = 5 := value_mod6 t
+    have hmul : value t * 7 ≤ a := by lia
     have hlo : index (value t * 7) ≤ index a := by
       unfold index
-      lia
+      exact Nat.div_le_div_right (Nat.sub_le_sub_right hmul 1)
     exact hno (value t) htB hprime
       (dvd_of_testBit_mask h6 ht5 hlo (by lia) hW hmask)
 
