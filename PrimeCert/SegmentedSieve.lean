@@ -594,7 +594,7 @@ public theorem segRun_of {s a lo W wm1 B fuel b : ℕ} (hlo : Nat.beq (indexK a)
 /-- Every surviving bit of the window names a number with no prime factor among the base primes,
 proved by `segmentSound_of`. One direction only: a cleared bit is left unclassified, so this gives
 primality of the survivors exactly when the window sits below the square of the base bound. -/
-public def SegmentSound (s B a W : ℕ) : Prop :=
+@[expose] public def SegmentSound (s B a W : ℕ) : Prop :=
   ∀ j < W, (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j →
     ∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)
 
@@ -829,7 +829,7 @@ public theorem testBit_initSegK {W j : Nat} (hj : j < W) : (initSegK W).testBit 
   exact decide_eq_true hj
 
 /-- The bit of a number with no prime factor up to `B` survives the run. -/
-public def SegmentComplete (s B a W : Nat) : Prop :=
+@[expose] public def SegmentComplete (s B a W : Nat) : Prop :=
   ∀ j < W, (∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)) →
     (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j = true
 
