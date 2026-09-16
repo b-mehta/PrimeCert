@@ -764,6 +764,38 @@ meta def segLoop (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
       b := segMark b (value j) lo Wm1
   return b
 
+/-- Twin of `seedK`. -/
+meta def seedC (A M : Nat) : Nat := if A ≤ M then 1 <<< A else 0
+
+/-- Twin of `buildMaskCK`. -/
+meta def buildMaskC (p M A B n : Nat) : Nat := Id.run do
+  let mut m := seedC A M ||| seedC B M
+  for i in [0:n] do
+    let sh := p <<< (i + 1)
+    if sh ≤ M then
+      m := m ||| (m <<< sh)
+  return m
+
+/-- Twin of `segMarkCK`. -/
+meta def segMarkC (seg p lo Wm1 n : Nat) : Nat :=
+  let A := firstLoc (index (p * 5)) lo (p * 2)
+  let B := firstLoc (index (p * 7)) lo (p * 2)
+  let mask := if p * 2 ≤ Wm1 then buildMaskC p Wm1 A B n else seedC A Wm1 ||| seedC B Wm1
+  let hit := seg &&& mask
+  if hit = 0 then seg else seg - hit
+
+/-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
+Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoopCK` agree on all
+of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
+meta def segLoopC (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      b := segMarkC b (value (start + i)) lo Wm1 n
+    c := c >>> 1
+  return b
+
 /-! ## The `run_segment` command -/
 
 open Lean Elab Command Meta
@@ -850,13 +882,14 @@ and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the ba
 batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}` equation and each
 `…join_{level}_{j}` combines two neighbours. Every mode ends at
 `ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
-Every batch literal comes from the `segLoop` twin, so every mode is checked against the same
-values. -/
+Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 15 with the
+`segLoopC` twin, the same eight assemblies otherwise, so the pair `m` and `m + 8` differs in the
+command's own computation alone. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 7 then throwError "run_segment_variant: mode {mode} is not 0 to 7"
+  if mode > 15 then throwError "run_segment_variant: mode {mode} is not 0 to 15"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -864,7 +897,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
   let clamped := mode % 4 == 1 || mode % 4 == 3
   let slice := mode % 4 == 2 || mode % 4 == 3
-  let tree := mode ≥ 4
+  let tree := mode % 8 ≥ 4
+  let fastTwin := mode ≥ 8
   let lo := index a
   let wm1 := W - 1
   let rounds := Nat.log2 wm1 + 1
@@ -890,7 +924,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     let start := 1 + i * step0
     let owed := fuel - i * step0
     let stepN := Nat.min step0 owed
-    let next := segLoop sVal lo wm1 bits start stepN
+    let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
+      else segLoop sVal lo wm1 bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
     let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
     let cE := mkRawNatLit cVal
@@ -994,8 +1029,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     else proof
   addSegThm parent (mkNatEq (mkSegLoopK sE loE wE initE 1 fuel) (mkConst litName)) finalProof
 
-/-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop
-chosen by `mode` (see `runSegmentV`), with the same optional trailing base-sieve bound. -/
+/-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
+the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
+bound. -/
 elab "run_segment_variant" mStx:num aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
   liftTermElabM <| do
     let base := match bStx with

@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
       - name: Install elan
@@ -27,6 +27,7 @@ jobs:
           PrimeCertTest/SegTune/run.sh 2 Base0_Startup S7_Sieve V7_M3
           TAG=nokernel- LEAN_FLAGS=-Ddebug.skipKernelTC=true \
             PrimeCertTest/SegTune/run.sh 2 S7_Sieve V7_M3
+          TAG=twin- PrimeCertTest/SegTune/run.sh 2 V7_M3 V7_M11
           PrimeCertTest/SegTune/tags.sh out-*.txt
       - name: Fail the job if any case failed
         run: |
