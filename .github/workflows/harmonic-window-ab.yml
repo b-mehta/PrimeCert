@@ -16,7 +16,7 @@ jobs:
         include:
           - n: "segment"
             rounds: 1
-            cases: "Seg1e8_W4194304"
+            cases: "Seg1e8_Four"
     steps:
       - uses: actions/checkout@v7
 
