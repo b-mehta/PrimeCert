@@ -18,7 +18,6 @@ rev = "db584cd6d46c92f209a44c0f1c829460d327499d"
 
 [[lean_lib]]
 name = "PrimeCert"
-precompileModules = true
 
 [[lean_lib]]
 name = "MillerRabin"
