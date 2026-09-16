@@ -149,6 +149,11 @@ sieve. The window is cleared once against the result, in place of once per prime
   fuel.rec acc fun i a =>
     (testBitK c i).rec a (segAccK a (valueK (start.add i)) lo Wm1 n)
 
+/-- `segAccLoopSK` reading the base primes from the base sieve itself. -/
+@[expose] public noncomputable def segAccLoopK (s lo Wm1 n acc start fuel : Nat) : Nat :=
+  fuel.rec acc fun i a =>
+    (testBitK s (start.add i)).rec a (segAccK a (valueK (start.add i)) lo Wm1 n)
+
 /-- Loop recurrence for `segLoopCK`. -/
 public theorem segLoopCK_succ {s lo Wm1 n seg start fuel : Nat} :
     segLoopCK s lo Wm1 n seg start (fuel + 1)
@@ -490,8 +495,70 @@ public theorem segAccLoopSK_lor {c lo Wm1 n x acc start fuel : Nat} :
     cases testBitK c m with
     | false => exact ih
     | true =>
-      simp only [Bool.rec_eq, segAccK_eq, ih]
+      simp only [segAccK_eq, ih]
       rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
+
+/-- Loop recurrence for `segAccLoopK`. -/
+public theorem segAccLoopK_succ {s lo Wm1 n acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n acc start (fuel + 1)
+      = Bool.rec (segAccLoopK s lo Wm1 n acc start fuel)
+          (segAccK (segAccLoopK s lo Wm1 n acc start fuel) (valueK (start + fuel)) lo Wm1 n)
+          (testBitK s (start + fuel)) := rfl
+
+/-- Fuel additivity for `segAccLoopK`. -/
+public theorem segAccLoopK_add {s lo Wm1 n acc start a b : Nat} :
+    segAccLoopK s lo Wm1 n acc start (a + b)
+      = segAccLoopK s lo Wm1 n (segAccLoopK s lo Wm1 n acc start a) (start + a) b := by
+  induction b with
+  | zero => rfl
+  | succ b ih => grind [segAccLoopK_succ]
+
+/-- One chain step for `segAccLoopK`. -/
+public theorem segAccLoopK_chain {L s lo Wm1 n acc acc' start len rest : Nat}
+    (hP : L = segAccLoopK s lo Wm1 n acc start (len.add rest))
+    (h : (segAccLoopK s lo Wm1 n acc start len).beq acc') :
+    L = segAccLoopK s lo Wm1 n acc' (start.add len) rest := by
+  grind [segAccLoopK_add, Nat.beq_eq]
+
+/-- Last chain step for `segAccLoopK`. -/
+public theorem segAccLoopK_last {L s lo Wm1 n acc acc' start len : Nat}
+    (hP : L = segAccLoopK s lo Wm1 n acc start len)
+    (h : (segAccLoopK s lo Wm1 n acc start len).beq acc') : L = acc' := by
+  grind [Nat.beq_eq]
+
+/-- A slice agreeing with the base sieve on the batch's positions joins the same masks. -/
+public theorem segAccLoopSK_eq {c s lo Wm1 n acc start len : Nat}
+    (h : ∀ i < len, testBitK c i = testBitK s (start + i)) :
+    segAccLoopSK c lo Wm1 n acc start len = segAccLoopK s lo Wm1 n acc start len := by
+  induction len with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopSK_succ, segAccLoopK_succ, ih fun i hi => h i (by lia), h m (by lia)]
+
+/-- Anything joined into the accumulator before a run can be joined after it instead. -/
+public theorem segAccLoopK_lor {s lo Wm1 n x acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n (x ||| acc) start fuel
+      = x ||| segAccLoopK s lo Wm1 n acc start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopK_succ, segAccLoopK_succ]
+    cases testBitK s (start + m) with
+    | false => exact ih
+    | true =>
+      simp only [segAccK_eq, ih]
+      rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
+
+/-- A run's accumulator splits into the run's own masks and whatever it started from. -/
+public theorem segAccLoopK_zero {s lo Wm1 n acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n acc start fuel = segAccLoopK s lo Wm1 n 0 start fuel ||| acc := by
+  have h := segAccLoopK_lor (s := s) (lo := lo) (Wm1 := Wm1) (n := n) (x := acc) (acc := 0)
+    (start := start) (fuel := fuel)
+  have hz : acc ||| 0 = acc := by
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  rw [hz] at h
+  rw [h, Nat.lor_comm]
 
 /-- A batch's accumulator splits into the batch's own masks and whatever it started from. -/
 public theorem segAccLoopSK_zero {c lo Wm1 n acc start fuel : Nat} :
@@ -500,7 +567,7 @@ public theorem segAccLoopSK_zero {c lo Wm1 n acc start fuel : Nat} :
     (start := start) (fuel := fuel)
   have hz : acc ||| 0 = acc := by
     refine Nat.eq_of_testBit_eq fun i => ?_
-    simp [Nat.testBit_or]
+    simp
   rw [hz] at h
   rw [h, Nat.lor_comm]
 
@@ -522,6 +589,37 @@ public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
       refine Nat.eq_of_testBit_eq fun i => ?_
       simp only [Nat.testBit_or]
       grind
+
+/-- The same, over the base sieve itself: a whole run clears the window once against the joined
+masks of every prime it passes. -/
+public theorem segLoopCK_eq_ldiff {s lo Wm1 n seg acc start fuel : Nat} :
+    Nat.ldiff (segLoopCK s lo Wm1 n seg start fuel) acc
+      = Nat.ldiff seg (segAccLoopK s lo Wm1 n acc start fuel) := by
+  induction fuel generalizing acc with
+  | zero => rfl
+  | succ m ih =>
+    rw [segLoopCK_succ, segAccLoopK_succ]
+    cases testBitK s (start + m) with
+    | false => exact ih
+    | true =>
+      simp only [segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih]
+      refine congrArg (Nat.ldiff seg) ?_
+      rw [segAccLoopK_zero, segAccLoopK_zero (acc := acc)]
+      refine Nat.eq_of_testBit_eq fun i => ?_
+      simp only [Nat.testBit_or]
+      grind
+
+/-- A run of a whole window is the window with every mask removed at once. -/
+public theorem segLoopCK_ldiff_total {s lo Wm1 n seg start fuel : Nat} :
+    segLoopCK s lo Wm1 n seg start fuel
+      = Nat.ldiff seg (segAccLoopK s lo Wm1 n 0 start fuel) := by
+  have h := segLoopCK_eq_ldiff (s := s) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg) (acc := 0)
+    (start := start) (fuel := fuel)
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp [Nat.testBit_ldiff]
+  rwa [hz] at h
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
