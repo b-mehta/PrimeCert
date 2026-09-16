@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "coarse"
+          - n: "segment"
             rounds: 1
-            cases: "Coarse1e8_E10_Ref Coarse1e8_E10_From1e7"
+            cases: "Seg1e8_W4194304"
     steps:
       - uses: actions/checkout@v7
 
