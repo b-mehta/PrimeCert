@@ -1101,6 +1101,32 @@ run `run_harmonic_segment {start} {W} {B} {scaleExp} …` above this command"
   logInfo s!"run_harmonic_join: {n} windows cover {root.lo} to {root.hi - 1}; \
 A = {root.tot}, C = {root.cnt}"
 
+/-- Sieve, sum and join `n` neighbouring windows of `W` positions from `a` in one command: the
+sieving of each window is emitted here rather than written out by hand, so a long stretch of numbers
+above the base sieve is one line. -/
+meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
+  if n == 0 then
+    throwError "run_harmonic_series: there are no windows to sum"
+  let fuel := twinIndex B
+  if twinValue fuel != B then
+    throwError "run_harmonic_series: {B} is not a wheel value"
+  let some cache ← Sieve.findSieveCache B
+    | throwError "run_harmonic_series: no sieve cache in scope covers {B}"
+  let ns ← getCurrNamespace
+  let mut start := a
+  for _ in [0:n] do
+    Sieve.runSegment ns cache.litName start W fuel len
+    runHarmonicSegment start W B scaleExp batch len
+    start := nextSegmentStart start W
+  runHarmonicJoin a W B scaleExp n
+
+/-- `run_harmonic_series a W B e batch len n` sieves, sums and joins `n` neighbouring windows of
+`W` positions from `a` (see `runHarmonicSeries`). -/
+elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num nStx:num :
+    command =>
+  liftTermElabM <| runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
+    lStx.getNat nStx.getNat
+
 /-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
 `runHarmonicJoin`). -/
 elab "run_harmonic_join" aStx:num wStx:num bStx:num eStx:num nStx:num : command =>
