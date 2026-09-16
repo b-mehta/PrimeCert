@@ -776,8 +776,29 @@ public theorem primeRecipRange_segment {B a W S g A C : ℕ}
   have := primeRecipRange_of h1 hW1 hS hbit hA' hC'
   rwa [hlo] at this
 
-/-- Everything `run_harmonic` needs in one application: a sieve covering `Nb ≥ N`, four numeric
-side conditions as `Bool` literals, and the two chained fold equations. -/
+/-- Everything the segment command's output needs in one application: the base sieve, the equation
+the command emits, numeric side conditions as `Bool` literals, and the two folds over the segment
+literal. -/
+public theorem primeRecipRange_of_segRun {s B a W S g A C : ℕ} (hs : Sieve.IsSieve B s)
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (hB6 : B % 6 = 1 ∨ B % 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hW1 : Nat.ble 1 W = true) (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (htop : Nat.blt (Sieve.value (Sieve.index a + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hA : sumB (recipAtW g (Sieve.index a) S) 0 W 1 = A)
+    (hC : sumB (bitAtW g) 0 W 1 = C) :
+    PrimeRecipRange a (Sieve.value (Sieve.index a + W - 1) + 1) A C S := by
+  rw [Nat.ble_eq] at ha5 hW1 hB1 h7B
+  rw [Nat.blt_eq] at hW htop
+  rw [Sieve.segRun_eq] at hseg
+  have hsound' := Sieve.segmentSound_of hs ha hW hB1 h7B
+  have hcomplete' := Sieve.segmentComplete_of hs hB6 hW h7B
+  rw [Sieve.SegmentSound] at hsound'
+  rw [Sieve.SegmentComplete] at hcomplete'
+  rw [hseg] at hsound' hcomplete'
+  refine primeRecipRange_segment ha ha5 hW1 (by omega) hS htop
+    (fun j hj h ↦ hsound' j hj h) hcomplete' hA hC
 public theorem primeRecipIcc_of {Nb N S s len A C : ℕ} (hs : Sieve.IsSieve Nb s)
     (hcov : Nat.ble N Nb = true) (hS : Nat.blt 0 S = true)
     (hlen : Nat.ble (Sieve.valueK len) N = true)
