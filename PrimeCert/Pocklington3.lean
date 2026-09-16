@@ -31,6 +31,25 @@ theorem Nat.modEq_iff_exists_mul_add' {p q b : ℕ} (hqp : q ≤ p) :
 
 namespace PrimeCert
 
+/-- The smallest `m ≥ 1` with `2s + m² < (2F + r)·m + 2` (the `pock3` bound condition), or `0`
+if no such `m` exists — which indicates `F` is too small for a valid certificate.
+
+Writing `b := 2F + r`, the condition is `m² - b·m + (2s - 2) < 0`, satisfied on the open interval
+between the roots of that quadratic. A solution exists iff the discriminant `b² - 8s + 8` is
+positive, and the least one sits just above the lower root `(b - √(b² - 8s + 8)) / 2`. So we
+compute it directly with an integer square root and confirm against a tiny window, rather than
+scanning — the failure case (`F` too small) returns at once instead of iterating. -/
+public def minimalSieveBound (twoF r s : ℕ) : ℕ :=
+  let b := twoF + r
+  if b * b + 8 ≤ 8 * s then 0
+  else Id.run do
+    let sq := Nat.sqrt (b * b + 8 - 8 * s)
+    let cand := (b - sq) / 2
+    for m in [max 1 (cand - 3) : cand + 4] do
+      if 2 * s + m * m < b * m + 2 then return m
+    return 0
+
+
 /-- The non-square certificate: one of three conditions that rule out `r² - 8s` being a
 perfect square, which is needed to exclude composite factorisations. -/
 def Pocklington3Cert (r s : ℕ) : Prop :=
