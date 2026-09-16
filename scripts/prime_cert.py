@@ -165,8 +165,8 @@ def certify(N, nm1_factors=None, pool=None):
         F, target = 1 << e, icbrt(p)
         sel = []
         for q in sorted(fs):
-            sel.append((q, fs[q])); F *= q ** fs[q]
             if F > target: break
+            sel.append((q, fs[q])); F *= q ** fs[q]
 
         R = (p - 1) // F
         twoF = 2 * F
