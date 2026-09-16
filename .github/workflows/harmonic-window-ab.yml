@@ -16,7 +16,7 @@ jobs:
         include:
           - n: "coarse"
             rounds: 1
-            cases: "Coarse1e8_Ref Coarse1e8_From1e7 Coarse1e8_From3e7"
+            cases: "Coarse1e8_E10_Ref Coarse1e8_E10_From1e7"
     steps:
       - uses: actions/checkout@v7
 
