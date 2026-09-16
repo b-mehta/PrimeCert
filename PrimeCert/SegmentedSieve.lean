@@ -810,8 +810,9 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
   refine testBit_segLoopK_of ?_ ?_
   · have hs1 : initSegK W = 2 ^ W - 1 := by
       unfold initSegK
-      have h : Nat.shiftLeft 1 W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
-      rw [h]
+      have hsl : Nat.shiftLeft 1 W = 1 <<< W := rfl
+      have h : (1 : Nat) <<< W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+      rw [hsl, h]
     rw [hs1, Nat.testBit_two_pow_sub_one]
     simpa using hj
   · intro t h1 h2 hbit
@@ -823,7 +824,8 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     have htB : value t ≤ B := by
       have := value_strictMono.monotone (show t ≤ index B by lia)
       lia
-    have hprime : (value t).Prime := (hs t ht0 htB).mp hbit
+    have hbit' : s.testBit t = true := by rwa [testBitK_eq_testBit] at hbit
+    have hprime : (value t).Prime := (hs t ht0 htB).mp hbit'
     have h6 : value t % 6 = 1 ∨ value t % 6 = 5 := value_mod6 t
     have hlo : index (value t * 7) ≤ index a := by
       unfold index
