@@ -284,6 +284,57 @@ theorem recipSum_eq_Icc (s len : ℕ) :
   refine Finset.sum_congr rfl fun i _ ↦ ?_
   rw [Nat.mul_one, Nat.add_comm]
 
+theorem recipSum_eq_Icc_range (s lo len : ℕ) :
+    recipSum s lo len 1
+      = ∑ t ∈ Finset.Ico lo (lo + len), if s.testBit t then (Sieve.value t : ℚ)⁻¹ else 0 := by
+  rw [recipSum, Finset.sum_Ico_eq_sum_range, Nat.add_sub_cancel_left]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_comm]
+
+/-- The scan of the positions `lo … lo + len - 1` sums the reciprocals of exactly the primes
+between the numbers at its two ends, given that the bit at each position of the scan says whether
+its number is prime. The sieve range uses this with `lo = 1`; a segment above the sieve uses it
+with the segment's own first position. -/
+public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo) (hlen : 1 ≤ len)
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime)) :
+    recipSum s lo len 1
+      = ∑ p ∈ (Finset.Icc (Sieve.value lo) (Sieve.value (lo + len - 1))).filter Nat.Prime,
+          (p : ℚ)⁻¹ := by
+  rw [recipSum_eq_Icc_range, ← Finset.sum_filter]
+  refine Finset.sum_nbij' (i := Sieve.value) (j := Sieve.index) ?_ ?_ ?_ ?_ ?_
+  · intro t ht
+    simp only [Finset.mem_filter, Finset.mem_Ico, Finset.mem_Icc] at ht ⊢
+    obtain ⟨⟨h1, h2⟩, hbit'⟩ := ht
+    refine ⟨⟨Sieve.value_strictMono.monotone h1, Sieve.value_strictMono.monotone (by omega)⟩, ?_⟩
+    exact (hbit t h1 h2).mp hbit'
+  · intro p hp
+    simp only [Finset.mem_filter, Finset.mem_Icc, Finset.mem_Ico] at hp ⊢
+    obtain ⟨⟨hlow, hhigh⟩, hprime⟩ := hp
+    have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
+    have hc : p % 6 = 1 ∨ p % 6 = 5 := hprime.mod_six_eq_one_or_five (by omega) (by omega)
+    have hv : Sieve.value (Sieve.index p) = p := Sieve.value_index hc
+    have h1 : lo ≤ Sieve.index p := by
+      by_contra hcon
+      have : Sieve.value (Sieve.index p) < Sieve.value lo :=
+        Sieve.value_strictMono (by omega)
+      omega
+    have h2 : Sieve.index p < lo + len := by
+      by_contra hcon
+      have : Sieve.value (lo + len - 1) < Sieve.value (Sieve.index p) :=
+        Sieve.value_strictMono (by omega)
+      omega
+    refine ⟨⟨h1, h2⟩, (hbit _ h1 h2).mpr ?_⟩
+    rw [hv]
+    exact hprime
+  · intro t _
+    exact Sieve.index_value t
+  · intro p hp
+    simp only [Finset.mem_filter, Finset.mem_Icc] at hp
+    have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
+    exact Sieve.value_index (hp.2.mod_six_eq_one_or_five (by omega) (by omega))
+  · intro t _
+    rfl
+
 /-- The unit-step scan of the positions `1 … len` of a sieve for `N` sums the reciprocals of
 exactly the primes between `5` and `N`, provided `len` is the last position inside `N`. -/
 public theorem recipSum_eq_primeSum {N s len : ℕ} (hs : Sieve.IsSieve N s)
@@ -579,6 +630,47 @@ above `5 / 6 + A / S`. -/
 @[expose] public noncomputable def PrimeRecipIcc (N A C S : ℕ) : Prop :=
   ∑ p ∈ (Finset.range (N + 1)).filter Nat.Prime, (p : ℚ)⁻¹ ∈
     Set.Icc (5 / 6 + (A : ℚ) / S) (5 / 6 + ((A : ℚ) + (C : ℚ)) / S)
+
+/-- The sum of the reciprocals of the primes in `a … b - 1` lies in the interval of width `C / S`
+above `A / S`. A scan of the base sieve and a scan of a segment above it both land here, and
+`primeRecipRange_add` joins two neighbouring ranges. -/
+@[expose] public noncomputable def PrimeRecipRange (a b A C S : ℕ) : Prop :=
+  ∑ p ∈ (Finset.Ico a b).filter Nat.Prime, (p : ℚ)⁻¹ ∈
+    Set.Icc ((A : ℚ) / S) (((A : ℚ) + (C : ℚ)) / S)
+
+/-- A scan of the positions `lo … lo + len - 1` encloses the sum over the primes it covers,
+provided the bit at each scanned position says whether its number is prime. -/
+public theorem primeRecipRange_of {s S lo len A C : ℕ} (hlo : 1 ≤ lo) (hlen : 1 ≤ len)
+    (hS : Nat.blt 0 S = true)
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime))
+    (hA : sumB (recipAtK s S) lo len 1 = A) (hC : sumB (bitAtK s) lo len 1 = C) :
+    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len - 1) + 1) A C S := by
+  rw [Nat.blt_eq] at hS
+  have hSne : S ≠ 0 := by omega
+  have heq := recipSum_eq_primeSum_range hlo hlen hbit
+  have hmem := recipSum_mem_Icc (S := S) s lo len 1 hSne
+  rw [heq, hA, hC] at hmem
+  rw [PrimeRecipRange, Finset.Ico_add_one_right_eq_Icc]
+  exact hmem
+
+/-- Two neighbouring ranges of primes add, with the two totals and the two counts added as
+literals. -/
+public theorem primeRecipRange_add {a b c A₁ C₁ A₂ C₂ A C S : ℕ}
+    (hab : a ≤ b) (hbc : b ≤ c)
+    (h₁ : PrimeRecipRange a b A₁ C₁ S) (h₂ : PrimeRecipRange b c A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
+    PrimeRecipRange a c A C S := by
+  rw [Nat.beq_eq] at hA hC
+  rw [PrimeRecipRange, Finset.sum_filter] at h₁ h₂ ⊢
+  rw [← Finset.sum_Ico_consecutive _ hab hbc]
+  obtain ⟨hlo₁, hhi₁⟩ := h₁
+  obtain ⟨hlo₂, hhi₂⟩ := h₂
+  subst hA
+  subst hC
+  simp only [Nat.add_eq]
+  push_cast
+  simp only [add_div] at hhi₁ hhi₂ ⊢
+  exact ⟨by linarith, by linarith⟩
 
 /-- Everything `run_harmonic` needs in one application: a sieve covering `Nb ≥ N`, four numeric
 side conditions as `Bool` literals, and the two chained fold equations. -/
