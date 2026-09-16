@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2025 Kenny Lau, Bhavik Mehta. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Kenny Lau, Bhavik Mehta
+Authors: Kenny Lau, Bhavik Mehta, Kim Morrison
 -/
 
 module
@@ -24,8 +24,9 @@ open Lean Meta Qq
 /-- Syntax for the non-square certificate mode in `pock3`:
 - A numeric literal `0` means `s = 0`
 - A numeric literal `p` (prime, `p > 2`) means `r² - 8s` is a quadratic non-residue mod `p`
-- `<` means `r² < 8s` -/
-public syntax pock3_mode := num <|> "<"
+- `<` means `r² < 8s`
+- `interval w` supplies `w² < r² - 8s < (w+1)²` -/
+public syntax pock3_mode := num <|> "<" <|> ("interval " num)
 
 meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
     MetaM Q(Pocklington3CertMode) := match stx with
@@ -36,6 +37,9 @@ meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
       let pf : Q(($nE).Prime) ← dict.getM n
       return q(.prime $nE $pf)
   | `(pock3_mode| <) => return q(.lt)
+  | `(pock3_mode| interval $w:num) =>
+    have wE : Q(ℕ) := mkNatLit w.getNat
+    return q(.interval $wE)
   | _ => Elab.throwUnsupportedSyntax
 
 /-- Syntax for a `pock3` certificate step: `(N, root, mode, F)`.

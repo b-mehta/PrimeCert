@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2025 Kenny Lau, Bhavik Mehta. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Kenny Lau, Bhavik Mehta
+Authors: Kenny Lau, Bhavik Mehta, Kim Morrison
 -/
 
 module
@@ -132,17 +132,32 @@ theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
     ZMod.natCast_eq_zero_iff] at cond
   exact not_lt_of_ge (Nat.le_of_dvd (by lia) cond) h2p
 
+/-- An integer strictly between consecutive squares cannot be a square. -/
+theorem Pocklington3Cert.of_interval (r s w : Nat)
+    (lo : w * w < r ^ 2 - 8 * s) (hi : r ^ 2 - 8 * s < (w + 1) * (w + 1)) :
+    Pocklington3Cert r s := by
+  refine .inr (.inl ?_)
+  rintro ⟨a, ha⟩
+  rw [ha] at lo hi
+  by_cases h : a ≤ w
+  · exact (Nat.not_lt_of_ge (Nat.mul_self_le_mul_self h)) lo
+  · exact (Nat.not_lt_of_ge (Nat.mul_self_le_mul_self (by omega : w + 1 ≤ a))) hi
+
 /-- How to discharge the `Pocklington3Cert` obligation:
 - `zero`: `s = 0`
 - `prime p hp`: witness that `r² - 8s` is a quadratic non-residue mod `p`
-- `lt`: `r² < 8s` -/
+- `lt`: `r² < 8s`
+- `interval w`: `w² < r² - 8s < (w+1)²` -/
 public inductive Pocklington3CertMode : Type
-  | zero | prime (p : ℕ) (hp : Nat.Prime p) | lt
+  | zero | prime (p : ℕ) (hp : Nat.Prime p) | lt | interval (w : ℕ)
 
 @[expose] public noncomputable def Pocklington3CertMode.calculate (m : Pocklington3CertMode)
     (r s : ℕ) : Bool :=
   m.rec (s.beq 0) (fun p _ ↦ (2).blt p && (powModK (r.pow 2 |>.sub <| s.mul 8) (p.div 2) p).beq
     p.pred) (r.pow 2 |>.blt <| s.mul 8)
+    (fun w ↦
+      let d := r.pow 2 |>.sub <| s.mul 8
+      (w.mul w |>.blt d) && (d.blt (w.succ.mul w.succ)))
 
 theorem Pocklington3CertMode.to_cert (m : Pocklington3CertMode) (r s : ℕ) (h : m.calculate r s) :
     Pocklington3Cert r s := by
@@ -153,6 +168,10 @@ theorem Pocklington3CertMode.to_cert (m : Pocklington3CertMode) (r s : ℕ) (h :
       Bool.and_eq_true, Nat.blt_eq, Nat.beq_eq, mul_comm s, powModK_eq] at h
     exact .of_prime _ _ p hp h.1 h.2
   | lt => exact .inr <| .inr <| Nat.blt_eq.to_iff.mp <| mul_comm 8 s ▸ h
+  | interval w =>
+    simp only [calculate, Bool.and_eq_true, Nat.blt_eq, Nat.mul_eq, Nat.pow_eq,
+      Nat.sub_eq, Nat.succ_eq_add_one, mul_comm s 8] at h
+    exact .of_interval r s w h.1 h.2
 
 public structure PrimePow : Type where
   (prime : ℕ) (pow : ℕ) (pf : prime.Prime) (pow_ne_zero : (0).blt pow)
