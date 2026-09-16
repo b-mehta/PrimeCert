@@ -27,8 +27,8 @@ in the window they sit at the local offsets congruent to those seeds modulo `2*p
 verbatim to grow each seed into a stride-`2*p` mask across the window.
 
 This is a prototype. The kernel-checked statement is the fold equation
-`segLoopK s lo Wm1 (initSegK W) 1 fuel = <literal>`; the bridge from that to primality,
-`SegmentSound`, is stated but not proved. See the module note at `SegmentSound`.
+`segLoopK s lo Wm1 (initSegK W) 1 fuel = <literal>`; `segmentSound_of` bridges from that to the
+absence of small prime factors. See the module note at `SegmentSound`.
 -/
 
 namespace PrimeCert.Sieve
