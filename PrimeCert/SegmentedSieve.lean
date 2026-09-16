@@ -115,12 +115,12 @@ agreement is checked per batch against the same compiled twin, and is not proved
 `2 * p > Wm1` (only the seeds can then land in the window), and no subtraction when nothing hits. -/
 @[expose] public noncomputable def segMarkCK (seg p lo Wm1 n : Nat) : Nat :=
   ((p.mul 2).ble Wm1).rec
-    (clearHitK seg (seg.land
-      ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
-        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))))
-    (clearHitK seg (seg.land
-      (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)))
+    (clearHitK seg
+      (((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
+        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)).land seg))
+    (clearHitK seg
+      ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg))
 
 /-- `segLoopK` marking with `segMarkCK`. -/
 @[expose] public noncomputable def segLoopCK (s lo Wm1 n seg start fuel : Nat) : Nat :=
@@ -366,7 +366,7 @@ public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) 
         else clearHitK seg (seg.land
           ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
             (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))) := by
-    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq]
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, Nat.land_comm]
   have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
   rw [hite, segMarkK, hsub]
   by_cases hc : p * 2 ≤ Wm1
@@ -903,7 +903,7 @@ meta def segMarkC (seg p lo Wm1 n : Nat) : Nat :=
   let A := firstLoc (index (p * 5)) lo (p * 2)
   let B := firstLoc (index (p * 7)) lo (p * 2)
   let mask := if p * 2 ≤ Wm1 then buildMaskC p Wm1 A B n else seedC A Wm1 ||| seedC B Wm1
-  let hit := seg &&& mask
+  let hit := mask &&& seg
   if hit = 0 then seg else seg - hit
 
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
