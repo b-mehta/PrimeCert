@@ -21,9 +21,9 @@ example : Nat.Prime 101 := by prime_cert?
 /--
 info: Try this:
   [apply] exact prime_cert%
-    [sieve {2; 5; 4153; 57467; 132049; 430751},
-     pock (31757755568855353, 2, 4153 * 430751),
-     pock3 (74058212732561358302231226437062788676166966415465897661863160754340907, 2, 5, 2 * 57467 * 132049 * 31757755568855353),
+    [sieve {2; 223; 4153; 57467; 132049},
+     pock3 (31757755568855353, 5, interval 4028944, 2 ^ 3 * 223 * 4153),
+     pock3 (74058212732561358302231226437062788676166966415465897661863160754340907, 2, interval 786343672787837091059418602, 2 * 57467 * 132049 * 31757755568855353),
      pock (57896044618658097711785492504343953926634992332820282019728792003956564819949, 2, 74058212732561358302231226437062788676166966415465897661863160754340907)]
 -/
 #guard_msgs in
@@ -40,9 +40,12 @@ example : Nat.Prime (2 ^ 255 - 19) := by
 #guard_msgs in
 example : Nat.Prime (2 ^ 255 - 19) := by prime_cert? (config := { maxBits := 32 })
 
--- A pure power of two cannot yet be rendered by the existing pock3 syntax.
+-- Pure powers of two need no auxiliary odd factor or factor search.
 /--
-error: prime_cert?: construction exhausted after 0 attempts (limit 1024, depth 32, seed 17)
+info: Try this:
+  [apply] exact prime_cert%
+    [sieve {2},
+     pock3 (37, 2, <, 2 ^ 2)]
 -/
 #guard_msgs in
 example : Nat.Prime 37 := by
@@ -96,3 +99,29 @@ example (n : Nat) : Nat.Prime n := by prime_cert?
 /-- error: prime_cert?: expected a goal of the form `Nat.Prime _` -/
 #guard_msgs in
 example : True := by prime_cert?
+
+/--
+info: Try this:
+  [apply] exact prime_cert%
+    [sieve {2},
+     pock3 (197, 2, 2, <, 2 ^ 2)]
+-/
+#guard_msgs in
+example : Nat.Prime 197 := by
+  prime_cert? (config := { trialBound := 2, smoothBounds := [], factorFuel := 0 })
+
+/--
+error: prime_cert?: construction exhausted after 0 attempts (limit 1024, depth 32, seed 17)
+-/
+#guard_msgs in
+example : Nat.Prime 197 := by
+  prime_cert? (config := {
+    trialBound := 2, smoothBounds := [], factorFuel := 0, maxSieveBound := 1 })
+
+-- A 64-bit prime closes using the cheap power-of-two factor alone.
+example : Nat.Prime 9223372036904058881 := by
+  prime_cert? (config := { trialBound := 2, smoothBounds := [], factorFuel := 0 })
+
+#guard (run { trialBound := 2, factorFuel := 0 } #[2] 197).2.attempts == 1
+#guard !(run { trialBound := 2, factorFuel := 0, maxAttempts := 0 } #[2] 197).1
+#guard !(run { trialBound := 2, factorFuel := 0 } #[2] 205).1

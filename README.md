@@ -34,7 +34,8 @@ For `pock3`, the nonsquare mode is `0` when `s = 0`, `<` when `r² < 8s`, or
 `interval w` when `w² < r² - 8s < (w+1)²`. Writing just `interval` computes `w`
 during elaboration and inserts its literal into the proof. The kernel checks the two
 inequalities; it does not compute a square root. Both four-field and explicit-sieve-bound
-five-field forms accept these modes. Replace former prime-QNR mode numbers with `interval`;
+five-field forms accept these modes, including a lone power of two such as
+`pock3 (197, 2, <, 2 ^ 2)`. Replace former prime-QNR mode numbers with `interval`;
 auxiliary primes used only for those witnesses can be removed from `small`.
 
 The series of numbers form a prime certificate. For convenience, we provide a Python script in `scripts/prime_cert.py` to generate these certificates automatically. 
@@ -74,6 +75,12 @@ Pollard p−1 uses bounds 64, 512, 4096, 32768, 262144, 524288 and bases 2, 3;
 rho has two restarts of 32768 steps. Witness search tries 2, 3, 5, 7, 11, 13, 17,
 then at most 32 candidates from seed 17. Subset selection considers at most 12
 factors and 4096 subsets, estimating child-certificate cost before recursion.
+The sieve bound is at most 64, allowing up to 63 checks of potential divisors
+`l*F+1` in exchange for a smaller factored part `F`. Subset estimates include
+these divisions as well as the factor witnesses and recursive children.
+Construction first tries the trial-division factors before spending smooth/rho
+work, retaining consumed attempts and random state if it must fall back.
+Power-of-two-only factorizations are supported; no auxiliary odd prime is needed.
 There is no ECM or external factorizer on this route. Stage primes come from the
 existing certified sieve; a bound outside its coverage fails explicitly.
 

@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kim Morrison
 -/
 module
-public import PrimeCert.PowMod
+public import PrimeCert.Pocklington3
 
 /-! Bounded, untrusted certificate construction. Every emitted ladder is checked by the kernel. -/
 public section
@@ -25,11 +25,12 @@ structure Budget where
   randomWitnesses : Nat := 32
   maxFactors : Nat := 12
   maxSubsets : Nat := 4096
+  maxSieveBound : Nat := 64
   seed : UInt64 := 17
   deriving Repr, Inhabited
 
 inductive Mode where
-  | pock | zero | lt | prime (p : Nat)
+  | pock | zero | lt | interval (w : Nat)
   deriving Repr, BEq, Inhabited
 
 structure Node where
@@ -37,6 +38,7 @@ structure Node where
   root : Nat
   mode : Mode
   factors : List (Nat × Nat)
+  sieveBound : Nat := 1
   deriving Repr, BEq, Inhabited
 
 structure State where
@@ -184,26 +186,34 @@ def validate (n : Nat) (data : Factors) (maxFactors : Nat) : Bool := Id.run do
 private def product (fs : List (Nat × Nat)) : Nat :=
   fs.foldl (fun f (q, e) => f * q ^ e) 1
 
-private def criterion (n f : Nat) : Option Mode := Id.run do
-  if n < f * f then return some .pock
+private structure Criterion where
+  mode : Mode
+  sieveBound : Nat := 1
+  deriving BEq
+
+private def criterion (budget : Budget) (n f : Nat) : Option Criterion := Id.run do
+  if n < f * f then return some ⟨.pock, 1⟩
   if f % 2 != 0 || (n - 1) / f % 2 != 1 then return none
   let r := (n - 1) / f % (2 * f)
   let s := (n - 1) / f / (2 * f)
-  -- Use m = 1; no divisibility sieve is needed.
-  if 2 * s + 1 ≥ 2 * f + r + 2 then return none
-  if s == 0 then return some .zero
-  if r * r < 8 * s then return some .lt
-  for p in [3, 5, 7, 11, 13, 17, 19, 23, 29, 31] do
-    if powMod (r * r - 8 * s) (p / 2) p == p - 1 then return some (.prime p)
+  let m := minimalSieveBound (2 * f) r s
+  if m == 0 || m > budget.maxSieveBound then return none
+  for l in [1:m] do
+    if n % (l * f + 1) == 0 then return none
+  if s == 0 then return some ⟨.zero, m⟩
+  if r * r < 8 * s then return some ⟨.lt, m⟩
+  let d := r * r - 8 * s
+  let w := d.sqrt
+  if w * w < d && d < (w + 1) * (w + 1) then return some ⟨.interval w, m⟩
   return none
 
 private def childCost (budget : Budget) (primes : Array Nat) (q : Nat) : Nat :=
   if primes.contains q then 0 else
     let data := trial budget primes (q - 1)
-    if (criterion q (product data.factors)).isSome then 1 else 2 + q.log2 / 32
+    if (criterion budget q (product data.factors)).isSome then 1 else 2 + q.log2 / 32
 
 private def choices (budget : Budget) (primes : Array Nat) (n : Nat)
-    (data : Factors) : List (List (Nat × Nat) × Mode) := Id.run do
+    (data : Factors) : List (List (Nat × Nat) × Criterion) := Id.run do
   if !validate n data budget.maxFactors then return []
   let factors := data.factors.mergeSort (fun x y => x.1 ≤ y.1)
   let costs := factors.map fun (q, _) => childCost budget primes q
@@ -212,11 +222,10 @@ private def choices (budget : Budget) (primes : Array Nat) (n : Nat)
   for i in [:min count budget.maxSubsets] do
     let mask := if count ≤ budget.maxSubsets then i else if i == 0 then count - 1 else i - 1
     let fs := factors.zipIdx.filterMap fun (f, j) => if mask.testBit j then some f else none
-    if let some mode := criterion n (product fs) then
-      -- The existing pock3 syntax requires an odd factor after the power of 2.
-      if mode != .pock && fs.length < 2 then continue
+    if let some mode := criterion budget n (product fs) then
       let cost := costs.zipIdx.foldl
-        (fun s (c, j) => if mask.testBit j then s + 16 * c + 1 else s) 0
+        (fun s (c, j) => if mask.testBit j then s + (16 * c + 1) * (n.log2 + 1) else s)
+        (mode.sieveBound - 1)
       selected := (cost, fs, mode) :: selected
   return (selected.mergeSort (fun x y => x.1 ≤ y.1)).map Prod.snd
 
@@ -241,17 +250,22 @@ private def generate (budget : Budget) (primes : Array Nat) : Nat → Nat → St
       return true
     if (← get).failed.contains (n, depth + 1) then return false
     if !probablePrime n then return false
-    let data ← factor budget primes (n - 1)
-    for (fs, mode) in choices budget primes n data do
-      let some root ← witness budget n fs | continue
-      let mut success := true
-      for (q, _) in fs do
-        if !(← generate budget primes depth q) then success := false; break
-      if !success then continue
-      if let .prime p := mode then
-        if !(← generate budget primes depth p) then continue
-      modify fun st => { st with nodes := st.nodes.push ⟨n, root, mode, fs⟩ }
-      return true
+    -- Try table factors before spending smooth/rho work. Failed candidates are not retried.
+    let mut tried := []
+    for phase in [:2] do
+      let data ← if phase == 0 then pure (trial budget primes (n - 1))
+        else factor budget primes (n - 1)
+      for (fs, choice) in choices budget primes n data do
+        if tried.contains (fs, choice) then continue
+        tried := (fs, choice) :: tried
+        let some root ← witness budget n fs | continue
+        let mut success := true
+        for (q, _) in fs do
+          if !(← generate budget primes depth q) then success := false; break
+        if !success then continue
+        let node := ⟨n, root, choice.mode, fs, choice.sieveBound⟩
+        modify fun st => { st with nodes := st.nodes.push node }
+        return true
     modify fun st => { st with failed := st.failed.push (n, depth + 1) }
     return false
 

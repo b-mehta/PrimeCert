@@ -48,7 +48,6 @@ def constructionSource (n : Nat) (state : Construction.State) : String := Id.run
   for node in state.nodes.toList.reverse do
     if needed.contains node.n then
       needed := node.factors.map Prod.fst ++ needed
-      if let .prime p := node.mode then needed := p :: needed
   let leaves := state.leaves.toList.filter needed.contains |>.mergeSort (· ≤ ·)
   let mut groups := if leaves.isEmpty then [] else
     ["sieve {" ++ String.intercalate "; " (leaves.map toString) ++ "}"]
@@ -59,8 +58,10 @@ def constructionSource (n : Nat) (state : Construction.State) : String := Id.run
       | .pock => s!"pock ({node.n}, {node.root}, {factors})"
       | mode =>
         let mode := match mode with
-          | .zero => "0" | .lt => "<" | .prime p => toString p | .pock => "0"
-        s!"pock3 ({node.n}, {node.root}, {mode}, {factors})"
+          | .zero => "0" | .lt => "<" | .interval w => s!"interval {w}" | .pock => "0"
+        if node.sieveBound == 1 then
+          s!"pock3 ({node.n}, {node.root}, {mode}, {factors})"
+        else s!"pock3 ({node.n}, {node.root}, {node.sieveBound}, {mode}, {factors})"
     groups := groups ++ [group]
   return "exact prime_cert%\n  [" ++ String.intercalate ",\n   " groups ++ "]"
 
