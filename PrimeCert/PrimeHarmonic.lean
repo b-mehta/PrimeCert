@@ -127,6 +127,54 @@ public theorem sumB_bitAtK_le (s start len step : ℕ) : sumB (bitAtK s) start l
     have := bitAtK_le_one s ((n.mul step).add start)
     omega
 
+/-! ## Positions that share a quotient
+
+High up the sieve the truncated quotient `S / value t` is constant over long runs of positions, so
+the run contributes that quotient once per set bit and needs only the count of set bits, not one
+division per bit. `sumB_recipAtK_const` is that trade, and `sumB_recipAtK_const_ends` reduces its
+hypothesis to the two ends of the run, since `value` increases and so the quotient decreases. -/
+
+theorem recipAtK_eq_mul {s S k t : ℕ} (h : S / Sieve.value t = k) :
+    recipAtK s S t = k * bitAtK s t := by
+  rw [recipAtK_eq, bitAtK_eq, h]
+  split <;> simp
+
+/-- Where every position of the run has quotient `k`, the reciprocal fold is `k` times the count
+fold. -/
+public theorem sumB_recipAtK_const (s S k lo len : ℕ)
+    (h : ∀ i < len, S / Sieve.value (i + lo) = k) :
+    sumB (recipAtK s S) lo len 1 = k * sumB (bitAtK s) lo len 1 := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, sumB_succ, Nat.mul_add, ih fun i hi ↦ h i (Nat.lt_succ_of_lt hi)]
+    have hn : S / Sieve.value ((n.mul 1).add lo) = k := by
+      have := h n (Nat.lt_succ_self n)
+      simpa using this
+    rw [recipAtK_eq_mul hn]
+
+/-- The hypothesis of `sumB_recipAtK_const` from the two ends of the run alone, with the product
+handed back as the literal `a`. -/
+public theorem sumB_recipAtK_const_ends (s S k lo len c a : ℕ)
+    (h₁ : Nat.beq (S / Sieve.value lo) k = true)
+    (h₂ : Nat.beq (S / Sieve.value (lo + (len - 1))) k = true)
+    (hc : sumB (bitAtK s) lo len 1 = c)
+    (ha : Nat.beq (Nat.mul k c) a = true) :
+    sumB (recipAtK s S) lo len 1 = a := by
+  rw [Nat.beq_eq] at ha
+  rw [← ha, ← hc]
+  refine sumB_recipAtK_const s S k lo len fun i hi ↦ ?_
+  rw [Nat.beq_eq] at h₁ h₂
+  have hlo : Sieve.value lo ≤ Sieve.value (i + lo) :=
+    Sieve.value_strictMono.monotone (by omega)
+  have hhi : Sieve.value (i + lo) ≤ Sieve.value (lo + (len - 1)) :=
+    Sieve.value_strictMono.monotone (by omega)
+  have h0 : 0 < Sieve.value lo := by rw [Sieve.value]; omega
+  have h1 : 0 < Sieve.value (i + lo) := by rw [Sieve.value]; omega
+  have hup : S / Sieve.value (i + lo) ≤ k := h₁ ▸ Nat.div_le_div_left hlo h0
+  have hdown : k ≤ S / Sieve.value (i + lo) := h₂ ▸ Nat.div_le_div_left hhi h1
+  omega
+
 /-! ## The exact rational sum over the scanned positions -/
 
 /-- The exact sum of `1 / value t` over the positions of the scan whose sieve bit is set. -/

@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "Bfloor"
+          - n: "coarse"
             rounds: 1
-            cases: "Win1e8_B2048_F3 Win1e8_B1024_F3 Win1e8_B512_F3"
+            cases: "Coarse1e8_Ref Coarse1e8_From1e7 Coarse1e8_From3e7"
     steps:
       - uses: actions/checkout@v7
 
@@ -29,10 +29,11 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
 
-      - name: Build what the cases depend on
+      - name: Build what the cases depend on, the sieve to 1e8 included
         run: |
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCertTest.HarmonicBench.SplitSieve1e8
 
       - name: Record the runner
         run: |

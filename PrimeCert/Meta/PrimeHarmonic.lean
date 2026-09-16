@@ -651,6 +651,53 @@ elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num : comman
   liftTermElabM <|
     runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat
 
+/-! ## Runs of positions that share a quotient
+
+High up the sieve the truncated quotient `S / value t` is the same for many positions in a row, and
+such a run needs only the count of its set bits: its contribution is the quotient times that count
+(`sumB_recipAtK_const_ends`). Below the crossover the quotient changes too often for that to pay,
+and the positions are summed one by one as before. -/
+
+/-- The last position at or below `hi` whose value still has quotient `q`, for `q ≠ 0`. -/
+meta def quotientRunEnd (S q hi : Nat) : Nat := Id.run do
+  let vmax := S / q
+  let mut t := twinIndex vmax
+  for _ in [0:3] do
+    if twinValue t > vmax then
+      t := t - 1
+  for _ in [0:3] do
+    if twinValue (t + 1) ≤ vmax then
+      t := t + 1
+  return Nat.min hi t
+
+/-- The maximal runs of constant quotient covering the positions `lo … hi`, each as its first
+position, its length and the quotient its positions share. -/
+meta def quotientRuns (S lo hi : Nat) : Array (Nat × Nat × Nat) := Id.run do
+  let mut out : Array (Nat × Nat × Nat) := #[]
+  let mut p := lo
+  while p ≤ hi do
+    let q := S / twinValue p
+    let e := Nat.max p (if q == 0 then hi else quotientRunEnd S q hi)
+    out := out.push (p, e - p + 1, q)
+    p := e + 1
+  return out
+
+/-- The batches of `B` consecutive positions covering `lo … lo + n - 1`, with their windows and
+totals. `twinWindows` is this with `lo = 1` and `n` the whole run. -/
+meta def twinWindowsRange (mark : ByteArray) (S lo n B : Nat) : Array WindowBatch := Id.run do
+  let mut out : Array WindowBatch := #[]
+  for i in [0:(n + B - 1) / B] do
+    let a := lo + i * B
+    let m := Nat.min B (n - i * B)
+    let mut r := 0
+    let mut c := 0
+    for j in [0:m] do
+      if mark.get! (a + j) == 1 then
+        r := r + S / twinValue (a + j)
+        c := c + 1
+    out := out.push { lo := a, len := m, w := twinWindow mark a m, recip := r, count := c }
+  return out
+
 /-! ## A windowed run split across files
 
 `run_harmonic_window` proves everything in one command, so one file and one core do all the kernel
@@ -759,6 +806,100 @@ meta def runHarmonicMerge (bound scaleExp B M : Nat) : MetaM Unit := do
         mkConst root.name])
   logInfo s!"run_harmonic_merge {bound}: {len} positions in {wins.size} windows of {B} across \
 {M} parts, sieve {litName}; A = {T % P}, C = {T / P}"
+
+/-- Emit the window certificates for `batches` and fold them into one equation
+`sumB fE lo n 1 = <total>`, returning the total and the name of that equation. -/
+meta def emitWindowedFoldOver (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
+    (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
+    (batches : Array WindowBatch) (winNames : Array Name) : MetaM (Nat × Name) := do
+  let (tot, proof) ← emitWindowRun parent fE gE bridge pick batches winNames 0 batches.size
+  let lo := batches[0]!.lo
+  let n := windowSpan batches 0 batches.size
+  addHarmonicThm parent (mkNatEq (mkSumB fE lo n 1) (mkRawNatLit tot)) proof
+  return (tot, parent)
+
+/-- Enclose `∑ p ≤ bound, 1/p` at scale `10 ^ scaleExp`, summing the positions below `split` one at
+a time and the positions from `split` up in runs that share a quotient, each such run costing one
+count of set bits. `B` is the number of positions a window covers. -/
+meta def runHarmonicCoarse (bound scaleExp B split : Nat) : MetaM Unit := do
+  let (hi, litName, isSieveName, len, _) ← windowSetup "run_harmonic_coarse" bound scaleExp B
+  let B := Nat.max 1 B
+  let split := Nat.max 2 (Nat.min split (len + 1))
+  let S := 10 ^ scaleExp
+  let sE := mkConst litName
+  let SE := mkRawNatLit S
+  let mark := wheelMarks len
+  let fRecip := mkApp2 (mkConst ``recipAtK) sE SE
+  let gRecip : Nat → Nat → Expr := fun w lo ↦
+    mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit lo) SE
+  let bRecip : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
+    mkAppN (mkConst ``recip_window)
+      #[sE, SE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+  let fCount := mkApp (mkConst ``bitAtK) sE
+  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+  let bCount : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
+    mkAppN (mkConst ``bit_window) #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+  let tag := s!"{bound}_{scaleExp}_{B}_{split}"
+  let base := `PrimeCert ++ Name.mkSimple s!"harmonicCoarse_{tag}"
+  let env ← getEnv
+  let mut recipNodes : Array RunNode := #[]
+  let mut countNodes : Array RunNode := #[]
+  -- the positions below the crossover, summed one at a time
+  if split > 1 then
+    let fine := twinWindowsRange mark S 1 (split - 1) B
+    let mut winNames : Array Name := #[]
+    for k in [0:fine.size] do
+      let wb := fine[k]!
+      let nm := mkPrivateName env (base ++ Name.mkSimple s!"fw_{k}")
+      addHarmonicThm nm (mkWindowEq sE wb.lo wb.len wb.w) Lean.reflBoolTrue
+      winNames := winNames.push nm
+    let (aTot, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "fineRecip") fRecip
+      gRecip bRecip (·.recip) fine winNames
+    let (cTot, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "fineCount") fCount
+      gCount bCount (·.count) fine winNames
+    recipNodes := recipNodes.push { lo := 1, len := split - 1, tot := aTot, name := aName }
+    countNodes := countNodes.push { lo := 1, len := split - 1, tot := cTot, name := cName }
+  -- the positions above it, one count per run of equal quotient
+  let runs := quotientRuns S split len
+  for r in [0:runs.size] do
+    let (lo, n, q) := runs[r]!
+    let batches := twinWindowsRange mark S lo n B
+    let mut winNames : Array Name := #[]
+    for k in [0:batches.size] do
+      let wb := batches[k]!
+      let nm := mkPrivateName env (base ++ Name.mkSimple s!"cw_{r}_{k}")
+      addHarmonicThm nm (mkWindowEq sE wb.lo wb.len wb.w) Lean.reflBoolTrue
+      winNames := winNames.push nm
+    let (c, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple s!"runCount_{r}") fCount
+      gCount bCount (·.count) batches winNames
+    let aName := base ++ Name.mkSimple s!"runRecip_{r}"
+    addHarmonicThm aName (mkNatEq (mkSumB fRecip lo n 1) (mkRawNatLit (q * c)))
+      (mkAppN (mkConst ``sumB_recipAtK_const_ends)
+        #[sE, SE, mkRawNatLit q, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit c,
+          mkRawNatLit (q * c), Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst cName,
+          Lean.reflBoolTrue])
+    recipNodes := recipNodes.push { lo, len := n, tot := q * c, name := aName }
+    countNodes := countNodes.push { lo, len := n, tot := c, name := cName }
+  let aRoot ← joinNodes (base ++ Name.mkSimple "recip") fRecip recipNodes
+  let cRoot ← joinNodes (base ++ Name.mkSimple "count") fCount countNodes
+  let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccCoarse_{tag}"
+  addHarmonicThm iccName
+    (mkAppN (mkConst ``PrimeRecipIcc)
+      #[mkRawNatLit bound, mkRawNatLit aRoot.tot, mkRawNatLit cRoot.tot, SE])
+    (mkAppN (mkConst ``primeRecipIcc_of)
+      #[mkRawNatLit hi, mkRawNatLit bound, SE, sE, mkRawNatLit len, mkRawNatLit aRoot.tot,
+        mkRawNatLit cRoot.tot, mkConst isSieveName, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst aRoot.name,
+        mkConst cRoot.name])
+  logInfo s!"run_harmonic_coarse {bound}: {len} positions, one at a time below {split} \
+({twinValue split}), then {runs.size} runs of equal quotient, windows of {B}, \
+sieve {litName}; A = {aRoot.tot}, C = {cRoot.tot}"
+
+/-- `run_harmonic_coarse bound e B split` encloses the sum with the positions below `split` summed
+one at a time and the rest in runs of equal quotient (see `runHarmonicCoarse`). -/
+elab "run_harmonic_coarse" bStx:num eStx:num lStx:num sStx:num : command =>
+  liftTermElabM <|
+    runHarmonicCoarse bStx.getNat eStx.getNat lStx.getNat sStx.getNat
 
 /-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
 `∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/
