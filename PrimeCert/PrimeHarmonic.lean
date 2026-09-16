@@ -542,6 +542,15 @@ public theorem recip_window (s S lo B w : ℕ)
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, recipAtK_eq, recipAtW, Bool.rec_eq,
     Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.div_eq_div, Nat.add_eq, hb]
 
+/-- `recip_window` with its numerals written as raw literals, so that the window certificate the
+emitter declares is the very term this hypothesis asks for. -/
+public theorem recip_windowR (s S lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtK s S) lo B (nat_lit 1)
+      = sumB (recipAtW w lo S) (nat_lit 0) B (nat_lit 1) :=
+  recip_window s S lo B w hw
+
 /-- A windowed batch of the count fold is the same batch read from the whole sieve. -/
 public theorem bit_window (s lo B w : ℕ)
     (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
@@ -552,6 +561,13 @@ public theorem bit_window (s lo B w : ℕ)
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, bitAtK_eq, bitAtW, Bool.rec_eq,
     Sieve.testBitK_eq_testBit, hb]
 
+/-- `bit_window` with its numerals written as raw literals. -/
+public theorem bit_windowR (s lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtK s) lo B (nat_lit 1) = sumB (bitAtW w) (nat_lit 0) B (nat_lit 1) :=
+  bit_window s lo B w hw
+
 /-- One windowed batch as its own equation: the batch of `len` positions from `start` equals the
 fold `g` over `0 … len - 1`, whose kernel-checked value is `t`. Declaring this on its own keeps the
 bridge out of the chain, so no declaration carries both a bridge and a chain. -/
@@ -559,6 +575,15 @@ public theorem sumB_windowEq (f g : ℕ → ℕ) (start len t : ℕ)
     (hb : sumB f start len 1 = sumB g 0 len 1)
     (h : Nat.beq (sumB g 0 len 1) t = true) :
     sumB f start len 1 = t := by
+  grind [Nat.beq_eq]
+
+/-- `sumB_windowEq` with its numerals written as raw literals, the form the emitter builds. The two
+say the same thing; which one the emitter uses decides whether the statement it declares and the
+binder it hands that statement to are the same term. -/
+public theorem sumB_windowEqR (f g : ℕ → ℕ) (start len t : ℕ)
+    (hb : sumB f start len (nat_lit 1) = sumB g (nat_lit 0) len (nat_lit 1))
+    (h : Nat.beq (sumB g (nat_lit 0) len (nat_lit 1)) t = true) :
+    sumB f start len (nat_lit 1) = t := by
   grind [Nat.beq_eq]
 
 /-- One chain link through a bridge: the batch of `len` positions from `start` equals a fold `g`
@@ -919,6 +944,14 @@ public theorem pack_window (s S P lo B w : ℕ)
   have hb := window_testBit hw (Finset.mem_range.mp hi)
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo]
   simp only [packAtK, packAtW, Sieve.testBitK_eq_testBit, Nat.add_eq, hb]
+
+/-- `pack_window` with its numerals written as raw literals. -/
+public theorem pack_windowR (s S P lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (packAtK s S P) lo B (nat_lit 1)
+      = sumB (packAtW w lo S P) (nat_lit 0) B (nat_lit 1) :=
+  pack_window s S P lo B w hw
 
 /-- `primeRecipIcc_of` from the packed fold alone: with `len * S < P`, its total `T` holds the
 reciprocal fold as `T % P` and the count fold as `T / P`. -/

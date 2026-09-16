@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "segment"
+          - n: "numerals"
             rounds: 1
-            cases: "Seg1e8_W262144 SegSeries1e8"
+            cases: "Raw1e7_Plain Raw1e7_Raw"
     steps:
       - uses: actions/checkout@v7
 
@@ -134,15 +134,6 @@ jobs:
           nproc
           swapon --show || true
 
-      - name: Build a copy of the first quarter of 1e8 with nothing beside it
-        run: |
-          set +e +o pipefail
-          start=$(date +%s)
-          lake build PrimeCertTest.HarmonicBench.Split1e8_P0Alone > out-split-alone.txt 2>&1
-          code=$?
-          echo "RESULT split | 1e8 quarter 0 alone | exit $code | wall $(( $(date +%s) - start ))s"
-          tail -5 out-split-alone.txt
-
       - name: Build the four parts at once and merge them, at both sizes
         run: |
           set +e +o pipefail
@@ -169,7 +160,6 @@ jobs:
             if [ "$code" -ne 0 ]; then fail=1; fi
           }
           run_split 1e8
-          run_split 1e8W
           exit "$fail"
 
       - name: Keep the logs

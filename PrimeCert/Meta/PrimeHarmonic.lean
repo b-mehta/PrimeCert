@@ -476,6 +476,11 @@ meta def joinNodes (parent : Name) (fE : Expr) (nodes : Array RunNode) : MetaM R
     level := level + 1
   return cur[0]!
 
+/-- Whether the batch equations cite the statements whose numerals are raw literals, matching the
+terms the emitter builds, or the ones written with ordinary numerals. Set by the trailing argument
+of the commands, so both can be timed in one job. -/
+meta def rawStatements : IO.Ref Bool := unsafe unsafeBaseIO (IO.mkRef true)
+
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
 in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
 and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and `n` the
@@ -484,6 +489,7 @@ number of positions covered. `gE w lo` is the windowed fold function of a batch 
 meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
     (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
+  let raw ← rawStatements.get
   let env ← getEnv
   let oneE := mkRawNatLit 1
   let zeroE := mkRawNatLit 0
@@ -502,7 +508,7 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     addHarmonicThm eqName
       (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
         (mkRawNatLit t))
-      (mkAppN (mkConst ``sumB_windowEq)
+      (mkAppN (mkConst (if raw then ``sumB_windowEqR else ``sumB_windowEq))
         #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
     nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
   let root ← joinNodes parent fE nodes
@@ -588,8 +594,9 @@ meta def runHarmonicWindow (bound scaleExp B G folds : Nat) : MetaM Unit := do
   let fRecip := mkApp2 (mkConst ``recipAtK) sE SE
   let gRecip : Nat → Nat → Expr := fun w lo ↦
     mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit lo) SE
+  let raw ← rawStatements.get
   let bRecip : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
-    mkAppN (mkConst ``recip_window)
+    mkAppN (mkConst (if raw then ``recip_windowR else ``recip_window))
       #[sE, SE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipIccWindow_{tag}"
   let side := #[mkRawNatLit cache.hi, mkRawNatLit bound, SE, sE, mkRawNatLit len]
@@ -600,7 +607,7 @@ meta def runHarmonicWindow (bound scaleExp B G folds : Nat) : MetaM Unit := do
     let gPack : Nat → Nat → Expr := fun w lo ↦
       mkApp4 (mkConst ``packAtW) (mkRawNatLit w) (mkRawNatLit lo) SE PE
     let bPack : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
-      mkAppN (mkConst ``pack_window)
+      mkAppN (mkConst (if raw then ``pack_windowR else ``pack_window))
         #[sE, SE, PE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
     let packName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowPack_{tag}"
     let T ← emitWindowFold packName fPack gPack bPack (fun wb ↦ wb.recip + P * wb.count)
@@ -621,7 +628,8 @@ segments of {G}, packed fold, sieve {cache.litName}; A = {T % P}, C = {T / P}"
     let fCount := mkApp (mkConst ``bitAtK) sE
     let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
     let bCount : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
-      mkAppN (mkConst ``bit_window) #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+      mkAppN (mkConst (if raw then ``bit_windowR else ``bit_window))
+        #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
     let countName := `PrimeCert ++ Name.mkSimple s!"harmonicWindowCount_{tag}"
     let cTot ← emitWindowFold countName fCount gCount bCount (·.count) wins winNames len G
     addHarmonicThm iccName
@@ -647,10 +655,13 @@ segments of {G}, one fold, sieve {cache.litName}; A = {aTot}, width {len} / S"
 /-- `run_harmonic_window bound e B G folds` encloses the sum of the reciprocals of the primes up to
 `bound` at scale `10 ^ e`, reading every batch of `B` positions through its own window of the sieve,
 with the batches grouped into segments of `G` (`0` for one chain) and `folds` equal to `1`, `2`
-or `3` (see `runHarmonicWindow`). -/
-elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num : command =>
-  liftTermElabM <|
+or `3` (see `runHarmonicWindow`). A trailing `0` cites the statements written with ordinary
+numerals rather than the raw literals the emitter builds, for timing the two against each other. -/
+elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num rStx:(num)? : command =>
+  liftTermElabM <| do
+    rawStatements.set (match rStx with | none => true | some r => r.getNat != 0)
     runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat
+    rawStatements.set true
 
 /-! ## Runs of positions that share a quotient
 
