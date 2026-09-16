@@ -21,13 +21,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Split the wall clock of one segment into its parts
+      - name: Time one segment at the best setting found so far
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/tags.sh
-          PrimeCertTest/SegTune/run.sh 1 Base0_Startup S7_Sieve
-          TAG=nokernel- LEAN_FLAGS=-Ddebug.skipKernelTC=true \
-            PrimeCertTest/SegTune/run.sh 2 V7_M3 V7_M11
-          TAG=twin- PrimeCertTest/SegTune/run.sh 2 V7_M3 V7_M11
+          PrimeCertTest/SegTune/run.sh 1 V7_M11
           PrimeCertTest/SegTune/tags.sh out-*.txt
       - name: Fail the job if any case failed
         run: |
