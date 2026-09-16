@@ -493,6 +493,14 @@ public theorem segAccLoopSK_lor {c lo Wm1 n x acc start fuel : Nat} :
       simp only [Bool.rec_eq, segAccK_eq, ih]
       rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
 
+/-- A batch's accumulator splits into the batch's own masks and whatever it started from. -/
+public theorem segAccLoopSK_zero {c lo Wm1 n acc start fuel : Nat} :
+    segAccLoopSK c lo Wm1 n acc start fuel = segAccLoopSK c lo Wm1 n 0 start fuel ||| acc := by
+  have h := segAccLoopSK_lor (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (x := acc) (acc := 0)
+    (start := start) (fuel := fuel)
+  rw [Nat.lor_zero] at h
+  rw [h, Nat.lor_comm]
+
 /-- Clearing the window once against the joined masks of a batch gives what clearing it once per
 prime gives. -/
 public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
@@ -505,7 +513,12 @@ public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
     cases testBitK c m with
     | false => exact ih
     | true =>
-      simp only [Bool.rec_eq, segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih, segAccLoopSK_lor]
+      simp only [segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih]
+      refine congrArg (Nat.ldiff seg) ?_
+      rw [segAccLoopSK_zero, segAccLoopSK_zero (acc := acc)]
+      refine Nat.eq_of_testBit_eq fun i => ?_
+      simp only [Nat.testBit_or]
+      grind
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
