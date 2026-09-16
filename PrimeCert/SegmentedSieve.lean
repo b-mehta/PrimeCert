@@ -653,6 +653,8 @@ public theorem not_testBit_segLoopK {s lo Wm1 seg start fuel t j : Nat}
         rw [ht, hmask]
         simp
 
+-- The proof carries a dozen arithmetic side conditions about `index`, `value` and divisibility,
+-- each closed by `lia` against the whole context, which together pass the default limit.
 set_option maxHeartbeats 1000000 in
 /-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
 public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
