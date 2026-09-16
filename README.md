@@ -38,6 +38,39 @@ python3 scripts/prime_cert.py 16290860017
 python3 scripts/prime_cert.py 16290860017 '2^4 * 3 * 339392917'
 ```
 
+## Constructing a reusable certificate in Lean
+
+Import the optional construction module to use `prime_cert?`:
+
+```lean
+import PrimeCert
+import PrimeCert.Meta.Construction
+
+example : Nat.Prime (2 ^ 255 - 19) := by
+  prime_cert?
+```
+
+The tactic searches with a deterministic, finite budget, kernel-checks the resulting
+proof, and offers a clickable `Try this:` replacement containing the full
+`prime_cert%` ladder. Applying it removes factor and certificate search from later
+builds; the kernel still checks the certificate. The literal can be replayed with
+`PrimeCert`, `PrimeCert.SieveBase`, and a meta import of
+`PrimeCert.Meta.SieveLookup`, without importing construction.
+
+The default `PrimeCert.Construction.Budget` permits 512 input bits, depth 32,
+1024 total factor/witness attempts, and 1024 worklist steps per factorization.
+Pollard p−1 uses bounds 64, 512, 4096, 32768, 262144, 524288 and bases 2, 3;
+rho has two restarts of 32768 steps. Witness search tries 2, 3, 5, 7, 11, 13, 17,
+then at most 32 candidates from seed 17. Subset selection considers at most 12
+factors and 4096 subsets, estimating child-certificate cost before recursion.
+There is no ECM or external factorizer on this route. Stage primes come from the
+existing certified sieve; a bound outside its coverage fails explicitly.
+
+Configure the finite policy with `prime_cert? (config := { maxAttempts := 100 })`.
+Exhaustion reports consumed attempts and the advanced seed. A failed search does
+not imply compositeness. These bounds are a search policy, not a promise to
+handle every prime of the allowed bit size.
+
 ## Acknowledgements
 
 We thank Joachim Breitner, Oliver Butterley, Anand Rao Tadipatri, and Siddhartha Gadgil for many helpful discussions which shaped this project.
