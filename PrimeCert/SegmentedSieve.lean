@@ -625,8 +625,32 @@ public theorem testBit_mask_of_dvd {q lo j c X : Nat} (hq : 0 < q)
     lia
   exact ⟨by lia, ⟨c - c0, by lia⟩⟩
 
-/-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
+/-- A run that passes an index whose base bit is set, with a mask covering `j`, leaves bit `j`
+clear. -/
+public theorem not_testBit_segLoopK {s lo Wm1 seg start fuel t j : Nat}
+    (htf : t < start + fuel) (hts : start ≤ t) (hbit : testBitK s t = true)
+    (hmask : (buildMaskK (valueK t) Wm1 (firstLocK (indexK (valueK t * 5)) lo (valueK t * 2))
+      (firstLocK (indexK (valueK t * 7)) lo (valueK t * 2)) 32).testBit j = true) :
+    (segLoopK s lo Wm1 seg start fuel).testBit j = false := by
+  induction fuel with
+  | zero => lia
+  | succ n ih =>
+    rw [segLoopK_succ]
+    rcases Nat.lt_or_ge t (start + n) with hlt | hge
+    · have hinner : (segLoopK s lo Wm1 seg start n).testBit j = false := ih hlt
+      cases hb : testBitK s (start + n) with
+      | false =>
+        rw [hb]
+        exact hinner
+      | true =>
+        rw [hb, testBit_segMarkK, hinner]
+        simp
+    · have ht : start + n = t := by lia
+      rw [ht, hbit, testBit_segMarkK, hmask]
+      simp
+
 set_option maxHeartbeats 1000000 in
+/-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
 public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (hB1 : 1 ≤ B) (h7B : 7 * B ≤ a) :
     SegmentSound s B a W := by
@@ -698,22 +722,19 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         unfold index
         lia
       simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
-  -- split the run at `q`'s index, where the bit is cleared
-  obtain ⟨r, hr⟩ : ∃ r, index B = (index q - 1) + (1 + r) := ⟨index B - index q, by lia⟩
-  rw [hr, segLoopK_add, segLoopK_add] at hbit
-  have hstep : segLoopK s (index a) (W - 1)
-      (segLoopK s (index a) (W - 1) (initSegK W) 1 (index q - 1)) (1 + (index q - 1)) 1
-      = segMarkK (segLoopK s (index a) (W - 1) (initSegK W) 1 (index q - 1)) q (index a) (W - 1) := by
-    rw [segLoopK_succ]
-    have h1 : 1 + (index q - 1) + 0 = index q := by lia
-    rw [h1]
-    have h2 : testBitK s (index q) = true := by rwa [testBitK_eq_testBit]
-    rw [h2, valueK_eq_value, hvq]
-  rw [hstep] at hbit
-  have hcleared := testBit_of_testBit_segLoopK hbit
-  rw [testBit_segMarkK] at hcleared
-  simp only [Bool.and_eq_true, Bool.not_eq_true'] at hcleared
-  exact absurd hmask (by simpa using hcleared.2)
+  -- the run passes `q`'s index, so the bit is clear at the end
+  have hbitK : testBitK s (index q) = true := by rwa [testBitK_eq_testBit]
+  have hmaskK : (buildMaskK (valueK (index q)) (W - 1)
+      (firstLocK (indexK (valueK (index q) * 5)) (index a) (valueK (index q) * 2))
+      (firstLocK (indexK (valueK (index q) * 7)) (index a) (valueK (index q) * 2)) 32).testBit j
+      = true := by
+    rw [valueK_eq_value, hvq]
+    simpa using hmask
+  have hclear := not_testBit_segLoopK (s := s) (lo := index a) (Wm1 := W - 1)
+    (seg := initSegK W) (start := 1) (fuel := index B) (t := index q) (j := j)
+    (by lia) (by lia) hbitK hmaskK
+  rw [hclear] at hbit
+  exact absurd hbit (by simp)
 
 /-! ## Compiled twins
 
