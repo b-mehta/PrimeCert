@@ -7,3 +7,4 @@ import PrimeCertTest.SieveMethodTest
 import PrimeCertTest.SieveVerify1e8
 import PrimeCertTest.ConstructionTest
 import PrimeCertTest.ConstructionReplayTest
+import PrimeCertTest.Pock3IntervalTest

@@ -19,8 +19,8 @@ open PrimeCert
 
 -- new 4-field form: `m` computed automatically
 example : Nat.Prime 73471 := prime_cert%
-  [small {2; 7; 31}, pock3 (73471, 3, 7, 2 * 31)]
+  [small {2; 31}, pock3 (73471, 3, interval, 2 * 31)]
 
 -- legacy 5-field form still parses and proves
 example : Nat.Prime 73471 := prime_cert%
-  [small {2; 7; 31}, pock3 (73471, 3, 1, 7, 2 * 31)]
+  [small {2; 31}, pock3 (73471, 3, 1, interval, 2 * 31)]
