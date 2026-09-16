@@ -828,8 +828,8 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     have h2' : t < index B + 1 := by rw [Nat.add_comm] at h2; exact h2
     have hmono := value_strictMono.monotone (Nat.lt_succ_iff.mp h2')
     have htB : value t ≤ B := by rw [hvB] at hmono; exact hmono
-    have hbit' : s.testBit t = true := by rwa [testBitK_eq_testBit] at hbit
-    have hprime : (value t).Prime := (hs t ht0 htB).mp hbit'
+    rw [testBitK_eq_testBit] at hbit
+    have hprime : (value t).Prime := (hs t ht0 htB).mp hbit
     have hmul : value t * 7 ≤ a :=
       calc value t * 7 = 7 * value t := Nat.mul_comm _ _
         _ ≤ 7 * B := Nat.mul_le_mul_left 7 htB
