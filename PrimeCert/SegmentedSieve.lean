@@ -652,9 +652,9 @@ public theorem not_testBit_segLoopK {s lo Wm1 seg start fuel t j : Nat}
         rw [ht, hmask]
         simp
 
+set_option maxHeartbeats 1000000 in
 -- The proof carries a dozen arithmetic side conditions about `index`, `value` and divisibility,
 -- each closed by `lia` against the whole context, which together pass the default limit.
-set_option maxHeartbeats 1000000 in
 /-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
 public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (hB1 : 1 ≤ B) (h7B : 7 * B ≤ a) :
@@ -808,13 +808,13 @@ public def SegmentComplete (s B a W : Nat) : Prop :=
   ∀ j < W, (∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)) →
     (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j = true
 
--- As in `segmentSound_of`, the arithmetic side conditions are closed by `lia` against the whole
--- context and together pass the default limit.
 set_option maxHeartbeats 1000000 in
+-- As in `segmentSound_of`, the divisibility side conditions are closed against the whole context
+-- and together pass the default limit.
 /-- Every bit a completed run clears names a number with a prime factor up to `B`, stated as its
 contrapositive. `B % 6` is 1 or 5 so that the run's last base index is `B` itself. -/
 public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
-    (ha : a % 6 = 1 ∨ a % 6 = 5) (hB6 : B % 6 = 1 ∨ B % 6 = 5) (hW : W - 1 < 2 ^ 32)
+    (hB6 : B % 6 = 1 ∨ B % 6 = 5) (hW : W - 1 < 2 ^ 32)
     (hB5 : 5 ≤ B) (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
   intro j hj hno
   have hvB : value (index B) = B := value_index hB6
