@@ -470,6 +470,29 @@ public theorem segAccLoopSK_succ {c lo Wm1 n acc start fuel : Nat} :
           (segAccK (segAccLoopSK c lo Wm1 n acc start fuel) (valueK (start + fuel)) lo Wm1 n)
           (testBitK c fuel) := rfl
 
+/-- A joining step in ordinary notation, with the new mask first. -/
+public theorem segAccK_eq {acc p lo Wm1 n : Nat} :
+    segAccK acc p lo Wm1 n
+      = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n ||| acc := by
+  unfold segAccK
+  have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  rw [hor, Nat.lor_comm]
+
+/-- Anything joined into the accumulator before a batch can be joined after it instead. -/
+public theorem segAccLoopSK_lor {c lo Wm1 n x acc start fuel : Nat} :
+    segAccLoopSK c lo Wm1 n (x ||| acc) start fuel
+      = x ||| segAccLoopSK c lo Wm1 n acc start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopSK_succ, segAccLoopSK_succ]
+    cases testBitK c m with
+    | false => exact ih
+    | true =>
+      simp only [Bool.rec_eq, segAccK_eq, ih]
+      rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
+
 /-- Clearing the window once against the joined masks of a batch gives what clearing it once per
 prime gives. -/
 public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
@@ -482,23 +505,7 @@ public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
     cases testBitK c m with
     | false => exact ih
     | true =>
-      have hstep : Nat.ldiff (segMarkCK (segLoopSCK c lo Wm1 n seg start m)
-            (valueK (start + m)) lo Wm1 n) acc
-          = Nat.ldiff (segLoopSCK c lo Wm1 n seg start m)
-            (buildMaskCK (valueK (start + m)) Wm1
-              (firstLocK (indexK ((valueK (start + m)).mul 5)) lo ((valueK (start + m)).mul 2))
-              (firstLocK (indexK ((valueK (start + m)).mul 7)) lo ((valueK (start + m)).mul 2)) n
-              ||| acc) := by
-        rw [segMarkCK_ldiff, ldiff_ldiff]
-      have hacc : segAccK acc (valueK (start + m)) lo Wm1 n
-          = buildMaskCK (valueK (start + m)) Wm1
-              (firstLocK (indexK ((valueK (start + m)).mul 5)) lo ((valueK (start + m)).mul 2))
-              (firstLocK (indexK ((valueK (start + m)).mul 7)) lo ((valueK (start + m)).mul 2)) n
-              ||| acc := by
-        unfold segAccK
-        have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
-        rw [hor, Nat.lor_comm]
-      rw [hacc, hstep, ih]
+      simp only [Bool.rec_eq, segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih, segAccLoopSK_lor]
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
