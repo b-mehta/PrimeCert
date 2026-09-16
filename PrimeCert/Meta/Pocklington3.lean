@@ -54,7 +54,7 @@ meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (r s : Nat) :
   (the power of 2 must come first; it may be the only factor)
 
 The sieve bound `m` (all `l * F + 1` for `1 ≤ l < m` must not divide `N`) is computed
-automatically as the smallest valid value. A legacy 5-field form `(N, root, m, mode, F)` with
+automatically as the smallest valid value. A 5-field form `(N, root, m, mode, F)` with
 an explicit `m` still parses and behaves identically.
 
 ```lean
@@ -71,7 +71,7 @@ pock3 (32560621, 2, interval, 2 ^ 2 * 3 * 29)
 declare_syntax_cat pock3_spec
 /-- The `pock3` step, with the sieve bound `m` computed automatically. -/
 syntax "(" num "," num "," pock3_mode "," factored ")" : pock3_spec
-/-- Legacy `pock3` step with an explicit sieve bound `m` (now computed automatically). -/
+/-- The `pock3` step with an explicit sieve bound `m`. -/
 syntax "(" num "," num "," num "," pock3_mode "," factored ")" : pock3_spec
 
 meta def ParsedPrimePow.base : ParsedPrimePow → ℕ
