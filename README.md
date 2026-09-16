@@ -81,6 +81,9 @@ these divisions as well as the factor witnesses and recursive children.
 Construction first tries the trial-division factors before spending smooth/rho
 work, retaining consumed attempts and random state if it must fall back.
 Power-of-two-only factorizations are supported; no auxiliary odd prime is needed.
+The first successful cheap certificate is used, favoring construction latency
+over comparison with certificates that require further factoring. Suggestions
+always include the chosen sieve bound explicitly.
 There is no ECM or external factorizer on this route. Stage primes come from the
 existing certified sieve; a bound outside its coverage fails explicitly.
 

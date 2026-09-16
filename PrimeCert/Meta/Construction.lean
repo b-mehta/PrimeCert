@@ -59,9 +59,7 @@ def constructionSource (n : Nat) (state : Construction.State) : String := Id.run
       | mode =>
         let mode := match mode with
           | .zero => "0" | .lt => "<" | .interval w => s!"interval {w}" | .pock => "0"
-        if node.sieveBound == 1 then
-          s!"pock3 ({node.n}, {node.root}, {mode}, {factors})"
-        else s!"pock3 ({node.n}, {node.root}, {node.sieveBound}, {mode}, {factors})"
+        s!"pock3 ({node.n}, {node.root}, {node.sieveBound}, {mode}, {factors})"
     groups := groups ++ [group]
   return "exact prime_cert%\n  [" ++ String.intercalate ",\n   " groups ++ "]"
 
