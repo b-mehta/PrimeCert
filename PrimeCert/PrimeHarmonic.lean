@@ -620,6 +620,63 @@ public theorem sumB_lastEq (f : ℕ → ℕ) (L start step len acc a acc' : ℕ)
     L = acc' := by
   grind [Nat.beq_eq]
 
+/-! ## Reading a segment above the sieve
+
+A segment literal `g` covering the numbers from `a` upward has bit `j` for the number at position
+`index a + j`. Its bits say which of those numbers are prime as soon as two things hold: a set bit
+means no prime factor up to the segment's divisor bound `B`, and a clear bit means there is one.
+Shifting `g` up by `index a` puts it in the position the scan expects, and the shift lives only in
+the proof, never in a literal the kernel has to build. -/
+
+/-- Where the set bits of `g` are exactly the numbers of the segment with no prime factor up to `B`,
+and every number of the segment lies between `B` and `B ^ 2`, the bits say which are prime. -/
+public theorem segment_bit_iff {g B a W : ℕ}
+    (hsound : ∀ j < W, g.testBit j = true →
+      ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j))
+    (hcomplete : ∀ j < W, (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) →
+      g.testBit j = true)
+    (hlow : ∀ j < W, B < Sieve.value (Sieve.index a + j))
+    (hhigh : ∀ j < W, Sieve.value (Sieve.index a + j) < B ^ 2) :
+    ∀ j < W, (g.testBit j = true ↔ (Sieve.value (Sieve.index a + j)).Prime) := by
+  intro j hj
+  refine ⟨fun hset ↦ ?_, fun hp ↦ hcomplete j hj fun q hq hqp hdvd ↦ ?_⟩
+  · refine prime_of_no_small_factor ?_ (hhigh j hj) (hsound j hj hset)
+    have h1 := hlow j hj
+    have h2 := hhigh j hj
+    rcases Nat.eq_zero_or_pos B with rfl | hB
+    · simp at h2
+    · omega
+  · have hqle : q ≤ Sieve.value (Sieve.index a + j) := Nat.le_of_dvd (by
+      have := hlow j hj
+      have := hqp.two_le
+      omega) hdvd
+    have := (Nat.Prime.eq_one_or_self_of_dvd hp q hdvd)
+    have := hqp.two_le
+    have := hlow j hj
+    omega
+
+/-- Shifting a segment literal up by `lo` makes the scan from `lo` read its bits in order. -/
+theorem testBit_shiftLeft_add (g lo j : ℕ) :
+    (Nat.shiftLeft g lo).testBit (lo + j) = g.testBit j := by
+  simp [Nat.testBit_shiftLeft]
+
+/-- The scan of the shifted segment is the windowed fold over the segment itself. -/
+public theorem recip_shift (g S lo len : ℕ) :
+    sumB (recipAtK (Nat.shiftLeft g lo) S) lo len 1 = sumB (recipAtW g lo S) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, recipAtK_eq, recipAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.div_eq_div, Nat.add_eq,
+    testBit_shiftLeft_add]
+
+/-- The count fold counterpart of `recip_shift`. -/
+public theorem bit_shift (g lo len : ℕ) :
+    sumB (bitAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (bitAtW g) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, bitAtK_eq, bitAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, testBit_shiftLeft_add]
+
 /-! ## Packaging a pair of chained folds as an interval
 
 `PrimeRecipIcc` names the conclusion so that the emitter builds the emitted statement out of four
