@@ -815,7 +815,7 @@ set_option maxHeartbeats 1000000 in
 contrapositive. `B % 6` is 1 or 5 so that the run's last base index is `B` itself. -/
 public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     (hB6 : B % 6 = 1 ∨ B % 6 = 5) (hW : W - 1 < 2 ^ 32)
-    (hB5 : 5 ≤ B) (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
+    (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
   intro j hj hno
   have hvB : value (index B) = B := value_index hB6
   refine testBit_segLoopK_of (testBit_initSegK hj) ?_
