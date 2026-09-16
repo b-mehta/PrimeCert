@@ -57,7 +57,7 @@ builds; the kernel still checks the certificate. The literal can be replayed wit
 `PrimeCert`, `PrimeCert.SieveBase`, and a meta import of
 `PrimeCert.Meta.SieveLookup`, without importing construction.
 
-The default `PrimeCert.Construction.Budget` permits 512 input bits, depth 32,
+The default `PrimeCert.Construction.Budget` permits 512 bits in the evaluated input, depth 32,
 1024 total factor/witness attempts, and 1024 worklist steps per factorization.
 Pollard p−1 uses bounds 64, 512, 4096, 32768, 262144, 524288 and bases 2, 3;
 rho has two restarts of 32768 steps. Witness search tries 2, 3, 5, 7, 11, 13, 17,
@@ -65,6 +65,11 @@ then at most 32 candidates from seed 17. Subset selection considers at most 12
 factors and 4096 subsets, estimating child-certificate cost before recursion.
 There is no ECM or external factorizer on this route. Stage primes come from the
 existing certified sieve; a bound outside its coverage fails explicitly.
+
+The bit limit applies after evaluating the closed goal expression. Exhaustion means that
+the bounded policy found no certificate; it also covers composite inputs and subset or depth
+limits. Custom sieve bounds above the default cache require a matching `run_sieve` in both
+the construction and replay context.
 
 Configure the finite policy with `prime_cert? (config := { maxAttempts := 100 })`.
 Exhaustion reports consumed attempts and the advanced seed. A failed search does

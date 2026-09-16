@@ -60,7 +60,7 @@ def constructionSource (n : Nat) (state : Construction.State) : String := Id.run
       | mode =>
         let mode := match mode with
           | .zero => "0" | .lt => "<" | .prime p => toString p | .pock => "0"
-        s!"pock3 ({node.n}, {node.root}, 1, {mode}, {factors})"
+        s!"pock3 ({node.n}, {node.root}, {mode}, {factors})"
     groups := groups ++ [group]
   return "exact prime_cert%\n  [" ++ String.intercalate ",\n   " groups ++ "]"
 
@@ -79,7 +79,7 @@ elab "prime_cert?" config:(constructionConfig)? : tactic => do
   let budget ← match config with
     | none => pure ({} : Construction.Budget)
     | some cfg => do
-      let e ← Term.elabTerm cfg.raw[3] (some (mkConst ``Construction.Budget))
+      let e ← Tactic.elabTermEnsuringType cfg.raw[3] (mkConst ``Construction.Budget)
       unsafe evalExpr Construction.Budget (mkConst ``Construction.Budget) e
   let n ← unsafe evalExpr Nat (mkConst ``Nat) arg
   if n.log2 + 1 > budget.maxBits then
@@ -94,12 +94,12 @@ elab "prime_cert?" config:(constructionConfig)? : tactic => do
   let suggestion ← ofExcept <| Parser.runParserCategory (← getEnv) `tactic source
   -- Elaborate the exact source we will offer, then independently check its proof
   -- against the original target. Producer data and formatting are not trusted.
-  evalTactic suggestion
+  withoutRecover (evalTactic suggestion)
   let proof ← instantiateMVars (mkMVar goal)
+  if proof.hasSorry || proof.hasMVar then
+    throwError "prime_cert?: generated certificate did not produce a complete proof"
   let checked := mkApp (mkLambda `h .default target (mkBVar 0)) proof
-  let ready ← IO.mkRef (← getEnv).toKernelEnv
-  let env := Environment.ofKernelEnv (← ready.get)
-  let _ ← ofExceptKernelException <| Kernel.check env {} checked
+  let _ ← ofExceptKernelException <| Kernel.check (← getEnv) {} checked
   TryThis.addSuggestion (← getRef) source
 
 end PrimeCert.Meta

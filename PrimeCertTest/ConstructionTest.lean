@@ -23,7 +23,7 @@ info: Try this:
   [apply] exact prime_cert%
     [sieve {2; 5; 4153; 57467; 132049; 430751},
      pock (31757755568855353, 2, 4153 * 430751),
-     pock3 (74058212732561358302231226437062788676166966415465897661863160754340907, 2, 1, 5, 2 * 57467 * 132049 * 31757755568855353),
+     pock3 (74058212732561358302231226437062788676166966415465897661863160754340907, 2, 5, 2 * 57467 * 132049 * 31757755568855353),
      pock (57896044618658097711785492504343953926634992332820282019728792003956564819949, 2, 74058212732561358302231226437062788676166966415465897661863160754340907)]
 -/
 #guard_msgs in
@@ -39,6 +39,14 @@ example : Nat.Prime (2 ^ 255 - 19) := by
 /-- error: prime_cert?: construction input exceeds 32 bits -/
 #guard_msgs in
 example : Nat.Prime (2 ^ 255 - 19) := by prime_cert? (config := { maxBits := 32 })
+
+-- A pure power of two cannot yet be rendered by the existing pock3 syntax.
+/--
+error: prime_cert?: construction exhausted after 0 attempts (limit 1024, depth 32, seed 17)
+-/
+#guard_msgs in
+example : Nat.Prime 37 := by
+  prime_cert? (config := { trialBound := 2, smoothBounds := [], factorFuel := 0 })
 
 open PrimeCert.Construction
 
@@ -72,3 +80,19 @@ run_cmd Lean.Elab.Command.liftTermElabM do
   unless !(run { maxDepth := 0 } primes (2^255-19)).1 do throwError "depth exhaustion"
   unless !(run { maxAttempts := 0 } primes (2^255-19)).1 do throwError "attempt exhaustion"
   unless !(run {} primes (2^255-17)).1 do throwError "composite accepted by construction"
+
+/--
+info: Try this:
+  [apply] exact prime_cert%
+    [sieve {101}]
+-/
+#guard_msgs in
+example : Nat.Prime 101 := by prime_cert? (config := { maxAttempts := 2 ^ 10 })
+
+/-- error: prime_cert?: expected a closed natural number -/
+#guard_msgs in
+example (n : Nat) : Nat.Prime n := by prime_cert?
+
+/-- error: prime_cert?: expected a goal of the form `Nat.Prime _` -/
+#guard_msgs in
+example : True := by prime_cert?

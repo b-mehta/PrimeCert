@@ -5,7 +5,6 @@ Authors: Kim Morrison
 -/
 module
 public import PrimeCert.PowMod
-import Mathlib.Data.Nat.Sqrt
 
 /-! Bounded, untrusted certificate construction. Every emitted ladder is checked by the kernel. -/
 public section
@@ -45,6 +44,8 @@ structure State where
   seed : UInt64 := 17
   nodes : Array Node := #[]
   leaves : Array Nat := #[]
+  -- Try each child once per remaining depth; failed alternatives share that result.
+  failed : Array (Nat × Nat) := #[]
   deriving Repr, BEq, Inhabited
 
 /-- No-factor and whole-modulus outcomes are distinct; neither is a proper factor. -/
@@ -52,7 +53,8 @@ inductive SmoothResult where
   | noFactor | whole | factor (d : Nat)
   deriving Repr, BEq, Inhabited
 
-/-- Stage-one Pollard p−1. `primes` must cover every prime through `bound`.
+/-- Stage-one Pollard p−1. `primes` must be strictly ascending and cover every prime
+through `bound`.
 The tactic reads these from PrimeCert's existing certified sieve cache. -/
 def pMinusOne (primes : Array Nat) (n base bound : Nat) : SmoothResult := Id.run do
   if n < 4 || base ≤ 1 || n ≤ base then return .noFactor
@@ -211,6 +213,8 @@ private def choices (budget : Budget) (primes : Array Nat) (n : Nat)
     let mask := if count ≤ budget.maxSubsets then i else if i == 0 then count - 1 else i - 1
     let fs := factors.zipIdx.filterMap fun (f, j) => if mask.testBit j then some f else none
     if let some mode := criterion n (product fs) then
+      -- The existing pock3 syntax requires an odd factor after the power of 2.
+      if mode != .pock && fs.length < 2 then continue
       let cost := costs.zipIdx.foldl
         (fun s (c, j) => if mask.testBit j then s + 16 * c + 1 else s) 0
       selected := (cost, fs, mode) :: selected
@@ -235,6 +239,7 @@ private def generate (budget : Budget) (primes : Array Nat) : Nat → Nat → St
     if primes.contains n then
       modify fun st => { st with leaves := st.leaves.push n }
       return true
+    if (← get).failed.contains (n, depth + 1) then return false
     if !probablePrime n then return false
     let data ← factor budget primes (n - 1)
     for (fs, mode) in choices budget primes n data do
@@ -247,6 +252,7 @@ private def generate (budget : Budget) (primes : Array Nat) : Nat → Nat → St
         if !(← generate budget primes depth p) then continue
       modify fun st => { st with nodes := st.nodes.push ⟨n, root, mode, fs⟩ }
       return true
+    modify fun st => { st with failed := st.failed.push (n, depth + 1) }
     return false
 
 /-- Construction outcome, including consumed work and advanced deterministic seed on exhaustion.
