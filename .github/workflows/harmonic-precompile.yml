@@ -1,0 +1,63 @@
+name: Does compiling the project to native code help the sum of 1/p
+
+on:
+  push:
+    branches:
+      - 'ci/harmonic-precompile'
+  workflow_dispatch:
+
+jobs:
+  precompile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Record the runner
+        run: |
+          free -m
+          nproc
+          grep -n precompileModules lakefile.toml || echo "precompileModules not set"
+
+      - name: Time the case with the project compiled to native code
+        run: |
+          set +e +o pipefail
+          lake build PrimeCert.Meta.PrimeHarmonic > out-build-native.txt 2>&1
+          echo "native library build $? in $(grep -c . out-build-native.txt) lines"
+          start=$(date +%s)
+          lake build PrimeCertTest.HarmonicBench.Raw1e7_Raw > out-native.txt 2>&1
+          echo "RESULT precompile | native | exit $? | wall $(( $(date +%s) - start ))s"
+          tail -3 out-native.txt
+
+      - name: Turn it off and time the same case interpreted
+        run: |
+          set +e +o pipefail
+          python3 - <<'PY'
+          p = 'lakefile.toml'
+          s = open(p).read().replace('precompileModules = true\n', '')
+          open(p, 'w').write(s)
+          PY
+          grep -n precompileModules lakefile.toml || echo "precompileModules now unset"
+          rm -rf .lake/build/lib/lean/PrimeCert .lake/build/lib/libPrimeCert*
+          lake build PrimeCert.Meta.PrimeHarmonic > out-build-interp.txt 2>&1
+          echo "interpreted library build $?"
+          start=$(date +%s)
+          lake build PrimeCertTest.HarmonicBench.Raw1e7_Raw > out-interp.txt 2>&1
+          echo "RESULT precompile | interpreted | exit $? | wall $(( $(date +%s) - start ))s"
+          tail -3 out-interp.txt
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: precompile
+          path: out-*.txt
