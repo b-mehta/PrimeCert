@@ -7,6 +7,7 @@ module
 
 public import PrimeCert.SieveCorrect
 public import PrimeCert.SieveBase
+public import PrimeCert.SegmentedSieve
 
 public import Mathlib.Algebra.BigOperators.Intervals
 public import Mathlib.Algebra.Order.Field.Rat
@@ -728,6 +729,52 @@ public theorem primeRecipRange_add {a b c A₁ C₁ A₂ C₂ A C S : ℕ}
   push_cast
   simp only [add_div] at hhi₁ hhi₂ ⊢
   exact ⟨by linarith, by linarith⟩
+
+/-- One sieved segment above the base range, as an enclosure of the sum over the primes it covers.
+`hseg` is the equation the segment command emits, and the two fold equations are the windowed folds
+over the segment literal, which the batches and the tree of joins produce exactly as for the base
+range. -/
+public theorem primeRecipRange_segment {B a W S g A C : ℕ}
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (ha5 : 5 ≤ a) (hW1 : 1 ≤ W) (hBa : B < a)
+    (hS : Nat.blt 0 S = true)
+    (htop : Sieve.value (Sieve.index a + W - 1) < B ^ 2)
+    (hsound : ∀ j < W, g.testBit j = true →
+      ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j))
+    (hcomplete : ∀ j < W,
+      (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) → g.testBit j = true)
+    (hA : sumB (recipAtW g (Sieve.index a) S) 0 W 1 = A)
+    (hC : sumB (bitAtW g) 0 W 1 = C) :
+    PrimeRecipRange a (Sieve.value (Sieve.index a + W - 1) + 1) A C S := by
+  have hlo : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
+  have hmono : ∀ j, Sieve.value (Sieve.index a) ≤ Sieve.value (Sieve.index a + j) := fun j ↦
+    Sieve.value_strictMono.monotone (Nat.le_add_right _ _)
+  have hlow : ∀ j < W, B < Sieve.value (Sieve.index a + j) := by
+    intro j _
+    have := hmono j
+    omega
+  have hhigh : ∀ j < W, Sieve.value (Sieve.index a + j) < B ^ 2 := by
+    intro j hj
+    have : Sieve.value (Sieve.index a + j) ≤ Sieve.value (Sieve.index a + W - 1) :=
+      Sieve.value_strictMono.monotone (by omega)
+    omega
+  have hiff := segment_bit_iff (fun j hj h ↦ hsound j hj h) hcomplete hlow hhigh
+  have hbit : ∀ t, Sieve.index a ≤ t → t < Sieve.index a + W →
+      ((Nat.shiftLeft g (Sieve.index a)).testBit t ↔ (Sieve.value t).Prime) := by
+    intro t h1 h2
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le h1
+    rw [testBit_shiftLeft_add]
+    exact hiff j (by omega)
+  have hA' : sumB (recipAtK (Nat.shiftLeft g (Sieve.index a)) S) (Sieve.index a) W 1 = A := by
+    rw [recip_shift]
+    exact hA
+  have hC' : sumB (bitAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = C := by
+    rw [bit_shift]
+    exact hC
+  have h1 : 1 ≤ Sieve.index a := by
+    rw [Sieve.index]
+    omega
+  have := primeRecipRange_of h1 hW1 hS hbit hA' hC'
+  rwa [hlo] at this
 
 /-- Everything `run_harmonic` needs in one application: a sieve covering `Nb ≥ N`, four numeric
 side conditions as `Bool` literals, and the two chained fold equations. -/
