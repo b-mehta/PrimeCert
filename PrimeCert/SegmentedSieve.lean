@@ -618,7 +618,7 @@ public theorem segLoopCK_ldiff_total {s lo Wm1 n seg start fuel : Nat} :
   have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
     intro x
     refine Nat.eq_of_testBit_eq fun i => ?_
-    simp [Nat.testBit_ldiff]
+    simp
   rwa [hz] at h
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
@@ -714,6 +714,32 @@ public theorem segLoopSCK_leaf {s lo Wm1 n b b' c start len : Nat}
   subst hc
   rw [segLoopSCK_eq fun i hi => testBitK_slice hi] at h
   exact Nat.beq_eq.mp h
+
+/-- A batch of joined masks as a standalone equation about the base sieve. -/
+public theorem segAccLoopSK_leaf {s lo Wm1 n acc acc' c start len : Nat}
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segAccLoopSK c lo Wm1 n acc start len).beq acc') :
+    segAccLoopK s lo Wm1 n acc start len = acc' := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segAccLoopSK_eq fun i hi => testBitK_slice hi] at h
+  exact Nat.beq_eq.mp h
+
+/-- Two neighbouring stretches of joined masks join into one. -/
+public theorem segAccLoopK_join {s lo Wm1 n acc acc' acc'' start len rest : Nat}
+    (h1 : segAccLoopK s lo Wm1 n acc start len = acc')
+    (h2 : segAccLoopK s lo Wm1 n acc' (start.add len) rest = acc'') :
+    segAccLoopK s lo Wm1 n acc start (len.add rest) = acc'' := by
+  rw [Nat.add_eq, segAccLoopK_add, h1]
+  rwa [Nat.add_eq] at h2
+
+/-- The window with every joined mask removed at once, as the run's value. -/
+public theorem segLoopCK_of_acc {s lo Wm1 W n acc bits fuel : Nat}
+    (hacc : segAccLoopK s lo Wm1 n 0 1 fuel = acc)
+    (hb : (Nat.ldiff (initSegK W) acc).beq bits) :
+    segLoopCK s lo Wm1 n (initSegK W) 1 fuel = bits := by
+  rw [segLoopCK_ldiff_total, hacc]
+  exact Nat.beq_eq.mp hb
 
 /-- One chain step from a clamped slice batch. -/
 public theorem segLoopSCK_chain {L s lo Wm1 n b b' c start len rest : Nat}
@@ -1118,6 +1144,19 @@ meta def segMarkC (seg p lo Wm1 n : Nat) : Nat :=
   let hit := mask &&& seg
   if hit = 0 then seg else seg - hit
 
+/-- Twin of `segAccLoopK`, joining the batch's masks into the running accumulator. -/
+meta def segAccLoopC (s lo Wm1 n acc start fuel : Nat) : Nat := Id.run do
+  let mut a := acc
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      let p := value (start + i)
+      let A := firstLoc (index (p * 5)) lo (p * 2)
+      let B := firstLoc (index (p * 7)) lo (p * 2)
+      a := a ||| buildMaskC p Wm1 A B n
+    c := c >>> 1
+  return a
+
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
 Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoopCK` agree on all
 of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
@@ -1226,12 +1265,14 @@ batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}`
 `ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
 Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 15 with the
 `segLoopC` twin, the same eight assemblies otherwise, so the pair `m` and `m + 8` differs in the
-command's own computation alone. -/
+command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
+the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
+and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 15 then throwError "run_segment_variant: mode {mode} is not 0 to 15"
+  if mode > 16 then throwError "run_segment_variant: mode {mode} is not 0 to 16"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1258,6 +1299,67 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
   let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  if mode == 16 then
+    let mut acc := 0
+    let mut accE := mkRawNatLit 0
+    let mut covered := 0
+    let mut proofA : Expr := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero])
+      #[Nat.mkType, mkAppN (mkConst ``segAccLoopK)
+        #[sE, loE, wE, nE, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit 0]]
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let owed := fuel - i * step0
+      let stepN := Nat.min step0 owed
+      let next := segAccLoopC sVal lo wm1 rounds acc start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let cE := mkRawNatLit cVal
+      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let batchE := mkAppN (mkConst ``segAccLoopSK)
+        #[cE, loE, wE, nE, accE, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      let leafName := mkPrivateName env (parent ++ Name.mkSimple s!"leaf_{i}")
+      addSegThm leafName
+        (mkNatEq (mkAppN (mkConst ``segAccLoopK)
+          #[sE, loE, wE, nE, accE, mkRawNatLit start, mkRawNatLit stepN]) (mkRawNatLit next))
+        (mkAppN (mkConst ``segAccLoopSK_leaf)
+          #[sE, loE, wE, nE, accE, mkRawNatLit next, cE, mkRawNatLit start, mkRawNatLit stepN,
+            mkConst chunkName, mkConst stepName])
+      proofA := mkAppN (mkConst ``segAccLoopK_join)
+        #[sE, loE, wE, nE, mkRawNatLit 0, accE, mkRawNatLit next, mkRawNatLit 1,
+          mkRawNatLit covered, mkRawNatLit stepN, proofA, mkConst leafName]
+      covered := covered + stepN
+      acc := next
+      accE := mkRawNatLit next
+    let bits := Nat.ldiff (initSeg W) acc
+    addDecl <| Declaration.defnDecl
+      { name := litName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    let accName := ns ++ Name.mkSimple s!"segAccV_{tag}"
+    addSegThm accName
+      (mkNatEq (mkAppN (mkConst ``segAccLoopK)
+        #[sE, loE, wE, nE, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]) accE) proofA
+    let clampedEq := mkAppN (mkConst ``segLoopCK_of_acc)
+      #[sE, loE, wE, mkRawNatLit W, nE, accE, mkConst litName, mkRawNatLit fuel,
+        mkConst accName, Lean.reflBoolTrue]
+    addSegThm parent (mkNatEq (mkSegLoopK sE loE wE initE 1 fuel) (mkConst litName))
+      (mkAppN (mkConst ``segEq_of_clamped)
+        #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkConst litName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, clampedEq])
+    let bValA := value fuel
+    addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
+      (mkNatEq (mkAppN (mkConst ``segRun)
+          #[sE, mkRawNatLit a, mkRawNatLit W, mkRawNatLit bValA]) (mkConst litName))
+      (mkAppN (mkConst ``segRun_of)
+        #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bValA, mkRawNatLit fuel,
+          mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          mkConst parent])
+    return
   let mut bits := initSeg W
   let mut bitsE := initE
   let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
