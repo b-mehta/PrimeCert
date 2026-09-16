@@ -792,6 +792,17 @@ public theorem testBit_segLoopK_of {s lo Wm1 seg start fuel j : Nat} (hseg : seg
       rw [testBit_segMarkK, ihn, hno (start + n) (by lia) (by lia) hb]
       simp
 
+/-- Every bit below `W` of the window a run starts from is set. -/
+public theorem testBit_initSegK {W j : Nat} (hj : j < W) : (initSegK W).testBit j = true := by
+  have hs1 : initSegK W = 2 ^ W - 1 := by
+    unfold initSegK
+    have hsl : Nat.shiftLeft 1 W = 1 <<< W := rfl
+    have h : (1 : Nat) <<< W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+    rw [hsl, h]
+    rfl
+  rw [hs1, Nat.testBit_two_pow_sub_one]
+  exact decide_eq_true hj
+
 /-- The bit of a number with no prime factor up to `B` survives the run. -/
 public def SegmentComplete (s B a W : Nat) : Prop :=
   ∀ j < W, (∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)) →
@@ -807,15 +818,7 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     (hB5 : 5 ≤ B) (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
   intro j hj hno
   have hvB : value (index B) = B := value_index hB6
-  refine testBit_segLoopK_of ?_ ?_
-  · have hs1 : initSegK W = 2 ^ W - 1 := by
-      unfold initSegK
-      have hsl : Nat.shiftLeft 1 W = 1 <<< W := rfl
-      have h : (1 : Nat) <<< W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
-      rw [hsl, h]
-      rfl
-    rw [hs1, Nat.testBit_two_pow_sub_one]
-    simpa using hj
+  refine testBit_segLoopK_of (testBit_initSegK hj) ?_
   · intro t h1 h2 hbit
     by_contra hmask
     rw [Bool.not_eq_false] at hmask
