@@ -566,10 +566,9 @@ public theorem value_index_add {a k : ℕ} (ha : a % 6 = 1 ∨ a % 6 = 5) :
     value (index a + 2 * k) = a + 6 * k := by
   grind [value, index]
 
-/-- The intended correctness statement for a segment: every surviving bit of the window names a
-number with no prime factor among the base primes. **Not proved here.** The pieces it needs
-(`testBit_buildMaskK`, `prog_iff_dvd`, `mask_iff`, `testBit_markMaskK`) are file-local in
-`PrimeCert.SieveCorrect`, so proving this means either re-deriving them or exporting them. -/
+/-- Every surviving bit of the window names a number with no prime factor among the base primes,
+proved by `segmentSound_of`. One direction only: a cleared bit is left unclassified, so this gives
+primality of the survivors exactly when the window sits below the square of the base bound. -/
 public def SegmentSound (s B a W : ℕ) : Prop :=
   ∀ j < W, (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j →
     ∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)
