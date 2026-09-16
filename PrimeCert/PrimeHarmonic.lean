@@ -621,6 +621,29 @@ public theorem sumB_lastEq (f : ℕ → ℕ) (L start step len acc a acc' : ℕ)
     L = acc' := by
   grind [Nat.beq_eq]
 
+/-- A batch of a fold over a segment literal, read through a window of that literal. The segment's
+own first position `lo` is carried along, since the numbers are still the ones at `lo + i`. -/
+public theorem recipW_window (g S lo k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (recipAtW g lo S) k B 1 = sumB (recipAtW w (lo + k) S) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  have harg : lo + (i + k) = lo + k + i := by omega
+  simp only [recipAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
+    Nat.div_eq_div, Nat.mul_one, Nat.add_zero, hbit, harg]
+
+/-- The count fold counterpart of `recipW_window`. -/
+public theorem bitW_window (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (bitAtW g) k B 1 = sumB (bitAtW w) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  simp only [bitAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero, hbit]
+
 /-! ## Reading a segment above the sieve
 
 A segment literal `g` covering the numbers from `a` upward has bit `j` for the number at position
