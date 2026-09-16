@@ -6,6 +6,11 @@
 # passes LIMIT_KB kibibytes (default 14000000), so a case that would exhaust the runner fails on
 # its own and the job carries on.
 #
+# Two environment variables adjust a run: LEAN_FLAGS adds flags to the lean command line, and TAG
+# prefixes the per-case output files, so two settings can run in one job without overwriting each
+# other. LEAN_FLAGS=-Ddebug.skipKernelTC=true times the elaborator with the kernel check switched
+# off.
+#
 # Reported per case: the sum of every [Kernel] entry; the sum over the window's batch lemmas
 # (names containing `segEqV_…step_`); the sum over its base-sieve slice lemmas (`segEqV_…chunk_`);
 # wall clock and peak resident memory of lean from /usr/bin/time; the number of batch lemmas.
@@ -26,9 +31,9 @@ ksum() {
 for round in $(seq 1 "$rounds"); do
   for k in $(seq 0 $((n - 1))); do
     f=${cases[$(( (k + round - 1) % n ))]}
-    out="out-$f-$round.txt"
-    tim="time-$f-$round.txt"
-    /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
+    out="out-${TAG}$f-$round.txt"
+    tim="time-${TAG}$f-$round.txt"
+    /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=0 $LEAN_FLAGS \
       "PrimeCertTest/SegTune/$f.lean" > "$out" 2> "$tim" &
     tpid=$!
     killed=0
@@ -56,7 +61,7 @@ for round in $(seq 1 "$rounds"); do
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
     nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
-    echo "round $round | $f | kernel total ${total}s | batch lemmas ${steps}s | slice lemmas" \
+    echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | slice lemmas" \
       "${chunks}s | wall $wall | peak ${peak} KiB | batch lemma count $nsteps"
   done
 done

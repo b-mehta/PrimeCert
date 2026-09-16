@@ -25,6 +25,8 @@ jobs:
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/tags.sh
           PrimeCertTest/SegTune/run.sh 2 Base0_Startup S7_Sieve V7_M3
+          TAG=nokernel- LEAN_FLAGS=-Ddebug.skipKernelTC=true \
+            PrimeCertTest/SegTune/run.sh 2 S7_Sieve V7_M3
           PrimeCertTest/SegTune/tags.sh out-*.txt
       - name: Fail the job if any case failed
         run: |
