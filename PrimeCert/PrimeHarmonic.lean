@@ -663,6 +663,18 @@ public theorem recipW_window (g S lo k B w : ℕ)
   simp only [recipAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
     Nat.div_eq_div, Nat.mul_one, Nat.add_zero, hbit, harg]
 
+/-- `recipW_window` with its numerals written as raw literals, the form the emitter builds. The
+first position of the batch is taken as a literal of its own, since the emitter has it. -/
+public theorem recipW_windowR (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtW g lo S) k B (nat_lit 1)
+      = sumB (recipAtW w lok S) (nat_lit 0) B (nat_lit 1) := by
+  rw [Nat.beq_eq] at hlok
+  subst hlok
+  exact recipW_window g S lo k B w hw
+
 /-- The count fold counterpart of `recipW_window`. -/
 public theorem bitW_window (g k B w : ℕ)
     (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
@@ -672,6 +684,13 @@ public theorem bitW_window (g k B w : ℕ)
   have hb := window_testBit hw (Finset.mem_range.mp hi)
   have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
   simp only [bitAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero, hbit]
+
+/-- `bitW_window` with its numerals written as raw literals. -/
+public theorem bitW_windowR (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtW g) k B (nat_lit 1) = sumB (bitAtW w) (nat_lit 0) B (nat_lit 1) :=
+  bitW_window g k B w hw
 
 /-! ## Reading a segment above the sieve
 

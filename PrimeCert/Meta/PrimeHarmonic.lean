@@ -845,12 +845,12 @@ meta def runHarmonicCoarse (bound scaleExp B split : Nat) : MetaM Unit := do
   let gRecip : Nat → Nat → Expr := fun w lo ↦
     mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit lo) SE
   let bRecip : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
-    mkAppN (mkConst ``recip_window)
+    mkAppN (mkConst ``recip_windowR)
       #[sE, SE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let fCount := mkApp (mkConst ``bitAtK) sE
   let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
   let bCount : Nat → Nat → Nat → Name → Expr := fun lo n w nm ↦
-    mkAppN (mkConst ``bit_window) #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    mkAppN (mkConst ``bit_windowR) #[sE, mkRawNatLit lo, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let tag := s!"{bound}_{scaleExp}_{B}_{split}"
   let base := `PrimeCert ++ Name.mkSimple s!"harmonicCoarse_{tag}"
   let env ← getEnv
@@ -1000,12 +1000,13 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let gRecip : Nat → Nat → Expr := fun w k ↦
     mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
   let bRecip : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``recipW_window)
-      #[gE, SE, loE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    mkAppN (mkConst ``recipW_windowR)
+      #[gE, SE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
+        Lean.reflBoolTrue, mkConst nm]
   let fCount := mkApp (mkConst ``bitAtW) gE
   let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
   let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``bitW_window)
+    mkAppN (mkConst ``bitW_windowR)
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
     gRecip bRecip (·.recip) wins winNames
