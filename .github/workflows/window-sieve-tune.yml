@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Install elan
         run: |
           curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
@@ -21,11 +23,21 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Time one segment at the best setting found so far
+      - name: Time the two operand orders of the mask, alternating on one runner
+        env:
+          BASE: 8685541
         run: |
-          chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/tags.sh
-          PrimeCertTest/SegTune/run.sh 1 V7_M11
-          PrimeCertTest/SegTune/tags.sh out-*.txt
+          chmod +x PrimeCertTest/SegTune/run.sh
+          cp PrimeCert/SegmentedSieve.lean /tmp/new.lean
+          git show "$BASE:PrimeCert/SegmentedSieve.lean" > /tmp/old.lean
+          for round in 1 2; do
+            for arm in new old; do
+              cp "/tmp/$arm.lean" PrimeCert/SegmentedSieve.lean
+              lake build PrimeCert.SegmentedSieve > /dev/null
+              TAG="$arm-r$round-" PrimeCertTest/SegTune/run.sh 1 V7_M11
+            done
+          done
+          cp /tmp/new.lean PrimeCert/SegmentedSieve.lean
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
