@@ -802,16 +802,21 @@ public theorem primeRecipRange_segment {B a W S g A C : ℕ}
 /-- Everything the segment command's output needs in one application: the base sieve, the equation
 the command emits, numeric side conditions as `Bool` literals, and the two folds over the segment
 literal. -/
-public theorem primeRecipRange_of_segRun {s B a W S g A C : ℕ} (hs : Sieve.IsSieve B s)
+public theorem primeRecipRange_of_segRun {s B a W S g A C lo top : ℕ} (hs : Sieve.IsSieve B s)
     (ha : a % 6 = 1 ∨ a % 6 = 5) (hB6 : B % 6 = 1 ∨ B % 6 = 5)
     (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
     (hW1 : Nat.ble 1 W = true) (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
     (hS : Nat.blt 0 S = true)
-    (htop : Nat.blt (Sieve.value (Sieve.index a + W - 1)) (B ^ 2) = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W - 1)) top = true)
+    (htop : Nat.blt top (B ^ 2) = true)
     (hseg : Sieve.segRun s a W B = g)
-    (hA : sumB (recipAtW g (Sieve.index a) S) 0 W 1 = A)
+    (hA : sumB (recipAtW g lo S) 0 W 1 = A)
     (hC : sumB (bitAtW g) 0 W 1 = C) :
-    PrimeRecipRange a (Sieve.value (Sieve.index a + W - 1) + 1) A C S := by
+    PrimeRecipRange a (top + 1) A C S := by
+  rw [Nat.beq_eq] at hlo htv
+  subst hlo
+  subst htv
   rw [Nat.ble_eq] at ha5 hW1 hB1 h7B
   rw [Nat.blt_eq] at hW htop
   rw [Sieve.segRun_eq] at hseg
