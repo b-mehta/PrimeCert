@@ -34,7 +34,8 @@ For `pock3`, the nonsquare mode is `0` when `s = 0`, `<` when `r² < 8s`, or
 `interval w` when `w² < r² - 8s < (w+1)²`. Writing just `interval` computes `w`
 during elaboration and inserts its literal into the proof. The kernel checks the two
 inequalities; it does not compute a square root. Both four-field and explicit-sieve-bound
-five-field forms accept these modes. Replace former prime-QNR mode numbers with `interval`;
+five-field forms accept these modes, including a lone power of two such as
+`pock3 (197, 2, <, 2 ^ 2)`. Replace former prime-QNR mode numbers with `interval`;
 auxiliary primes used only for those witnesses can be removed from `small`.
 
 The series of numbers form a prime certificate. For convenience, we provide a Python script in `scripts/prime_cert.py` to generate these certificates automatically. 
