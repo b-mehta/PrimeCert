@@ -17,7 +17,7 @@ Note that `Mathlib.Tactic.NormNum.PowMod` contains a similar tactic, but that ru
 slower and less efficiently than the one here.
 
 The accumulator was developed by Bhavik Mehta with help from Joachim Breitner.
-The fixed-window implementation follows leanprover/lean4#15167.
+The fixed-window implementation and tuning thresholds follow leanprover/lean4#15167.
 -/
 
 open Nat
@@ -53,7 +53,9 @@ private theorem powModK.window_eq (b m k fuel e : Nat) (hk : 2 ≤ k) (h : e < f
 
 -- TODO: once a published Lean toolchain containing leanprover/lean4#15167 is
 -- supported here, remove the local window/dispatch implementation and use
--- `Nat.powMod` and `Nat.powMod_def`. Preserve the `powModK` API and helper lemmas.
+-- the upstream kernel-reducible `Nat.powMod`. Preserve `powModK` and the public
+-- `powMod_eq_of_powModK` / `powMod_ne_of_powModK` bridges; remove the obsolete
+-- window/aux proofs. The native `powMod` can then also use upstream `Nat.powMod`.
 
 /-- Kernel-reducible modular exponentiation: computes `a ^ b % n`.
 Uses six-, four-, three-, and two-bit windows through moduli `2^64`, `2^512`,
@@ -77,6 +79,7 @@ accumulator. Modulus zero retains `a ^ b`. -/
           (powModK.window (a.mod n) n 64 b.succ b))))
     ((1 : Nat).mod n)
 where
+  /-- Binary accumulator; structural fuel keeps kernel reduction independent of termination proofs. -/
   aux : Nat → ((a b c : Nat) → Nat) :=
     Nat.rec (fun _ _ _ => 0)
       (fun _ r a b c =>
