@@ -274,6 +274,10 @@ public theorem recipSum_mem_Icc {S : ℕ} (s start len step : ℕ) (hS : S ≠ 0
 
 /-! ## Identifying the scanned sum with a sum over primes -/
 
+/-- A sieve for `N` serves any smaller bound, with the comparison as a `Bool` literal. -/
+public theorem Sieve.IsSieve.monoB {N M s : ℕ} (h : Sieve.IsSieve N s) (hM : Nat.ble M N = true) :
+    Sieve.IsSieve M s := fun t ht hv ↦ h t ht (hv.trans (Nat.ble_eq .. ▸ hM))
+
 theorem Sieve.IsSieve.mono {N M s : ℕ} (h : Sieve.IsSieve N s) (hM : M ≤ N) :
     Sieve.IsSieve M s := fun t ht hv ↦ h t ht (hv.trans hM)
 
@@ -803,7 +807,7 @@ public theorem primeRecipRange_segment {B a W S g A C : ℕ}
 the command emits, numeric side conditions as `Bool` literals, and the two folds over the segment
 literal. -/
 public theorem primeRecipRange_of_segRun {s B a W S g A C lo top : ℕ} (hs : Sieve.IsSieve B s)
-    (ha : a % 6 = 1 ∨ a % 6 = 5) (hB6 : B % 6 = 1 ∨ B % 6 = 5)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
     (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
     (hW1 : Nat.ble 1 W = true) (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
     (hS : Nat.blt 0 S = true)

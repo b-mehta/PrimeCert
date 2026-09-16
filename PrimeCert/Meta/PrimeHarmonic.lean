@@ -8,6 +8,7 @@ module
 import Lean.Elab.Command
 public meta import PrimeCert.PrimeHarmonic
 public meta import PrimeCert.Meta.SieveCache
+public meta import PrimeCert.SegmentedSieve
 
 /-! # The `run_harmonic` command
 
@@ -900,6 +901,127 @@ one at a time and the rest in runs of equal quotient (see `runHarmonicCoarse`). 
 elab "run_harmonic_coarse" bStx:num eStx:num lStx:num sStx:num : command =>
   liftTermElabM <|
     runHarmonicCoarse bStx.getNat eStx.getNat lStx.getNat sStx.getNat
+
+/-! ## One segment above the base sieve
+
+`run_harmonic_segment` sieves one window of numbers above the base sieve with the other session's
+`run_segment`, then sums it exactly as the base range is summed: batches of `B` positions, each
+reading its own window of the segment literal, joined in a tree. It lands
+`PrimeRecipRange a top A C S`, the enclosure of the sum over the primes of that window, which
+`primeRecipRange_add` joins to its neighbours. -/
+
+/-- The proof term `Or.inl rfl` or `Or.inr rfl` for `a % 6 = 1 ∨ a % 6 = 5`. -/
+meta def mkMod6Proof (a r : Nat) : Expr :=
+  let refl := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, mkRawNatLit r]
+  let lhs := mkNatEq (mkApp2 (mkConst ``Nat.mod) (mkRawNatLit a) (mkRawNatLit 6)) (mkRawNatLit 1)
+  let rhs := mkNatEq (mkApp2 (mkConst ``Nat.mod) (mkRawNatLit a) (mkRawNatLit 6)) (mkRawNatLit 5)
+  if r == 1 then mkApp3 (mkConst ``Or.inl) lhs rhs refl
+  else mkApp3 (mkConst ``Or.inr) lhs rhs refl
+
+/-- Sum the window of `W` wheel positions from `a`, already sieved by `run_segment a W fuel len B`
+in the same namespace, at scale `10 ^ scaleExp` in batches of `batch` positions, and enclose the sum
+over its primes. `len` must match the one given to `run_segment`, since it names the segment. -/
+meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
+  let r := a % 6
+  if r != 1 && r != 5 then
+    throwError "run_harmonic_segment: the window start {a} is not 1 or 5 modulo 6"
+  let rB := B % 6
+  if rB != 1 && rB != 5 then
+    throwError "run_harmonic_segment: the bound {B} is not 1 or 5 modulo 6"
+  if 7 * B > a then
+    throwError "run_harmonic_segment: the window must start at or above {7 * B}"
+  if W == 0 then
+    throwError "run_harmonic_segment: the window is empty"
+  let fuel := twinIndex B
+  if twinValue fuel != B then
+    throwError "run_harmonic_segment: {B} is not a wheel value"
+  let some cache ← Sieve.findSieveCache B
+    | throwError "run_harmonic_segment: no sieve cache in scope covers {B}"
+  if cache.hi < B then
+    throwError "run_harmonic_segment: the sieve in scope stops at {cache.hi}, below {B}"
+  let lo := twinIndex a
+  if twinValue lo != a then
+    throwError "run_harmonic_segment: {a} is not a wheel value"
+  let top := twinValue (lo + W - 1)
+  if top ≥ B * B then
+    throwError "run_harmonic_segment: the window reaches {top}, at or above {B * B}"
+  let batch := Nat.max 1 batch
+  let S := 10 ^ scaleExp
+  let ns ← getCurrNamespace
+  let tag := s!"{a}_{W}_{fuel}_{Nat.max 1 len}"
+  let segLit := ns ++ Name.mkSimple s!"segBits_{tag}"
+  let segEqI := ns ++ Name.mkSimple s!"segEqI_{tag}"
+  let env ← getEnv
+  let some info := env.find? segLit
+    | throwError "run_harmonic_segment: no segment {segLit}; run \
+`run_segment {a} {W} {fuel} {len} {B}` above this command"
+  let some g := info.value?.bind Expr.rawNatLit?
+    | throwError "run_harmonic_segment: the segment {segLit} is not a numeral"
+  let gE := mkConst segLit
+  let SE := mkRawNatLit S
+  let loE := mkRawNatLit lo
+  -- the batches of the segment, with their windows and totals read off the segment literal
+  let mut wins : Array WindowBatch := #[]
+  for i in [0:(W + batch - 1) / batch] do
+    let k := i * batch
+    let m := Nat.min batch (W - k)
+    let mut w := 0
+    let mut tot := 0
+    let mut cnt := 0
+    for j in [0:m] do
+      if g.testBit (k + m - 1 - j) then
+        w := 2 * w + 1
+      else
+        w := 2 * w
+      if g.testBit (k + j) then
+        tot := tot + S / twinValue (lo + k + j)
+        cnt := cnt + 1
+    wins := wins.push { lo := k, len := m, w, recip := tot, count := cnt }
+  let base := `PrimeCert ++ Name.mkSimple s!"harmonicSegment_{a}_{W}_{B}_{scaleExp}_{batch}"
+  let mut winNames : Array Name := #[]
+  for k in [0:wins.size] do
+    let wb := wins[k]!
+    let nm := mkPrivateName env (base ++ Name.mkSimple s!"w_{k}")
+    addHarmonicThm nm (mkWindowEq gE wb.lo wb.len wb.w) Lean.reflBoolTrue
+    winNames := winNames.push nm
+  let fRecip := mkApp3 (mkConst ``recipAtW) gE loE SE
+  let gRecip : Nat → Nat → Expr := fun w k ↦
+    mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
+  let bRecip : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+    mkAppN (mkConst ``recipW_window)
+      #[gE, SE, loE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+  let fCount := mkApp (mkConst ``bitAtW) gE
+  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+  let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+    mkAppN (mkConst ``bitW_window)
+      #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+  let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
+    gRecip bRecip (·.recip) wins winNames
+  let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount
+    gCount bCount (·.count) wins winNames
+  let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+  addHarmonicThm iccName
+    (mkAppN (mkConst ``PrimeRecipRange)
+      #[mkRawNatLit a, mkRawNatLit (top + 1), mkRawNatLit A, mkRawNatLit C, SE])
+    (mkAppN (mkConst ``primeRecipRange_of_segRun)
+      #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit top,
+        mkAppN (mkConst ``Sieve.IsSieve.monoB)
+          #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
+            mkConst cache.isSieveName, Lean.reflBoolTrue],
+        mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+        mkConst aName, mkConst cName])
+  logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
+divisors to {B}; A = {A}, C = {C}"
+
+/-- `run_harmonic_segment a W B e batch len` sieves the window of `W` wheel positions from `a` by
+the primes up to `B` and encloses the sum of the reciprocals of its primes at scale `10 ^ e` (see
+`runHarmonicSegment`). -/
+elab "run_harmonic_segment" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num : command =>
+  liftTermElabM <|
+    runHarmonicSegment aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat lStx.getNat
 
 /-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
 `∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/
