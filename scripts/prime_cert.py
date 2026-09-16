@@ -197,7 +197,7 @@ def certify(N, nm1_factors=None, pool=None):
 
     go(N)
     ss = "; ".join(str(s) for s in sorted(smalls))
-    body = ",\n   ".join([f"small {{{ss}}}"] + steps)
+    body = ",\n   ".join(([f"small {{{ss}}}"] if smalls else []) + steps)
     return f"theorem prime_{N} : Nat.Prime {N} := prime_cert%\n  [{body}]"
 
 def load_pool(path):
