@@ -1,0 +1,63 @@
+name: The sum of 1/p past a billion
+
+on:
+  push:
+    branches:
+      - 'ci/harmonic-billion'
+  workflow_dispatch:
+
+jobs:
+  billion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the parts depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.SegmentedSieve PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+
+      - name: Record the runner
+        run: |
+          free -m
+          nproc
+          swapon --show || true
+
+      - name: Sum the twelve parts at once and join them
+        run: |
+          set +e +o pipefail
+          start=$(date +%s)
+          lake build PrimeCertTest.Billion.All > out-billion.txt 2>&1 &
+          pid=$!
+          peak=0
+          while kill -0 "$pid" 2>/dev/null; do
+            r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+            if [ "$r" -gt "$peak" ]; then peak=$r; fi
+            t=$(( $(date +%s) - start ))
+            if [ $(( t % 120 )) -eq 0 ]; then
+              echo "t=${t}s lean processes $(pgrep -c -x lean || echo 0) rss $(( r / 1024 )) MB"
+            fi
+            sleep 1
+          done
+          wait "$pid"
+          code=$?
+          echo "RESULT billion | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
+          grep -E "run_harmonic_join|error" out-billion.txt | tail -20
+          exit "$code"
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: billion
+          path: out-billion.txt
