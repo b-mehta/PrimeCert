@@ -569,7 +569,7 @@ public theorem value_index_add {a k : ℕ} (ha : a % 6 = 1 ∨ a % 6 = 5) :
 /-- The completed run over the window of `W` positions from `a`, sieved by the base primes up to
 `B`, in terms of `a`, `W` and `B` themselves. This is the form the correctness statements speak in
 and the form `run_segment` emits alongside the numeral one, through `segRun_of`. -/
-@[expose] public def segRun (s a W B : ℕ) : ℕ :=
+@[expose] public noncomputable def segRun (s a W B : ℕ) : ℕ :=
   segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)
 
 /-- `segRun` in the raw form the batch lemmas chain to. -/
