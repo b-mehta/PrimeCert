@@ -943,6 +943,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   if twinValue lo != a then
     throwError "run_harmonic_segment: {a} is not a wheel value"
   let top := twinValue (lo + W - 1)
+  let next := twinValue (lo + W)
   if top ≥ B * B then
     throwError "run_harmonic_segment: the window reaches {top}, at or above {B * B}"
   let batch := Nat.max 1 batch
@@ -1002,19 +1003,109 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
-      #[mkRawNatLit a, mkRawNatLit (top + 1), mkRawNatLit A, mkRawNatLit C, SE])
+      #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit C, SE])
     (mkAppN (mkConst ``primeRecipRange_of_segRun)
       #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
-        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit top,
+        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit next,
         mkAppN (mkConst ``Sieve.IsSieve.monoB)
           #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
             mkConst cache.isSieveName, Lean.reflBoolTrue],
         mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
         mkConst aName, mkConst cName])
   logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
 divisors to {B}; A = {A}, C = {C}"
+
+/-- The start of the window after the one of `W` positions from `a`. -/
+meta def nextSegmentStart (a W : Nat) : Nat := twinValue (twinIndex a + W)
+
+/-- The name `run_harmonic_segment` gives the enclosure of the window of `W` positions from `a`. -/
+meta def segmentRangeName (a W B scaleExp : Nat) : Name :=
+  `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+
+/-- One proved range of primes: its first number, the number after its last, its two totals, and
+the declaration proving the enclosure. -/
+structure RangeNode where
+  lo : Nat
+  hi : Nat
+  tot : Nat
+  cnt : Nat
+  name : Name
+
+/-- The empty range, so that the elaborator can index arrays of ranges with `!`. -/
+meta instance : Inhabited RangeNode := ⟨⟨0, 0, 0, 0, Name.anonymous⟩⟩
+
+/-- Join `n` neighbouring enclosures in a balanced tree, one addition per declaration. -/
+meta def joinRanges (parent : Name) (SE : Expr) (nodes : Array RangeNode) : MetaM RangeNode := do
+  if nodes.isEmpty then
+    throwError "joinRanges: no ranges to join"
+  let env ← getEnv
+  let mut cur := nodes
+  let mut level := 0
+  while cur.size > 1 do
+    let mut next : Array RangeNode := #[]
+    let mut i := 0
+    while i < cur.size do
+      if i + 1 < cur.size then
+        let x := cur[i]!
+        let y := cur[i + 1]!
+        if x.hi != y.lo then
+          throwError "joinRanges: {x.hi} and {y.lo} are not neighbours"
+        let tot := x.tot + y.tot
+        let cnt := x.cnt + y.cnt
+        let nm := mkPrivateName env (parent ++ Name.mkSimple s!"node_{level}_{i}")
+        addHarmonicThm nm
+          (mkAppN (mkConst ``PrimeRecipRange)
+            #[mkRawNatLit x.lo, mkRawNatLit y.hi, mkRawNatLit tot, mkRawNatLit cnt, SE])
+          (mkAppN (mkConst ``primeRecipRange_add)
+            #[mkRawNatLit x.lo, mkRawNatLit x.hi, mkRawNatLit y.hi, mkRawNatLit x.tot,
+              mkRawNatLit x.cnt, mkRawNatLit y.tot, mkRawNatLit y.cnt, mkRawNatLit tot,
+              mkRawNatLit cnt, SE, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst x.name,
+              mkConst y.name, Lean.reflBoolTrue, Lean.reflBoolTrue])
+        next := next.push { lo := x.lo, hi := y.hi, tot, cnt, name := nm }
+        i := i + 2
+      else
+        next := next.push cur[i]!
+        i := i + 1
+    cur := next
+    level := level + 1
+  return cur[0]!
+
+/-- Join the `n` windows of `W` positions from `a`, each already summed by
+`run_harmonic_segment`, into one enclosure of the sum over the primes they cover. -/
+meta def runHarmonicJoin (a W B scaleExp n : Nat) : MetaM Unit := do
+  if n == 0 then
+    throwError "run_harmonic_join: there are no windows to join"
+  let env ← getEnv
+  let SE := mkRawNatLit (10 ^ scaleExp)
+  let mut nodes : Array RangeNode := #[]
+  let mut start := a
+  for _ in [0:n] do
+    let nm := segmentRangeName start W B scaleExp
+    let some info := env.find? nm
+      | throwError "run_harmonic_join: no enclosure {nm}; \
+run `run_harmonic_segment {start} {W} {B} {scaleExp} …` above this command"
+    let some args := info.type.getAppArgs[0:5] |>.toArray.mapM Expr.rawNatLit?
+      | throwError "run_harmonic_join: the enclosure {nm} does not carry five numerals"
+    nodes := nodes.push
+      { lo := args[0]!, hi := args[1]!, tot := args[2]!, cnt := args[3]!, name := nm }
+    start := nextSegmentStart start W
+  let base := `PrimeCert ++ Name.mkSimple s!"harmonicJoin_{a}_{W}_{B}_{scaleExp}_{n}"
+  let root ← joinRanges base SE nodes
+  let nm := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{root.hi}_{scaleExp}"
+  addHarmonicThm nm
+    (mkAppN (mkConst ``PrimeRecipRange)
+      #[mkRawNatLit root.lo, mkRawNatLit root.hi, mkRawNatLit root.tot, mkRawNatLit root.cnt, SE])
+    (mkConst root.name)
+  logInfo s!"run_harmonic_join: {n} windows cover {root.lo} to {root.hi - 1}; \
+A = {root.tot}, C = {root.cnt}"
+
+/-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
+`runHarmonicJoin`). -/
+elab "run_harmonic_join" aStx:num wStx:num bStx:num eStx:num nStx:num : command =>
+  liftTermElabM <|
+    runHarmonicJoin aStx.getNat wStx.getNat bStx.getNat eStx.getNat nStx.getNat
 
 /-- `run_harmonic_segment a W B e batch len` sieves the window of `W` wheel positions from `a` by
 the primes up to `B` and encloses the sum of the reciprocals of its primes at scale `10 ^ e` (see

@@ -300,20 +300,20 @@ theorem recipSum_eq_Icc_range (s lo len : ℕ) :
 between the numbers at its two ends, given that the bit at each position of the scan says whether
 its number is prime. The sieve range uses this with `lo = 1`; a segment above the sieve uses it
 with the segment's own first position. -/
-public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo) (hlen : 1 ≤ len)
+public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo)
     (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime)) :
     recipSum s lo len 1
-      = ∑ p ∈ (Finset.Icc (Sieve.value lo) (Sieve.value (lo + len - 1))).filter Nat.Prime,
+      = ∑ p ∈ (Finset.Ico (Sieve.value lo) (Sieve.value (lo + len))).filter Nat.Prime,
           (p : ℚ)⁻¹ := by
   rw [recipSum_eq_Icc_range, ← Finset.sum_filter]
   refine Finset.sum_nbij' (i := Sieve.value) (j := Sieve.index) ?_ ?_ ?_ ?_ ?_
   · intro t ht
-    simp only [Finset.mem_filter, Finset.mem_Ico, Finset.mem_Icc] at ht ⊢
+    simp only [Finset.mem_filter, Finset.mem_Ico] at ht ⊢
     obtain ⟨⟨h1, h2⟩, hbit'⟩ := ht
-    refine ⟨⟨Sieve.value_strictMono.monotone h1, Sieve.value_strictMono.monotone (by omega)⟩, ?_⟩
+    refine ⟨⟨Sieve.value_strictMono.monotone h1, Sieve.value_strictMono h2⟩, ?_⟩
     exact (hbit t h1 h2).mp hbit'
   · intro p hp
-    simp only [Finset.mem_filter, Finset.mem_Icc, Finset.mem_Ico] at hp ⊢
+    simp only [Finset.mem_filter, Finset.mem_Ico] at hp ⊢
     obtain ⟨⟨hlow, hhigh⟩, hprime⟩ := hp
     have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
     have hc : p % 6 = 1 ∨ p % 6 = 5 := hprime.mod_six_eq_one_or_five (by omega) (by omega)
@@ -325,8 +325,8 @@ public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo) (hle
       omega
     have h2 : Sieve.index p < lo + len := by
       by_contra hcon
-      have : Sieve.value (lo + len - 1) < Sieve.value (Sieve.index p) :=
-        Sieve.value_strictMono (by omega)
+      have : Sieve.value (lo + len) ≤ Sieve.value (Sieve.index p) :=
+        Sieve.value_strictMono.monotone (by omega)
       omega
     refine ⟨⟨h1, h2⟩, (hbit _ h1 h2).mpr ?_⟩
     rw [hv]
@@ -334,7 +334,7 @@ public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo) (hle
   · intro t _
     exact Sieve.index_value t
   · intro p hp
-    simp only [Finset.mem_filter, Finset.mem_Icc] at hp
+    simp only [Finset.mem_filter, Finset.mem_Ico] at hp
     have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
     exact Sieve.value_index (hp.2.mod_six_eq_one_or_five (by omega) (by omega))
   · intro t _
@@ -725,27 +725,27 @@ above `A / S`. A scan of the base sieve and a scan of a segment above it both la
 
 /-- A scan of the positions `lo … lo + len - 1` encloses the sum over the primes it covers,
 provided the bit at each scanned position says whether its number is prime. -/
-public theorem primeRecipRange_of {s S lo len A C : ℕ} (hlo : 1 ≤ lo) (hlen : 1 ≤ len)
+public theorem primeRecipRange_of {s S lo len A C : ℕ} (hlo : 1 ≤ lo)
     (hS : Nat.blt 0 S = true)
     (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime))
     (hA : sumB (recipAtK s S) lo len 1 = A) (hC : sumB (bitAtK s) lo len 1 = C) :
-    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len - 1) + 1) A C S := by
+    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A C S := by
   rw [Nat.blt_eq] at hS
   have hSne : S ≠ 0 := by omega
-  have heq := recipSum_eq_primeSum_range hlo hlen hbit
+  have heq := recipSum_eq_primeSum_range hlo hbit
   have hmem := recipSum_mem_Icc (S := S) s lo len 1 hSne
   rw [heq, hA, hC] at hmem
-  rw [PrimeRecipRange, Finset.Ico_add_one_right_eq_Icc]
   exact hmem
 
 /-- Two neighbouring ranges of primes add, with the two totals and the two counts added as
 literals. -/
 public theorem primeRecipRange_add {a b c A₁ C₁ A₂ C₂ A C S : ℕ}
-    (hab : a ≤ b) (hbc : b ≤ c)
+    (hab : Nat.ble a b = true) (hbc : Nat.ble b c = true)
     (h₁ : PrimeRecipRange a b A₁ C₁ S) (h₂ : PrimeRecipRange b c A₂ C₂ S)
     (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
     PrimeRecipRange a c A C S := by
   rw [Nat.beq_eq] at hA hC
+  rw [Nat.ble_eq] at hab hbc
   rw [PrimeRecipRange, Finset.sum_filter] at h₁ h₂ ⊢
   rw [← Finset.sum_Ico_consecutive _ hab hbc]
   obtain ⟨hlo₁, hhi₁⟩ := h₁
@@ -762,7 +762,7 @@ public theorem primeRecipRange_add {a b c A₁ C₁ A₂ C₂ A C S : ℕ}
 over the segment literal, which the batches and the tree of joins produce exactly as for the base
 range. -/
 public theorem primeRecipRange_segment {B a W S g A C : ℕ}
-    (ha : a % 6 = 1 ∨ a % 6 = 5) (ha5 : 5 ≤ a) (hW1 : 1 ≤ W) (hBa : B < a)
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (ha5 : 5 ≤ a) (hBa : B < a)
     (hS : Nat.blt 0 S = true)
     (htop : Sieve.value (Sieve.index a + W - 1) < B ^ 2)
     (hsound : ∀ j < W, g.testBit j = true →
@@ -771,7 +771,7 @@ public theorem primeRecipRange_segment {B a W S g A C : ℕ}
       (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) → g.testBit j = true)
     (hA : sumB (recipAtW g (Sieve.index a) S) 0 W 1 = A)
     (hC : sumB (bitAtW g) 0 W 1 = C) :
-    PrimeRecipRange a (Sieve.value (Sieve.index a + W - 1) + 1) A C S := by
+    PrimeRecipRange a (Sieve.value (Sieve.index a + W)) A C S := by
   have hlo : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
   have hmono : ∀ j, Sieve.value (Sieve.index a) ≤ Sieve.value (Sieve.index a + j) := fun j ↦
     Sieve.value_strictMono.monotone (Nat.le_add_right _ _)
@@ -800,28 +800,28 @@ public theorem primeRecipRange_segment {B a W S g A C : ℕ}
   have h1 : 1 ≤ Sieve.index a := by
     rw [Sieve.index]
     omega
-  have := primeRecipRange_of h1 hW1 hS hbit hA' hC'
+  have := primeRecipRange_of h1 hS hbit hA' hC'
   rwa [hlo] at this
 
 /-- Everything the segment command's output needs in one application: the base sieve, the equation
 the command emits, numeric side conditions as `Bool` literals, and the two folds over the segment
 literal. -/
-public theorem primeRecipRange_of_segRun {s B a W S g A C lo top : ℕ} (hs : Sieve.IsSieve B s)
+public theorem primeRecipRange_of_segRun {s B a W S g A C lo next : ℕ} (hs : Sieve.IsSieve B s)
     (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
     (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
-    (hW1 : Nat.ble 1 W = true) (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
     (hS : Nat.blt 0 S = true)
     (hlo : Nat.beq (Sieve.index a) lo = true)
-    (htv : Nat.beq (Sieve.value (lo + W - 1)) top = true)
-    (htop : Nat.blt top (B ^ 2) = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
     (hseg : Sieve.segRun s a W B = g)
     (hA : sumB (recipAtW g lo S) 0 W 1 = A)
     (hC : sumB (bitAtW g) 0 W 1 = C) :
-    PrimeRecipRange a (top + 1) A C S := by
+    PrimeRecipRange a next A C S := by
   rw [Nat.beq_eq] at hlo htv
   subst hlo
   subst htv
-  rw [Nat.ble_eq] at ha5 hW1 hB1 h7B
+  rw [Nat.ble_eq] at ha5 hB1 h7B
   rw [Nat.blt_eq] at hW htop
   rw [Sieve.segRun_eq] at hseg
   have hsound' := Sieve.segmentSound_of hs ha hW hB1 h7B
@@ -829,7 +829,7 @@ public theorem primeRecipRange_of_segRun {s B a W S g A C lo top : ℕ} (hs : Si
   rw [Sieve.SegmentSound] at hsound'
   rw [Sieve.SegmentComplete] at hcomplete'
   rw [hseg] at hsound' hcomplete'
-  refine primeRecipRange_segment ha ha5 hW1 (by omega) hS htop
+  refine primeRecipRange_segment ha ha5 (by omega) hS htop
     (fun j hj h ↦ hsound' j hj h) hcomplete' hA hC
 public theorem primeRecipIcc_of {Nb N S s len A C : ℕ} (hs : Sieve.IsSieve Nb s)
     (hcov : Nat.ble N Nb = true) (hS : Nat.blt 0 S = true)
