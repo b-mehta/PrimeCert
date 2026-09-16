@@ -743,6 +743,94 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
   rw [hclear] at hbit
   exact absurd hbit (by simp)
 
+/-! ## Completeness of a segment
+
+The converse direction: a cleared bit is cleared for a reason. Each step clears only the mask of
+one base prime, and a mask bit of `p` sits at an offset whose number is a multiple of `p`, so a
+number with no prime factor up to `B` keeps its bit through the whole run. -/
+
+/-- A mask bit of `p` in the window names a multiple of `p`. -/
+public theorem dvd_of_testBit_mask {p lo Wm1 j : Nat} (hp6 : p % 6 = 1 ∨ p % 6 = 5)
+    (hp5 : 5 ≤ p) (hlo : index (p * 7) ≤ lo) (hj : j ≤ Wm1) (hW : Wm1 < 2 ^ 32)
+    (h : (buildMaskK p Wm1 (firstLocK (index (p * 5)) lo (p * 2))
+      (firstLocK (index (p * 7)) lo (p * 2)) 32).testBit j = true) :
+    p ∣ value (lo + j) := by
+  have hm : 0 < p * 2 := by lia
+  have h57 : index (p * 5) ≤ index (p * 7) := by
+    unfold index
+    lia
+  have h5lo : index (p * 5) ≤ lo := by lia
+  have h5 : value (index (p * 5)) = p * 5 := value_index (by lia)
+  have h7 : value (index (p * 7)) = p * 7 := value_index (by lia)
+  rw [testBit_buildMaskK (by lia) hj hW] at h
+  rcases h with ⟨hle, d, hd⟩ | ⟨hle, d, hd⟩
+  · obtain ⟨c, hc⟩ := firstLocK_spec (A := index (p * 5)) (lo := lo) hm h5lo
+    have hsum : lo + j = index (p * 5) + 2 * (p * (c + d)) := by lia
+    have hval : value (lo + j) = p * 5 + 6 * (p * (c + d)) := by
+      rw [hsum, value_add_two_mul, h5]
+    exact ⟨5 + 6 * (c + d), by lia⟩
+  · obtain ⟨c, hc⟩ := firstLocK_spec (A := index (p * 7)) (lo := lo) hm hlo
+    have hsum : lo + j = index (p * 7) + 2 * (p * (c + d)) := by lia
+    have hval : value (lo + j) = p * 7 + 6 * (p * (c + d)) := by
+      rw [hsum, value_add_two_mul, h7]
+    exact ⟨7 + 6 * (c + d), by lia⟩
+
+/-- A run whose every step misses `j` leaves bit `j` as it found it. -/
+public theorem testBit_segLoopK_of {s lo Wm1 seg start fuel j : Nat} (hseg : seg.testBit j = true)
+    (hno : ∀ t, start ≤ t → t < start + fuel → testBitK s t = true →
+      (buildMaskK (valueK t) Wm1 (firstLocK (indexK (valueK t * 5)) lo (valueK t * 2))
+        (firstLocK (indexK (valueK t * 7)) lo (valueK t * 2)) 32).testBit j = false) :
+    (segLoopK s lo Wm1 seg start fuel).testBit j = true := by
+  induction fuel with
+  | zero => exact hseg
+  | succ n ih =>
+    have ihn := ih fun t h1 h2 h3 => hno t h1 (by lia) h3
+    rw [segLoopK_succ]
+    cases hb : testBitK s (start + n) with
+    | false => exact ihn
+    | true =>
+      rw [testBit_segMarkK, ihn, hno (start + n) (by lia) (by lia) hb]
+      simp
+
+/-- The bit of a number with no prime factor up to `B` survives the run. -/
+public def SegmentComplete (s B a W : Nat) : Prop :=
+  ∀ j < W, (∀ q ≤ B, q.Prime → ¬ q ∣ value (index a + j)) →
+    (segLoopK s (index a) (W - 1) (initSegK W) 1 (index B)).testBit j = true
+
+-- As in `segmentSound_of`, the arithmetic side conditions are closed by `lia` against the whole
+-- context and together pass the default limit.
+set_option maxHeartbeats 1000000 in
+/-- Every bit a completed run clears names a number with a prime factor up to `B`, stated as its
+contrapositive. `B % 6` is 1 or 5 so that the run's last base index is `B` itself. -/
+public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (hB6 : B % 6 = 1 ∨ B % 6 = 5) (hW : W - 1 < 2 ^ 32)
+    (hB5 : 5 ≤ B) (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
+  intro j hj hno
+  have hvB : value (index B) = B := value_index hB6
+  refine testBit_segLoopK_of ?_ ?_
+  · have hs1 : initSegK W = 2 ^ W - 1 := by
+      unfold initSegK
+      have h : Nat.shiftLeft 1 W = 2 ^ W := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+      rw [h]
+    rw [hs1, Nat.testBit_two_pow_sub_one]
+    simpa using hj
+  · intro t h1 h2 hbit
+    by_contra hmask
+    rw [Bool.not_eq_false] at hmask
+    rw [valueK_eq_value, indexK_eq_index] at hmask
+    have ht0 : t ≠ 0 := by lia
+    have ht5 : 5 ≤ value t := five_le_value ht0
+    have htB : value t ≤ B := by
+      have := value_strictMono.monotone (show t ≤ index B by lia)
+      lia
+    have hprime : (value t).Prime := (hs t ht0 htB).mp hbit
+    have h6 : value t % 6 = 1 ∨ value t % 6 = 5 := value_mod6 t
+    have hlo : index (value t * 7) ≤ index a := by
+      unfold index
+      lia
+    exact hno (value t) htB hprime
+      (dvd_of_testBit_mask h6 ht5 hlo (by lia) hW hmask)
+
 /-! ## Compiled twins
 
 Executable copies of the definitions above, used by `run_segment` to compute the batch literals.
