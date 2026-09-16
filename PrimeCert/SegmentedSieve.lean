@@ -407,6 +407,12 @@ public theorem segMarkCK_ldiff {seg p lo Wm1 n : Nat} :
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := buildMaskCK_wide (by lia)
     rw [if_neg hc, clearHitK_eq, hwide]
 
+/-- Removing a mask, written with the two operations the kernel reduces directly. -/
+public theorem ldiff_eq_sub {seg m : Nat} : Nat.ldiff seg m = Nat.sub seg (Nat.land m seg) := by
+  have h1 : Nat.land m seg = seg &&& m := Nat.land_comm m seg
+  have h2 : Nat.sub seg (seg &&& m) = seg - (seg &&& m) := rfl
+  rw [h1, h2, Nat.sub_and_eq_ldiff]
+
 /-- Removing two masks one after the other removes their union. -/
 public theorem ldiff_ldiff {seg m1 m2 : Nat} :
     Nat.ldiff (Nat.ldiff seg m1) m2 = Nat.ldiff seg (m1 ||| m2) := by
@@ -736,9 +742,9 @@ public theorem segAccLoopK_join {s lo Wm1 n acc acc' acc'' start len rest : Nat}
 /-- The window with every joined mask removed at once, as the run's value. -/
 public theorem segLoopCK_of_acc {s lo Wm1 W n acc bits fuel : Nat}
     (hacc : segAccLoopK s lo Wm1 n 0 1 fuel = acc)
-    (hb : (Nat.ldiff (initSegK W) acc).beq bits) :
+    (hb : (Nat.sub (initSegK W) (Nat.land acc (initSegK W))).beq bits) :
     segLoopCK s lo Wm1 n (initSegK W) 1 fuel = bits := by
-  rw [segLoopCK_ldiff_total, hacc]
+  rw [segLoopCK_ldiff_total, hacc, ldiff_eq_sub]
   exact Nat.beq_eq.mp hb
 
 /-- One chain step from a clamped slice batch. -/
@@ -1336,7 +1342,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       covered := covered + stepN
       acc := next
       accE := mkRawNatLit next
-    let bits := Nat.ldiff (initSeg W) acc
+    let init := initSeg W
+    let bits := init - (acc &&& init)
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
