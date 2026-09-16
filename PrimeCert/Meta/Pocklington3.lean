@@ -26,9 +26,9 @@ open Lean Meta Qq
 - A numeric literal `p` (prime, `p > 2`) means `r² - 8s` is a quadratic non-residue mod `p`
 - `<` means `r² < 8s`
 - `interval w` supplies `w² < r² - 8s < (w+1)²` -/
-public syntax pock3_mode := num <|> "<" <|> ("interval " num)
+public syntax pock3_mode := num <|> "<" <|> (&"interval " num)
 
-meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
+meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) (r s : Nat) :
     MetaM Q(Pocklington3CertMode) := match stx with
   | `(pock3_mode| $n:num) =>
     have n := n.getNat
@@ -37,8 +37,12 @@ meta def parsePock3Mode (stx : TSyntax ``pock3_mode) (dict : PrimeDict) :
       let pf : Q(($nE).Prime) ← dict.getM n
       return q(.prime $nE $pf)
   | `(pock3_mode| <) => return q(.lt)
-  | `(pock3_mode| interval $w:num) =>
-    have wE : Q(ℕ) := mkNatLit w.getNat
+  | `(pock3_mode| interval $w:num) => do
+    let d := r * r - 8 * s
+    let v := w.getNat
+    unless v * v < d && d < (v + 1) * (v + 1) do
+      throwError "pock3: interval {v} does not strictly contain discriminant {d}"
+    have wE : Q(ℕ) := mkNatLit v
     return q(.interval $wE)
   | _ => Elab.throwUnsupportedSyntax
 
@@ -57,6 +61,9 @@ an explicit `m` still parses and behaves identically.
 ```lean
 -- Certify 73471: root 3, non-square witness 7, F = 2 * 31
 pock3 (73471, 3, 7, 2 * 31)
+
+-- An interval witness avoids the auxiliary prime proof:
+pock3 (73471, 3, interval 68, 2 * 31)
 
 -- With higher power of 2 and multiple odd factors:
 pock3 (32560621, 2, 7, 2 ^ 2 * 3 * 29)
@@ -131,20 +138,20 @@ meta def parsePock3Spec : PrimeCertMethod `pock3_spec := fun stx dict ↦ do
   have eE : Q(ℕ) := mkNatLit e
   have root := root.getNat
   have rootE : Q(ℕ) := mkNatLit root
+  have (_, oddParsed) := parseFactored F
+  have F₀ : ℕ := 2 ^ e * oddParsed.foldl (init := 1)
+    (fun acc pp ↦ acc * match pp with | .prime p => p | .pow p k => p ^ k)
+  have twoF := 2 * F₀
+  have R := (N - 1) / F₀
   let m ← match mOpt with
     | some mStx => pure mStx.getNat
     | none => do
-      have (_, oddParsed) := parseFactored F
-      have F₀ : ℕ := 2 ^ e * oddParsed.foldl (init := 1)
-        (fun acc pp ↦ acc * match pp with | .prime p => p | .pow p k => p ^ k)
-      have twoF := 2 * F₀
-      have R := (N - 1) / F₀
       have m := minimalSieveBound twoF (R % twoF) (R / twoF)
       if m == 0 then
         throwError "pock3: could not find a valid sieve bound for N = {N}; F may be too small"
       pure m
   have mE : Q(ℕ) := mkNatLit m
-  let mode ← parsePock3Mode mode dict
+  let mode ← parsePock3Mode mode dict (R % twoF) (R / twoF)
   have pf : Q(Nat.Prime $NE) := mkAppN (mkConst ``pocklington3_certK)
     #[NE, rootE, mE, eE, F'E, mode, reflBoolTrue]
   return ⟨N, NE, pf⟩

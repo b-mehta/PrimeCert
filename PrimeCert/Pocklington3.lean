@@ -136,12 +136,7 @@ theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
 theorem Pocklington3Cert.of_interval (r s w : Nat)
     (lo : w * w < r ^ 2 - 8 * s) (hi : r ^ 2 - 8 * s < (w + 1) * (w + 1)) :
     Pocklington3Cert r s := by
-  refine .inr (.inl ?_)
-  rintro ⟨a, ha⟩
-  rw [ha] at lo hi
-  by_cases h : a ≤ w
-  · exact (Nat.not_lt_of_ge (Nat.mul_self_le_mul_self h)) lo
-  · exact (Nat.not_lt_of_ge (Nat.mul_self_le_mul_self (by omega : w + 1 ≤ a))) hi
+  exact .inr <| .inl fun ⟨a, ha⟩ ↦ Nat.not_exists_sq lo hi ⟨a, ha.symm⟩
 
 /-- How to discharge the `Pocklington3Cert` obligation:
 - `zero`: `s = 0`

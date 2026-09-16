@@ -31,3 +31,11 @@ example : Nat.Prime (2 ^ 255 - 19) := prime_cert%
      2, interval 2028478494862525422475606, 2 * 353 * 57467 * 31757755568855353),
    pock (57896044618658097711785492504343953926634992332820282019728792003956564819949,
      2, 74058212732561358302231226437062788676166966415465897661863160754340907)]
+
+/-- error: pock3: interval 69 does not strictly contain discriminant 4689 -/
+#guard_msgs in
+example : Nat.Prime 73471 := prime_cert%
+  [small {2; 31}, pock3 (73471, 3, interval 69, 2 * 31)]
+
+-- The mode keyword does not reserve an ordinary identifier.
+public def interval : Nat := 68

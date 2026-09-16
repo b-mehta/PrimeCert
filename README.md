@@ -12,6 +12,10 @@ Proofs of primality using this library look like this:
 ```lean
 import PrimeCert
 
+-- Cube-root Pocklington with a supplied nonsquare interval:
+example : Nat.Prime 73471 := prime_cert%
+  [small {2; 31}, pock3 (73471, 3, interval 68, 2 * 31)]
+
 -- Small primes via classic Pocklington:
 theorem prime_31 : Nat.Prime 31 := pock% [2, 3; (31, 3, 2 * 3)]
 
