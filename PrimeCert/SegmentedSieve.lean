@@ -396,7 +396,11 @@ public theorem segMarkCK_ldiff {seg p lo Wm1 n : Nat} :
   rw [hite, hland]
   by_cases hc : p * 2 ≤ Wm1
   · rw [if_pos hc, clearHitK_eq]
-  · rw [if_neg hc, clearHitK_eq, buildMaskCK_wide (by lia)]
+  · have hwide : buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n
+        = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := buildMaskCK_wide (by lia)
+    rw [if_neg hc, clearHitK_eq, hwide]
 
 /-- Removing two masks one after the other removes their union. -/
 public theorem ldiff_ldiff {seg m1 m2 : Nat} :
@@ -486,11 +490,15 @@ public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
               (firstLocK (indexK ((valueK (start + m)).mul 7)) lo ((valueK (start + m)).mul 2)) n
               ||| acc) := by
         rw [segMarkCK_ldiff, ldiff_ldiff]
-      rw [hstep, ih]
-      congr 1
-      unfold segAccK
-      have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
-      rw [hor, Nat.lor_comm]
+      have hacc : segAccK acc (valueK (start + m)) lo Wm1 n
+          = buildMaskCK (valueK (start + m)) Wm1
+              (firstLocK (indexK ((valueK (start + m)).mul 5)) lo ((valueK (start + m)).mul 2))
+              (firstLocK (indexK ((valueK (start + m)).mul 7)) lo ((valueK (start + m)).mul 2)) n
+              ||| acc := by
+        unfold segAccK
+        have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+        rw [hor, Nat.lor_comm]
+      rw [hstep, ih, hacc]
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
