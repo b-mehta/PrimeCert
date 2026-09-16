@@ -636,18 +636,22 @@ public theorem not_testBit_segLoopK {s lo Wm1 seg start fuel t j : Nat}
   | zero => lia
   | succ n ih =>
     rw [segLoopK_succ]
-    rcases Nat.lt_or_ge t (start + n) with hlt | hge
-    · have hinner : (segLoopK s lo Wm1 seg start n).testBit j = false := ih hlt
-      cases hb : testBitK s (start + n) with
-      | false =>
-        rw [hb]
-        exact hinner
-      | true =>
-        rw [hb, testBit_segMarkK, hinner]
+    cases hb : testBitK s (start + n) with
+    | false =>
+      refine ih ?_
+      rcases Nat.lt_or_ge t (start + n) with hlt | hge
+      · exact hlt
+      · have ht : start + n = t := by lia
+        rw [ht, hbit] at hb
+        exact absurd hb (by simp)
+    | true =>
+      rw [testBit_segMarkK]
+      rcases Nat.lt_or_ge t (start + n) with hlt | hge
+      · rw [ih hlt]
         simp
-    · have ht : start + n = t := by lia
-      rw [ht, hbit, testBit_segMarkK, hmask]
-      simp
+      · have ht : start + n = t := by lia
+        rw [ht, hmask]
+        simp
 
 set_option maxHeartbeats 1000000 in
 /-- Every surviving bit of a completed run names a number with no prime factor up to `B`. -/
@@ -723,13 +727,15 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
         lia
       simpa using testBit_mask_of_dvd (q := q) (by lia) hX hstep
   -- the run passes `q`'s index, so the bit is clear at the end
-  have hbitK : testBitK s (index q) = true := by rwa [testBitK_eq_testBit]
+  have hbitK : testBitK s (index q) = true := by
+    rw [testBitK_eq_testBit]
+    exact hbitq
   have hmaskK : (buildMaskK (valueK (index q)) (W - 1)
       (firstLocK (indexK (valueK (index q) * 5)) (index a) (valueK (index q) * 2))
       (firstLocK (indexK (valueK (index q) * 7)) (index a) (valueK (index q) * 2)) 32).testBit j
       = true := by
-    rw [valueK_eq_value, hvq]
-    simpa using hmask
+    rw [valueK_eq_value, hvq, indexK_eq_index]
+    exact hmask
   have hclear := not_testBit_segLoopK (s := s) (lo := index a) (Wm1 := W - 1)
     (seg := initSegK W) (start := 1) (fuel := index B) (t := index q) (j := j)
     (by lia) (by lia) hbitK hmaskK
