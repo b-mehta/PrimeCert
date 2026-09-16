@@ -79,7 +79,8 @@ accumulator. Modulus zero retains `a ^ b`. -/
           (powModK.window (a.mod n) n 64 b.succ b))))
     ((1 : Nat).mod n)
 where
-  /-- Binary accumulator; structural fuel keeps kernel reduction independent of termination proofs. -/
+  /-- Binary accumulator; structural fuel keeps kernel reduction independent
+  of termination proofs. -/
   aux : Nat → ((a b c : Nat) → Nat) :=
     Nat.rec (fun _ _ _ => 0)
       (fun _ r a b c =>
