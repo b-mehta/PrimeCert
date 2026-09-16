@@ -498,7 +498,10 @@ public theorem segAccLoopSK_zero {c lo Wm1 n acc start fuel : Nat} :
     segAccLoopSK c lo Wm1 n acc start fuel = segAccLoopSK c lo Wm1 n 0 start fuel ||| acc := by
   have h := segAccLoopSK_lor (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (x := acc) (acc := 0)
     (start := start) (fuel := fuel)
-  rw [Nat.lor_zero] at h
+  have hz : acc ||| 0 = acc := by
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp [Nat.testBit_or]
+  rw [hz] at h
   rw [h, Nat.lor_comm]
 
 /-- Clearing the window once against the joined masks of a batch gives what clearing it once per
