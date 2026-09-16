@@ -12,19 +12,31 @@ Proofs of primality using this library look like this:
 ```lean
 import PrimeCert
 
+-- Cube-root Pocklington with a supplied nonsquare interval:
+example : Nat.Prime 73471 := prime_cert%
+  [small {2; 31}, pock3 (73471, 3, interval 68, 2 * 31)]
+
 -- Small primes via classic Pocklington:
 theorem prime_31 : Nat.Prime 31 := pock% [2, 3; (31, 3, 2 * 3)]
 
 -- Large primes via the combined framework:
 theorem prime_60digit :
     Nat.Prime 236684654874665389773181956283167565443541280517430278333971 := prime_cert%
-  [small {2; 3; 7; 11; 29; 31},
-   pock3 (73471, 3, 1, 7, 2 * 31),
-   pock3 (32560621, 2, 1, 7, 2 ^ 2 * 3 * 29),
-   pock3 (3586530508831189, 2, 1, 11, 2 ^ 2 * 73471),
+  [small {2; 3; 29; 31},
+   pock3 (73471, 3, 1, interval, 2 * 31),
+   pock3 (32560621, 2, 1, interval, 2 ^ 2 * 3 * 29),
+   pock3 (3586530508831189, 2, 1, interval, 2 ^ 2 * 73471),
    pock3 (236684654874665389773181956283167565443541280517430278333971,
-     2, 1, 3, 2 * 32560621 * 3586530508831189)]
+     2, 1, interval, 2 * 32560621 * 3586530508831189)]
 ```
+
+For `pock3`, the nonsquare mode is `0` when `s = 0`, `<` when `r² < 8s`, or
+`interval w` when `w² < r² - 8s < (w+1)²`. Writing just `interval` computes `w`
+during elaboration and inserts its literal into the proof. The kernel checks the two
+inequalities; it does not compute a square root. Both four-field and explicit-sieve-bound
+five-field forms accept these modes, including a lone power of two such as
+`pock3 (197, 2, <, 2 ^ 2)`. Replace former prime-QNR mode numbers with `interval`;
+auxiliary primes used only for those witnesses can be removed from `small`.
 
 The series of numbers form a prime certificate. For convenience, we provide a Python script in `scripts/prime_cert.py` to generate these certificates automatically. 
 Building such a prime certificate for N requires a (partial) factorisation of N-1. The script attempts to find these using `sympy`, falling back to GNU's `factor`, falling back to Pollard's rho.

@@ -1,12 +1,12 @@
 /-
 Copyright (c) 2025 Kenny Lau, Bhavik Mehta. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Kenny Lau, Bhavik Mehta
+Authors: Kenny Lau, Bhavik Mehta, Kim Morrison
 -/
 
 module
 
-import Mathlib.NumberTheory.LegendreSymbol.Basic
+import Mathlib.Tactic.IntervalCases
 import Mathlib.Algebra.BigOperators.ModEq
 import PrimeCert.ForMathlib
 public import PrimeCert.ForallB
@@ -30,6 +30,25 @@ theorem Nat.modEq_iff_exists_mul_add' {p q b : ℕ} (hqp : q ≤ p) :
   simp_rw [add_tsub_cancel_right, add_left_inj, dvd_iff_exists_eq_mul_left, eq_comm]
 
 namespace PrimeCert
+
+/-- The smallest `m ≥ 1` with `2s + m² < (2F + r)·m + 2` (the `pock3` bound condition), or `0`
+if no such `m` exists — which indicates `F` is too small for a valid certificate.
+
+Writing `b := 2F + r`, the condition is `m² - b·m + (2s - 2) < 0`, satisfied on the open interval
+between the roots of that quadratic. A solution exists iff the discriminant `b² - 8s + 8` is
+positive, and the least one sits just above the lower root `(b - √(b² - 8s + 8)) / 2`. So we
+compute it directly with an integer square root and confirm against a tiny window, rather than
+scanning — the failure case (`F` too small) returns at once instead of iterating. -/
+public def minimalSieveBound (twoF r s : ℕ) : ℕ :=
+  let b := twoF + r
+  if b * b + 8 ≤ 8 * s then 0
+  else Id.run do
+    let sq := Nat.sqrt (b * b + 8 - 8 * s)
+    let cand := (b - sq) / 2
+    for m in [max 1 (cand - 3) : cand + 4] do
+      if 2 * s + m * m < b * m + 2 then return m
+    return 0
+
 
 /-- The non-square certificate: one of three conditions that rule out `r² - 8s` being a
 perfect square, which is needed to exclude composite factorisations. -/
@@ -115,44 +134,35 @@ theorem pocklington3_test (N F R m r s : ℕ)
     · exact cert ⟨_, sq _⟩
     · lia
 
-theorem Pocklington3Cert.of_prime (r s p : Nat) (hp : Nat.Prime p) (h2p : 2 < p)
-    (cond : (r ^ 2 - 8 * s) ^ (p / 2) % p = p - 1) :
+/-- An integer strictly between consecutive squares cannot be a square. -/
+theorem Pocklington3Cert.of_interval (r s w : Nat)
+    (lo : w * w < r ^ 2 - 8 * s) (hi : r ^ 2 - 8 * s < (w + 1) * (w + 1)) :
     Pocklington3Cert r s := by
-  refine .inr <| .inl fun h ↦ ?_
-  have p_odd : p % 2 = 1 := by rw [← Nat.not_even_iff, Nat.Prime.even_iff hp]; lia
-  obtain ⟨a, ha⟩ := h
-  rw [ha, ← sq, ← pow_mul, Nat.two_mul_odd_div_two p_odd] at cond
-  replace cond := congr(($cond : ZMod p))
-  have := Fact.mk hp
-  rw [ZMod.natCast_mod, Nat.cast_pow, Nat.cast_sub hp.one_le, ZMod.natCast_self, zero_sub,
-    Nat.cast_one] at cond
-  have ha : (a : ZMod p) ≠ 0 := by
-    rintro ha; rw [ha, zero_pow (by lia), eq_comm, neg_eq_zero] at cond; grind
-  rw [ZMod.pow_card_sub_one_eq_one ha, eq_neg_iff_add_eq_zero, one_add_one_eq_two, ← Nat.cast_two,
-    ZMod.natCast_eq_zero_iff] at cond
-  exact not_lt_of_ge (Nat.le_of_dvd (by lia) cond) h2p
+  exact .inr <| .inl fun ⟨a, ha⟩ ↦ Nat.not_exists_sq lo hi ⟨a, ha.symm⟩
 
 /-- How to discharge the `Pocklington3Cert` obligation:
 - `zero`: `s = 0`
-- `prime p hp`: witness that `r² - 8s` is a quadratic non-residue mod `p`
-- `lt`: `r² < 8s` -/
+- `lt`: `r² < 8s`
+- `interval w`: `w² < r² - 8s < (w+1)²` -/
 public inductive Pocklington3CertMode : Type
-  | zero | prime (p : ℕ) (hp : Nat.Prime p) | lt
+  | zero | lt | interval (w : ℕ)
 
 @[expose] public noncomputable def Pocklington3CertMode.calculate (m : Pocklington3CertMode)
     (r s : ℕ) : Bool :=
-  m.rec (s.beq 0) (fun p _ ↦ (2).blt p && (powModK (r.pow 2 |>.sub <| s.mul 8) (p.div 2) p).beq
-    p.pred) (r.pow 2 |>.blt <| s.mul 8)
+  m.rec (s.beq 0) (r.pow 2 |>.blt <| s.mul 8)
+    (fun w ↦
+      let d := r.pow 2 |>.sub <| s.mul 8
+      (w.mul w |>.blt d) && (d.blt (w.succ.mul w.succ)))
 
 theorem Pocklington3CertMode.to_cert (m : Pocklington3CertMode) (r s : ℕ) (h : m.calculate r s) :
     Pocklington3Cert r s := by
   cases m with
   | zero => exact .inl <| Nat.beq_eq.to_iff.mp h
-  | prime p hp =>
-    simp only [calculate, Nat.pow_eq, Nat.mul_eq, Nat.sub_eq, Nat.div_eq_div, Nat.pred_eq_sub_one,
-      Bool.and_eq_true, Nat.blt_eq, Nat.beq_eq, mul_comm s, powModK_eq] at h
-    exact .of_prime _ _ p hp h.1 h.2
   | lt => exact .inr <| .inr <| Nat.blt_eq.to_iff.mp <| mul_comm 8 s ▸ h
+  | interval w =>
+    simp only [calculate, Bool.and_eq_true, Nat.blt_eq, Nat.mul_eq, Nat.pow_eq,
+      Nat.sub_eq, Nat.succ_eq_add_one, mul_comm s 8] at h
+    exact .of_interval r s w h.1 h.2
 
 public structure PrimePow : Type where
   (prime : ℕ) (pow : ℕ) (pf : prime.Prime) (pow_ne_zero : (0).blt pow)
