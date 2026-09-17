@@ -16,7 +16,7 @@ jobs:
         include:
           - n: "bittest"
             rounds: 2
-            cases: "Bit1e8_F1 Bit1e8_F2 Bit1e8_F3 Bit1e8_F4 Bit1e8_F5"
+            cases: "Bits1e8_F1 Bits1e8_F2 Bits1e8_F3 Bits1e8_F4 Bits1e8_F5"
     steps:
       - uses: actions/checkout@v7
 
