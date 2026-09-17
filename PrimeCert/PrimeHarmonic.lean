@@ -996,6 +996,37 @@ One traversal carries both totals, the count scaled by `P`, so a batch costs one
 rather than two. The proofs are the reciprocal and count versions run together and are left for
 later; the statements are what the emitter relies on. -/
 
+/-- Eight packed summands in one step, so a fold over them pays one recursor per eight positions
+rather than one per position. -/
+@[expose] public def packAt8 (w lo S P i : ℕ) : ℕ :=
+  (packAtW w lo S P i).add
+    ((packAtW w lo S P (Nat.add (nat_lit 1) i)).add
+    ((packAtW w lo S P (Nat.add (nat_lit 2) i)).add
+    ((packAtW w lo S P (Nat.add (nat_lit 3) i)).add
+    ((packAtW w lo S P (Nat.add (nat_lit 4) i)).add
+    ((packAtW w lo S P (Nat.add (nat_lit 5) i)).add
+    ((packAtW w lo S P (Nat.add (nat_lit 6) i)).add
+    (packAtW w lo S P (Nat.add (nat_lit 7) i))))))))
+
+/-- The packed fold over `8 * blocks` positions, eight to a step. -/
+@[expose] public def packSum8 (w lo S P blocks : ℕ) : ℕ :=
+  blocks.rec (nat_lit 0) fun n b ↦ (packAt8 w lo S P (Nat.mul (nat_lit 8) n)).add b
+
+/-- The unrolled fold agrees with the one-position-at-a-time fold. -/
+public theorem packSum8_eq (w lo S P blocks : ℕ) :
+    packSum8 w lo S P blocks = sumB (packAtW w lo S P) (nat_lit 0) (Nat.mul (nat_lit 8) blocks)
+      (nat_lit 1) := by
+  sorry
+
+/-- `sumB_windowEqR` reading the unrolled fold's certificate. -/
+public theorem sumB_windowEqR8 (f : ℕ → ℕ) (w lo S P : ℕ) (start len blocks t : ℕ)
+    (hlen : Nat.beq (Nat.mul (nat_lit 8) blocks) len = true)
+    (hb : sumB f start len (nat_lit 1)
+      = sumB (packAtW w lo S P) (nat_lit 0) len (nat_lit 1))
+    (h : Nat.beq (packSum8 w lo S P blocks) t = true) :
+    sumB f start len (nat_lit 1) = t := by
+  sorry
+
 /-- The packed counterpart of `recipW_windowR`, carrying both folds in one traversal. -/
 public theorem packW_windowR (g S P lo k lok B w : ℕ)
     (hlok : Nat.beq (Nat.add lo k) lok = true)

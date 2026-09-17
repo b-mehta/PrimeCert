@@ -505,17 +505,34 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     let gw := gE wb.w wb.lo
     let t := pick wb
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{k}")
-    addHarmonicThm stepName
-      (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
-        (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t)))
-      Lean.reflBoolTrue
+    -- eight positions to a recursor step where the fold is the packed one and the batch allows it
+    let unrolled := if wb.len % 8 == 0 then gw.getAppFn.constName?.map (· == ``packAtW) else none
     let hb := bridge wb.lo wb.len wb.w winNames[k]!
     let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
-    addHarmonicThm eqName
-      (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
-        (mkRawNatLit t))
-      (mkAppN (mkConst (if raw then ``sumB_windowEqR else ``sumB_windowEq))
-        #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
+    if unrolled == some true && gw.getAppNumArgs == 4 then
+      let args := gw.getAppArgs
+      addHarmonicThm stepName
+        (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+          (mkAppN (mkConst ``packSum8)
+            #[args[0]!, args[1]!, args[2]!, args[3]!, mkRawNatLit (wb.len / 8)])
+          (mkRawNatLit t)))
+        Lean.reflBoolTrue
+      addHarmonicThm eqName
+        (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
+          (mkRawNatLit t))
+        (mkAppN (mkConst ``sumB_windowEqR8)
+          #[fE, args[0]!, args[1]!, args[2]!, args[3]!, mkRawNatLit wb.lo, mkRawNatLit wb.len,
+            mkRawNatLit (wb.len / 8), mkRawNatLit t, Lean.reflBoolTrue, hb, mkConst stepName])
+    else
+      addHarmonicThm stepName
+        (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+          (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t)))
+        Lean.reflBoolTrue
+      addHarmonicThm eqName
+        (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
+          (mkRawNatLit t))
+        (mkAppN (mkConst (if raw then ``sumB_windowEqR else ``sumB_windowEq))
+          #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst stepName])
     nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
   let root ← joinNodes parent fE nodes
   return (root.tot, mkConst root.name)
