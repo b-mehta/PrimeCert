@@ -987,18 +987,18 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let loE := mkRawNatLit lo
   -- the batches of the segment, with their windows and totals read off the segment literal
   let mut wins : Array WindowBatch := #[]
+  -- each batch takes its slice off the low end of `rest`, so the whole literal is shifted once per
+  -- batch rather than twice per position
+  let mut rest := g
   for i in [0:(W + batch - 1) / batch] do
     let k := i * batch
     let m := Nat.min batch (W - k)
-    let mut w := 0
+    let w := rest &&& ((1 <<< m) - 1)
+    rest := rest >>> m
     let mut tot := 0
     let mut cnt := 0
     for j in [0:m] do
-      if g.testBit (k + m - 1 - j) then
-        w := 2 * w + 1
-      else
-        w := 2 * w
-      if g.testBit (k + j) then
+      if w.testBit j then
         tot := tot + S / twinValue (lo + k + j)
         cnt := cnt + 1
     wins := wins.push { lo := k, len := m, w, recip := tot, count := cnt }
