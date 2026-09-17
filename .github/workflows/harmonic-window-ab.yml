@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "numerals"
+          - n: "where"
             rounds: 1
-            cases: "Raw1e7_Plain Raw1e7_Raw Raw1e7_Step"
-          - n: "fold"
-            rounds: 2
-            cases: "Fold1e8_F1 Fold1e8_F2"
+            cases: "Fold1e8_F1"
     steps:
       - uses: actions/checkout@v7
 
@@ -80,6 +77,10 @@ jobs:
               | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
             entries=$(grep -c '\[Kernel\] \[' "out-$tag.txt")
             echo "RESULT ${{ matrix.n }} | $tag | exit $code | kernel ${total}s over ${entries} entries | wall $(( $(date +%s) - start ))s | peak ${hwm} KB | swap ${swap} KB"
+            grep -oE '\[[A-Za-z_.]+\] \[[0-9.]+\]' "out-$tag.txt" \
+              | awk -v tag="$tag" '{c=$1; t=$2; gsub(/[][]/,"",c); gsub(/[][]/,"",t); s[c]+=t; n[c]++}
+                  END {for (c in s) printf "CATEGORY %s | %s | %.2f s over %d entries\n", tag, c, s[c], n[c]}' \
+              | sort -t'|' -k3 -gr
             if [ "$code" -ne 0 ]; then
               echo "RUN FAILED $tag" | tee -a bench-failures.txt
               grep -E "error|memory" "out-$tag.txt" | tail -5
