@@ -977,15 +977,11 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   for i in [0:(W + batch - 1) / batch] do
     let k := i * batch
     let m := Nat.min batch (W - k)
-    let mut w := 0
+    let w := (g >>> k) &&& ((1 <<< m) - 1)
     let mut tot := 0
     let mut cnt := 0
     for j in [0:m] do
-      if g.testBit (k + m - 1 - j) then
-        w := 2 * w + 1
-      else
-        w := 2 * w
-      if g.testBit (k + j) then
+      if w.testBit j then
         tot := tot + S / twinValue (lo + k + j)
         cnt := cnt + 1
     wins := wins.push { lo := k, len := m, w, recip := tot, count := cnt }
