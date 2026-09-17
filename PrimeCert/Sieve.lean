@@ -24,6 +24,9 @@ namespace PrimeCert.Sieve
 /-- `testBitK` asking whether the masked value differs from zero, for timing against it. -/
 @[expose] public def testBitB (b i : Nat) : Bool := !Nat.beq (b.land (Nat.shiftLeft 1 i)) 0
 
+/-- `testBitK` shifting the bit down to position zero, for timing against it. -/
+@[expose] public def testBitH (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftRight b i).land 1)
+
 /-- `testBitK` with raw numeric literals in place of the elaborated ones, for timing against it. -/
 @[expose] public def testBitR (b i : Nat) : Bool :=
   Nat.ble (nat_lit 1) (b.land (Nat.shiftLeft (nat_lit 1) i))

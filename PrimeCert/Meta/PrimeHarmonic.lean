@@ -1019,6 +1019,8 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
               some (``recipWB_conv, ``bitWB_conv))
     | 5 => (``recipAtWR, ``bitAtWR, ``recipWR_windowR, ``bitWR_windowR,
               some (``recipWR_conv, ``bitWR_conv))
+    | 6 => (``recipAtWH, ``bitAtWH, ``recipWH_windowR, ``bitWH_windowR,
+              some (``recipWH_conv, ``bitWH_conv))
     | _ => (``recipAtW, ``bitAtW, ``recipW_windowR, ``bitW_windowR, none)
   let fRecip := mkApp3 (mkConst recipF) gE loE SE
   let gRecip : Nat → Nat → Expr := fun w k ↦

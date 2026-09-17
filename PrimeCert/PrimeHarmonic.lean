@@ -759,6 +759,13 @@ time all four. -/
 /-- `bitAtW` with the arguments of `Nat.land` the other way round in the bit test. -/
 @[expose] public def bitAtWS (w i : ℕ) : ℕ := (Sieve.testBitS w i).rec 0 1
 
+/-- `recipAtW` with the bit shifted down to position zero in the bit test. -/
+@[expose] public def recipAtWH (w lo S i : ℕ) : ℕ :=
+  (Sieve.testBitH w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
+
+/-- `bitAtW` with the bit shifted down to position zero in the bit test. -/
+@[expose] public def bitAtWH (w i : ℕ) : ℕ := (Sieve.testBitH w i).rec 0 1
+
 /-- `recipAtW` with a comparison against zero in the bit test. -/
 @[expose] public def recipAtWB (w lo S i : ℕ) : ℕ :=
   (Sieve.testBitB w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
@@ -779,6 +786,11 @@ theorem testBitS_eq (b i : ℕ) : Sieve.testBitS b i = Sieve.testBitK b i := by
   congr 1
   exact Nat.land_comm _ _
 
+theorem testBitH_eq (b i : ℕ) : Sieve.testBitH b i = Sieve.testBitK b i := by
+  rw [Sieve.testBitH, Sieve.testBitK_eq_testBit, Nat.testBit]
+  rcases Nat.mod_two_eq_zero_or_one (b / 2 ^ i) with h | h <;>
+    simp [Nat.shiftRight_eq_div_pow, Nat.and_one_is_mod, h, Nat.ble]
+
 theorem recipAtWS_eq (w lo S : ℕ) : recipAtWS w lo S = recipAtW w lo S := by
   funext i
   rw [recipAtWS, recipAtW, testBitS_eq]
@@ -786,6 +798,14 @@ theorem recipAtWS_eq (w lo S : ℕ) : recipAtWS w lo S = recipAtW w lo S := by
 theorem bitAtWS_eq (w : ℕ) : bitAtWS w = bitAtW w := by
   funext i
   rw [bitAtWS, bitAtW, testBitS_eq]
+
+theorem recipAtWH_eq (w lo S : ℕ) : recipAtWH w lo S = recipAtW w lo S := by
+  funext i
+  rw [recipAtWH, recipAtW, testBitH_eq]
+
+theorem bitAtWH_eq (w : ℕ) : bitAtWH w = bitAtW w := by
+  funext i
+  rw [bitAtWH, bitAtW, testBitH_eq]
 
 theorem recipAtWB_eq (w lo S : ℕ) : recipAtWB w lo S = recipAtW w lo S := by
   funext i
@@ -815,6 +835,24 @@ public theorem bitWS_windowR (g k B w : ℕ)
       (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
     sumB (bitAtWS g) k B (nat_lit 1) = sumB (bitAtWS w) (nat_lit 0) B (nat_lit 1) := by
   rw [bitAtWS_eq, bitAtWS_eq]
+  exact bitW_windowR g k B w hw
+
+/-- `recipW_windowR` for the bit shifted down to position zero. -/
+public theorem recipWH_windowR (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtWH g lo S) k B (nat_lit 1)
+      = sumB (recipAtWH w lok S) (nat_lit 0) B (nat_lit 1) := by
+  rw [recipAtWH_eq, recipAtWH_eq]
+  exact recipW_windowR g S lo k lok B w hlok hw
+
+/-- `bitW_windowR` for the bit shifted down to position zero. -/
+public theorem bitWH_windowR (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtWH g) k B (nat_lit 1) = sumB (bitAtWH w) (nat_lit 0) B (nat_lit 1) := by
+  rw [bitAtWH_eq, bitAtWH_eq]
   exact bitW_windowR g k B w hw
 
 /-- `recipW_windowR` for the comparison against zero. -/
@@ -860,6 +898,16 @@ public theorem recipWS_conv (g lo S k W st A : ℕ)
 public theorem bitWS_conv (g k W st A : ℕ) (h : sumB (bitAtWS g) k W st = A) :
     sumB (bitAtW g) k W st = A := by
   rwa [bitAtWS_eq] at h
+
+/-- Carry a fold over the shifted-down bit test back to the one the segment lemma wants. -/
+public theorem recipWH_conv (g lo S k W st A : ℕ)
+    (h : sumB (recipAtWH g lo S) k W st = A) : sumB (recipAtW g lo S) k W st = A := by
+  rwa [recipAtWH_eq] at h
+
+/-- The count fold counterpart of `recipWH_conv`. -/
+public theorem bitWH_conv (g k W st A : ℕ) (h : sumB (bitAtWH g) k W st = A) :
+    sumB (bitAtW g) k W st = A := by
+  rwa [bitAtWH_eq] at h
 
 /-- Carry a fold over the comparison against zero back to the one the segment lemma wants. -/
 public theorem recipWB_conv (g lo S k W st A : ℕ)

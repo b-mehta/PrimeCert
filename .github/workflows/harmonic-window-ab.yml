@@ -15,8 +15,8 @@ jobs:
       matrix:
         include:
           - n: "bittest"
-            rounds: 2
-            cases: "Bits1e8_F1 Bits1e8_F2 Bits1e8_F3 Bits1e8_F4 Bits1e8_F5"
+            rounds: 6
+            cases: "Bitn1e8_F1 Bitn1e8_F3 Bitn1e8_F4 Bitn1e8_F5 Bitn1e8_F6"
     steps:
       - uses: actions/checkout@v7
 
