@@ -990,4 +990,36 @@ public theorem primeRecipIcc_of_pack {Nb N S P s len T : ℕ} (hs : Sieve.IsSiev
     rw [← hT, Nat.add_mul_div_left _ _ (by omega), Nat.div_eq_of_lt hlt, Nat.zero_add]
   exact primeRecipIcc_of hs hcov hS hlen hlen' h5 hA hC
 
+/-! ## The segment command's packed fold
+
+One traversal carries both totals, the count scaled by `P`, so a batch costs one kernel reduction
+rather than two. The proofs are the reciprocal and count versions run together and are left for
+later; the statements are what the emitter relies on. -/
+
+/-- The packed counterpart of `recipW_windowR`, carrying both folds in one traversal. -/
+public theorem packW_windowR (g S P lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (packAtW g lo S P) k B (nat_lit 1)
+      = sumB (packAtW w lok S P) (nat_lit 0) B (nat_lit 1) := by
+  sorry
+
+/-- `primeRecipRange_of_segRun` reading one packed fold in place of the two, the reciprocal total
+being `T % P` and the count `T / P` whenever `P` is above every reachable reciprocal total. -/
+public theorem primeRecipRange_of_segRunPack {s B a W S P g T lo next : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hP : Nat.blt (W * S) P = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hT : sumB (packAtW g lo S P) 0 W 1 = T) :
+    PrimeRecipRange a next (T % P) (T / P) S := by
+  sorry
+
 end PrimeCert
