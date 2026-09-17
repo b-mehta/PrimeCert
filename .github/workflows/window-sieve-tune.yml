@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Separate the command's own computation from the literals it emits
+      - name: Time the fixed batch length against one varying with the primes
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-Ddebug.skipKernelTC=true PrimeCertTest/SegTune/run.sh 1 L7_LoopOnly V7_M11
+          PrimeCertTest/SegTune/run.sh 2 V7_M11 S7_Sched
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
