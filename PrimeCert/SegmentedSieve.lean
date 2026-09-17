@@ -138,6 +138,22 @@ base index `start + i`. -/
   fuel.rec seg fun i b =>
     (testBitK c i).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
 
+/-- One prime's mask joined into a running mask, leaving the window untouched. -/
+@[expose] public noncomputable def segAccK (acc p lo Wm1 n : Nat) : Nat :=
+  acc.lor (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+    (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)
+
+/-- The masks of a stretch of base primes joined into one, read from the slice `c` of the base
+sieve. The window is cleared once against the result, in place of once per prime. -/
+@[expose] public noncomputable def segAccLoopSK (c lo Wm1 n acc start fuel : Nat) : Nat :=
+  fuel.rec acc fun i a =>
+    (testBitK c i).rec a (segAccK a (valueK (start.add i)) lo Wm1 n)
+
+/-- `segAccLoopSK` reading the base primes from the base sieve itself. -/
+@[expose] public noncomputable def segAccLoopK (s lo Wm1 n acc start fuel : Nat) : Nat :=
+  fuel.rec acc fun i a =>
+    (testBitK s (start.add i)).rec a (segAccK a (valueK (start.add i)) lo Wm1 n)
+
 /-- Loop recurrence for `segLoopCK`. -/
 public theorem segLoopCK_succ {s lo Wm1 n seg start fuel : Nat} :
     segLoopCK s lo Wm1 n seg start (fuel + 1)
@@ -286,6 +302,18 @@ public theorem buildMaskK_succ' {p M A B n : Nat} :
   have hs : p <<< (n + 1) = p * 2 ^ (n + 1) := by grind [Nat.shiftLeft_eq]
   simp [buildMaskK_succ_raw', hs, Bool.rec_eq]
 
+/-- A prime wider than the window gets no rounds, whatever `n` says. -/
+public theorem buildMaskCK_wide {p M A B n : Nat} (hw : M < p * 2) :
+    buildMaskCK p M A B n = buildMaskCK p M A B 0 := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    rw [buildMaskCK_succ, ih]
+    have hle : p * 2 ≤ p * 2 ^ (n + 1) := by
+      have h2 : (2 : Nat) ≤ 2 ^ (n + 1) := Nat.one_lt_two_pow (by lia)
+      exact Nat.mul_le_mul_left p h2
+    rw [if_neg (by lia)]
+
 /-- Below `M`, the clamped mask is the mask. -/
 public theorem buildMaskCK_testBit {p M A B n : Nat} :
     ∀ i ≤ M, (buildMaskCK p M A B n).testBit i = (buildMaskK p M A B n).testBit i := by
@@ -354,6 +382,43 @@ public theorem one_le_valueK {k : Nat} : 1 ≤ valueK k := by
   unfold valueK
   lia
 
+/-- The clamped marking removes the prime's mask from the window. -/
+public theorem segMarkCK_ldiff {seg p lo Wm1 n : Nat} :
+    segMarkCK seg p lo Wm1 n
+      = Nat.ldiff seg (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n) := by
+  have hite : segMarkCK seg p lo Wm1 n
+      = if p * 2 ≤ Wm1
+        then clearHitK seg ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg)
+        else clearHitK seg ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0).land seg) := by
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, buildMaskCK_zero]
+  have hland : ∀ m : Nat, Nat.ldiff seg m = seg - m.land seg := by
+    intro m
+    have h1 : m.land seg = seg &&& m := Nat.land_comm m seg
+    rw [h1, Nat.sub_and_eq_ldiff]
+  rw [hite, hland]
+  by_cases hc : p * 2 ≤ Wm1
+  · rw [if_pos hc, clearHitK_eq]
+  · have hwide : buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n
+        = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := buildMaskCK_wide (by lia)
+    rw [if_neg hc, clearHitK_eq, hwide]
+
+/-- Removing a mask, written with the two operations the kernel reduces directly. -/
+public theorem ldiff_eq_sub {seg m : Nat} : Nat.ldiff seg m = Nat.sub seg (Nat.land m seg) := by
+  have h1 : Nat.land m seg = seg &&& m := Nat.land_comm m seg
+  have h2 : Nat.sub seg (seg &&& m) = seg - (seg &&& m) := rfl
+  rw [h1, h2, Nat.sub_and_eq_ldiff]
+
+/-- Removing two masks one after the other removes their union. -/
+public theorem ldiff_ldiff {seg m1 m2 : Nat} :
+    Nat.ldiff (Nat.ldiff seg m1) m2 = Nat.ldiff seg (m1 ||| m2) := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  simp [Nat.testBit_ldiff, Nat.testBit_or, Bool.and_assoc]
+
 /-- The clamped marking clears exactly the bits the marking clears, for a window inside the
 range. -/
 public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) (hp : 1 ≤ p)
@@ -408,6 +473,159 @@ public theorem segLoopSCK_succ {c lo Wm1 n seg start fuel : Nat} :
       = Bool.rec (segLoopSCK c lo Wm1 n seg start fuel)
           (segMarkCK (segLoopSCK c lo Wm1 n seg start fuel) (valueK (start + fuel)) lo Wm1 n)
           (testBitK c fuel) := rfl
+
+/-- Loop recurrence for `segAccLoopSK`. -/
+public theorem segAccLoopSK_succ {c lo Wm1 n acc start fuel : Nat} :
+    segAccLoopSK c lo Wm1 n acc start (fuel + 1)
+      = Bool.rec (segAccLoopSK c lo Wm1 n acc start fuel)
+          (segAccK (segAccLoopSK c lo Wm1 n acc start fuel) (valueK (start + fuel)) lo Wm1 n)
+          (testBitK c fuel) := rfl
+
+/-- A joining step in ordinary notation, with the new mask first. -/
+public theorem segAccK_eq {acc p lo Wm1 n : Nat} :
+    segAccK acc p lo Wm1 n
+      = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n ||| acc := by
+  unfold segAccK
+  have hor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  rw [hor, Nat.lor_comm]
+
+/-- Anything joined into the accumulator before a batch can be joined after it instead. -/
+public theorem segAccLoopSK_lor {c lo Wm1 n x acc start fuel : Nat} :
+    segAccLoopSK c lo Wm1 n (x ||| acc) start fuel
+      = x ||| segAccLoopSK c lo Wm1 n acc start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopSK_succ, segAccLoopSK_succ]
+    cases testBitK c m with
+    | false => exact ih
+    | true =>
+      simp only [segAccK_eq, ih]
+      rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
+
+/-- Loop recurrence for `segAccLoopK`. -/
+public theorem segAccLoopK_succ {s lo Wm1 n acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n acc start (fuel + 1)
+      = Bool.rec (segAccLoopK s lo Wm1 n acc start fuel)
+          (segAccK (segAccLoopK s lo Wm1 n acc start fuel) (valueK (start + fuel)) lo Wm1 n)
+          (testBitK s (start + fuel)) := rfl
+
+/-- Fuel additivity for `segAccLoopK`. -/
+public theorem segAccLoopK_add {s lo Wm1 n acc start a b : Nat} :
+    segAccLoopK s lo Wm1 n acc start (a + b)
+      = segAccLoopK s lo Wm1 n (segAccLoopK s lo Wm1 n acc start a) (start + a) b := by
+  induction b with
+  | zero => rfl
+  | succ b ih => grind [segAccLoopK_succ]
+
+/-- One chain step for `segAccLoopK`. -/
+public theorem segAccLoopK_chain {L s lo Wm1 n acc acc' start len rest : Nat}
+    (hP : L = segAccLoopK s lo Wm1 n acc start (len.add rest))
+    (h : (segAccLoopK s lo Wm1 n acc start len).beq acc') :
+    L = segAccLoopK s lo Wm1 n acc' (start.add len) rest := by
+  grind [segAccLoopK_add, Nat.beq_eq]
+
+/-- Last chain step for `segAccLoopK`. -/
+public theorem segAccLoopK_last {L s lo Wm1 n acc acc' start len : Nat}
+    (hP : L = segAccLoopK s lo Wm1 n acc start len)
+    (h : (segAccLoopK s lo Wm1 n acc start len).beq acc') : L = acc' := by
+  grind [Nat.beq_eq]
+
+/-- A slice agreeing with the base sieve on the batch's positions joins the same masks. -/
+public theorem segAccLoopSK_eq {c s lo Wm1 n acc start len : Nat}
+    (h : ∀ i < len, testBitK c i = testBitK s (start + i)) :
+    segAccLoopSK c lo Wm1 n acc start len = segAccLoopK s lo Wm1 n acc start len := by
+  induction len with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopSK_succ, segAccLoopK_succ, ih fun i hi => h i (by lia), h m (by lia)]
+
+/-- Anything joined into the accumulator before a run can be joined after it instead. -/
+public theorem segAccLoopK_lor {s lo Wm1 n x acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n (x ||| acc) start fuel
+      = x ||| segAccLoopK s lo Wm1 n acc start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ m ih =>
+    rw [segAccLoopK_succ, segAccLoopK_succ]
+    cases testBitK s (start + m) with
+    | false => exact ih
+    | true =>
+      simp only [segAccK_eq, ih]
+      rw [← Nat.lor_assoc, ← Nat.lor_assoc, Nat.lor_comm (buildMaskCK _ _ _ _ _) x]
+
+/-- A run's accumulator splits into the run's own masks and whatever it started from. -/
+public theorem segAccLoopK_zero {s lo Wm1 n acc start fuel : Nat} :
+    segAccLoopK s lo Wm1 n acc start fuel = segAccLoopK s lo Wm1 n 0 start fuel ||| acc := by
+  have h := segAccLoopK_lor (s := s) (lo := lo) (Wm1 := Wm1) (n := n) (x := acc) (acc := 0)
+    (start := start) (fuel := fuel)
+  have hz : acc ||| 0 = acc := by
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  rw [hz] at h
+  rw [h, Nat.lor_comm]
+
+/-- A batch's accumulator splits into the batch's own masks and whatever it started from. -/
+public theorem segAccLoopSK_zero {c lo Wm1 n acc start fuel : Nat} :
+    segAccLoopSK c lo Wm1 n acc start fuel = segAccLoopSK c lo Wm1 n 0 start fuel ||| acc := by
+  have h := segAccLoopSK_lor (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (x := acc) (acc := 0)
+    (start := start) (fuel := fuel)
+  have hz : acc ||| 0 = acc := by
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  rw [hz] at h
+  rw [h, Nat.lor_comm]
+
+/-- Clearing the window once against the joined masks of a batch gives what clearing it once per
+prime gives. -/
+public theorem segLoopSCK_eq_ldiff {c lo Wm1 n seg acc start fuel : Nat} :
+    Nat.ldiff (segLoopSCK c lo Wm1 n seg start fuel) acc
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n acc start fuel) := by
+  induction fuel generalizing acc with
+  | zero => rfl
+  | succ m ih =>
+    rw [segLoopSCK_succ, segAccLoopSK_succ]
+    cases testBitK c m with
+    | false => exact ih
+    | true =>
+      simp only [segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih]
+      refine congrArg (Nat.ldiff seg) ?_
+      rw [segAccLoopSK_zero, segAccLoopSK_zero (acc := acc)]
+      refine Nat.eq_of_testBit_eq fun i => ?_
+      simp only [Nat.testBit_or]
+      grind
+
+/-- The same, over the base sieve itself: a whole run clears the window once against the joined
+masks of every prime it passes. -/
+public theorem segLoopCK_eq_ldiff {s lo Wm1 n seg acc start fuel : Nat} :
+    Nat.ldiff (segLoopCK s lo Wm1 n seg start fuel) acc
+      = Nat.ldiff seg (segAccLoopK s lo Wm1 n acc start fuel) := by
+  induction fuel generalizing acc with
+  | zero => rfl
+  | succ m ih =>
+    rw [segLoopCK_succ, segAccLoopK_succ]
+    cases testBitK s (start + m) with
+    | false => exact ih
+    | true =>
+      simp only [segMarkCK_ldiff, segAccK_eq, ldiff_ldiff, ih]
+      refine congrArg (Nat.ldiff seg) ?_
+      rw [segAccLoopK_zero, segAccLoopK_zero (acc := acc)]
+      refine Nat.eq_of_testBit_eq fun i => ?_
+      simp only [Nat.testBit_or]
+      grind
+
+/-- A run of a whole window is the window with every mask removed at once. -/
+public theorem segLoopCK_ldiff_total {s lo Wm1 n seg start fuel : Nat} :
+    segLoopCK s lo Wm1 n seg start fuel
+      = Nat.ldiff seg (segAccLoopK s lo Wm1 n 0 start fuel) := by
+  have h := segLoopCK_eq_ldiff (s := s) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg) (acc := 0)
+    (start := start) (fuel := fuel)
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  rwa [hz] at h
 
 /-- A slice agreeing with the base sieve on the batch's positions runs the clamped batch the same
 way. -/
@@ -502,6 +720,32 @@ public theorem segLoopSCK_leaf {s lo Wm1 n b b' c start len : Nat}
   subst hc
   rw [segLoopSCK_eq fun i hi => testBitK_slice hi] at h
   exact Nat.beq_eq.mp h
+
+/-- A batch of joined masks as a standalone equation about the base sieve. -/
+public theorem segAccLoopSK_leaf {s lo Wm1 n acc acc' c start len : Nat}
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c)
+    (h : (segAccLoopSK c lo Wm1 n acc start len).beq acc') :
+    segAccLoopK s lo Wm1 n acc start len = acc' := by
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segAccLoopSK_eq fun i hi => testBitK_slice hi] at h
+  exact Nat.beq_eq.mp h
+
+/-- Two neighbouring stretches of joined masks join into one. -/
+public theorem segAccLoopK_join {s lo Wm1 n acc acc' acc'' start len rest : Nat}
+    (h1 : segAccLoopK s lo Wm1 n acc start len = acc')
+    (h2 : segAccLoopK s lo Wm1 n acc' (start.add len) rest = acc'') :
+    segAccLoopK s lo Wm1 n acc start (len.add rest) = acc'' := by
+  rw [Nat.add_eq, segAccLoopK_add, h1]
+  rwa [Nat.add_eq] at h2
+
+/-- The window with every joined mask removed at once, as the run's value. -/
+public theorem segLoopCK_of_acc {s lo Wm1 W n acc bits fuel : Nat}
+    (hacc : segAccLoopK s lo Wm1 n 0 1 fuel = acc)
+    (hb : (Nat.sub (initSegK W) (Nat.land acc (initSegK W))).beq bits) :
+    segLoopCK s lo Wm1 n (initSegK W) 1 fuel = bits := by
+  rw [segLoopCK_ldiff_total, hacc, ldiff_eq_sub]
+  exact Nat.beq_eq.mp hb
 
 /-- One chain step from a clamped slice batch. -/
 public theorem segLoopSCK_chain {L s lo Wm1 n b b' c start len rest : Nat}
@@ -906,6 +1150,19 @@ meta def segMarkC (seg p lo Wm1 n : Nat) : Nat :=
   let hit := mask &&& seg
   if hit = 0 then seg else seg - hit
 
+/-- Twin of `segAccLoopK`, joining the batch's masks into the running accumulator. -/
+meta def segAccLoopC (s lo Wm1 n acc start fuel : Nat) : Nat := Id.run do
+  let mut a := acc
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      let p := value (start + i)
+      let A := firstLoc (index (p * 5)) lo (p * 2)
+      let B := firstLoc (index (p * 7)) lo (p * 2)
+      a := a ||| buildMaskC p Wm1 A B n
+    c := c >>> 1
+  return a
+
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
 Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoopCK` agree on all
 of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
@@ -1014,12 +1271,14 @@ batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}`
 `ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
 Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 15 with the
 `segLoopC` twin, the same eight assemblies otherwise, so the pair `m` and `m + 8` differs in the
-command's own computation alone. -/
+command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
+the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
+and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 15 then throwError "run_segment_variant: mode {mode} is not 0 to 15"
+  if mode > 16 then throwError "run_segment_variant: mode {mode} is not 0 to 16"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1046,6 +1305,68 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
   let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  if mode == 16 then
+    let mut acc := 0
+    let mut accE := mkRawNatLit 0
+    let mut covered := 0
+    let mut proofA : Expr := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero])
+      #[Nat.mkType, mkAppN (mkConst ``segAccLoopK)
+        #[sE, loE, wE, nE, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit 0]]
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let owed := fuel - i * step0
+      let stepN := Nat.min step0 owed
+      let next := segAccLoopC sVal lo wm1 rounds acc start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let cE := mkRawNatLit cVal
+      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let batchE := mkAppN (mkConst ``segAccLoopSK)
+        #[cE, loE, wE, nE, accE, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      let leafName := mkPrivateName env (parent ++ Name.mkSimple s!"leaf_{i}")
+      addSegThm leafName
+        (mkNatEq (mkAppN (mkConst ``segAccLoopK)
+          #[sE, loE, wE, nE, accE, mkRawNatLit start, mkRawNatLit stepN]) (mkRawNatLit next))
+        (mkAppN (mkConst ``segAccLoopSK_leaf)
+          #[sE, loE, wE, nE, accE, mkRawNatLit next, cE, mkRawNatLit start, mkRawNatLit stepN,
+            mkConst chunkName, mkConst stepName])
+      proofA := mkAppN (mkConst ``segAccLoopK_join)
+        #[sE, loE, wE, nE, mkRawNatLit 0, accE, mkRawNatLit next, mkRawNatLit 1,
+          mkRawNatLit covered, mkRawNatLit stepN, proofA, mkConst leafName]
+      covered := covered + stepN
+      acc := next
+      accE := mkRawNatLit next
+    let init := initSeg W
+    let bits := init - (acc &&& init)
+    addDecl <| Declaration.defnDecl
+      { name := litName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    let accName := ns ++ Name.mkSimple s!"segAccV_{tag}"
+    addSegThm accName
+      (mkNatEq (mkAppN (mkConst ``segAccLoopK)
+        #[sE, loE, wE, nE, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]) accE) proofA
+    let clampedEq := mkAppN (mkConst ``segLoopCK_of_acc)
+      #[sE, loE, wE, mkRawNatLit W, nE, accE, mkConst litName, mkRawNatLit fuel,
+        mkConst accName, Lean.reflBoolTrue]
+    addSegThm parent (mkNatEq (mkSegLoopK sE loE wE initE 1 fuel) (mkConst litName))
+      (mkAppN (mkConst ``segEq_of_clamped)
+        #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkConst litName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, clampedEq])
+    let bValA := value fuel
+    addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
+      (mkNatEq (mkAppN (mkConst ``segRun)
+          #[sE, mkRawNatLit a, mkRawNatLit W, mkRawNatLit bValA]) (mkConst litName))
+      (mkAppN (mkConst ``segRun_of)
+        #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bValA, mkRawNatLit fuel,
+          mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          mkConst parent])
+    return
   let mut bits := initSeg W
   let mut bitsE := initE
   let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
@@ -1198,6 +1519,7 @@ run_segment 10000000000000001 4096 3333 16
 run_segment 10000000000000001 1024 33333 16
 run_segment 10000000000000001 256 333333 512
 run_segment 1000000000000000001 64 100 16
+run_segment_variant 16 1000000000001 64 100 16
 run_segment 10000000000000001 1024 333333 512
 
 end PrimeCert.Sieve
