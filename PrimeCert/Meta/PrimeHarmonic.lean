@@ -1146,11 +1146,15 @@ meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
   runHarmonicJoin a W B scaleExp n
 
 /-- `run_harmonic_series a W B e batch len n` sieves, sums and joins `n` neighbouring windows of
-`W` positions from `a` (see `runHarmonicSeries`). -/
-elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num nStx:num :
-    command =>
-  liftTermElabM <| runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
-    lStx.getNat nStx.getNat
+`W` positions from `a` (see `runHarmonicSeries`). As for `run_harmonic_window`, a trailing numeral
+picks the form of the batch statements and defaults to `2`. -/
+elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num nStx:num
+    rStx:(num)? : command =>
+  liftTermElabM <| do
+    statementForm.set (match rStx with | none => 2 | some r => r.getNat)
+    runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
+      lStx.getNat nStx.getNat
+    statementForm.set 2
 
 /-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
 `runHarmonicJoin`). -/

@@ -17,6 +17,9 @@ jobs:
           - n: "numerals"
             rounds: 1
             cases: "Raw1e7_Plain Raw1e7_Raw Raw1e7_Step"
+          - n: "fold"
+            rounds: 2
+            cases: "Fold1e8_F1 Fold1e8_F2"
     steps:
       - uses: actions/checkout@v7
 
