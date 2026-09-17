@@ -835,6 +835,32 @@ public theorem primeRecipRange_add {a b c A₁ C₁ A₂ C₂ A C S : ℕ}
   simp only [add_div] at hhi₁ hhi₂ ⊢
   exact ⟨by linarith, by linarith⟩
 
+/-- An enclosure up to `N` and a neighbouring range above it add, giving the enclosure up to `M`,
+with the two totals and the two counts added as literals. This is what turns the base sieve and the
+segments above it into one statement about every prime up to `M`. -/
+public theorem primeRecipIcc_add_range {N a b M A₁ C₁ A₂ C₂ A C S : ℕ}
+    (ha : Nat.beq (Nat.succ N) a = true) (hb : Nat.beq (Nat.succ M) b = true)
+    (hab : Nat.ble a b = true)
+    (h₁ : PrimeRecipIcc N A₁ C₁ S) (h₂ : PrimeRecipRange a b A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
+    PrimeRecipIcc M A C S := by
+  rw [Nat.beq_eq] at ha hb hA hC
+  rw [Nat.ble_eq] at hab
+  subst ha
+  subst hb
+  subst hA
+  subst hC
+  rw [PrimeRecipIcc, Finset.sum_filter] at h₁ ⊢
+  rw [PrimeRecipRange, Finset.sum_filter] at h₂
+  rw [Finset.range_eq_Ico] at h₁ ⊢
+  rw [← Finset.sum_Ico_consecutive _ (Nat.zero_le _) hab]
+  obtain ⟨hlo₁, hhi₁⟩ := h₁
+  obtain ⟨hlo₂, hhi₂⟩ := h₂
+  simp only [Nat.add_eq]
+  push_cast
+  simp only [add_div] at hhi₁ hhi₂ ⊢
+  exact ⟨by linarith, by linarith⟩
+
 /-- One sieved segment above the base range, as an enclosure of the sum over the primes it covers.
 `hseg` is the equation the segment command emits, and the two fold equations are the windowed folds
 over the segment literal, which the batches and the tree of joins produce exactly as for the base
