@@ -516,18 +516,22 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
       let loE := args[1]!
       let sE' := args[2]!
       let lenE := mkRawNatLit wb.len
+      -- one table lookup gives the whole divisor, so the fold drops the arithmetic of `valueK`
+      let loNat := loE.rawNatLit?.getD 0
+      let tblE := mkConst (if loNat % 2 == 0 then ``valTableE else ``valTableO)
+      let c3E := mkRawNatLit (3 * loNat)
       addHarmonicThm stepName
         (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
-          (mkAppN (mkConst ``recipBits)
-            #[loE, sE', mkAppN (mkConst ``popK) #[lenE, wE], wE])
+          (mkAppN (mkConst ``recipBitsT)
+            #[tblE, c3E, sE', mkAppN (mkConst ``popK) #[lenE, wE], wE])
           (mkRawNatLit t)))
         Lean.reflBoolTrue
       addHarmonicThm eqName
         (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, lenE, oneE])
           (mkRawNatLit t))
-        (mkAppN (mkConst ``sumB_windowEqRBits)
-          #[fE, wE, loE, sE', mkRawNatLit wb.lo, lenE, mkRawNatLit t,
-            Lean.reflBoolTrue, hb, mkConst stepName])
+        (mkAppN (mkConst (if loNat % 2 == 0 then ``sumB_windowEqRBitsE else ``sumB_windowEqRBitsO))
+          #[fE, wE, loE, sE', c3E, mkRawNatLit wb.lo, lenE, mkRawNatLit t,
+            Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, hb, mkConst stepName])
     else
       addHarmonicThm stepName
         (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
