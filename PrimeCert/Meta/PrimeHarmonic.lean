@@ -509,8 +509,8 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
     let eqLemma := match form with
       | 0 => ``sumB_windowEq
-      | 1 => ``sumB_windowEqR
-      | _ => ``sumB_windowEq1
+      | 2 => ``sumB_windowEq1
+      | _ => ``sumB_windowEqR
     addHarmonicThm eqName
       (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
         (mkRawNatLit t))
@@ -1009,22 +1009,41 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
     let nm := mkPrivateName env (base ++ Name.mkSimple s!"w_{k}")
     addHarmonicThm nm (mkWindowEq gE wb.lo wb.len wb.w) Lean.reflBoolTrue
     winNames := winNames.push nm
-  let fRecip := mkApp3 (mkConst ``recipAtW) gE loE SE
+  let form ← statementForm.get
+  -- forms 3, 4 and 5 sum over a variant of the bit test, carried back by a conversion theorem
+  let (recipF, bitF, recipWin, bitWin, conv) := match form with
+    | 2 => (``recipAtW, ``bitAtW, ``recipW_window1, ``bitW_window1, none)
+    | 3 => (``recipAtWS, ``bitAtWS, ``recipWS_windowR, ``bitWS_windowR,
+              some (``recipWS_conv, ``bitWS_conv))
+    | 4 => (``recipAtWB, ``bitAtWB, ``recipWB_windowR, ``bitWB_windowR,
+              some (``recipWB_conv, ``bitWB_conv))
+    | 5 => (``recipAtWR, ``bitAtWR, ``recipWR_windowR, ``bitWR_windowR,
+              some (``recipWR_conv, ``bitWR_conv))
+    | _ => (``recipAtW, ``bitAtW, ``recipW_windowR, ``bitW_windowR, none)
+  let fRecip := mkApp3 (mkConst recipF) gE loE SE
   let gRecip : Nat → Nat → Expr := fun w k ↦
-    mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
+    mkApp3 (mkConst recipF) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
   let bRecip : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``recipW_windowR)
+    mkAppN (mkConst recipWin)
       #[gE, SE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
         Lean.reflBoolTrue, mkConst nm]
-  let fCount := mkApp (mkConst ``bitAtW) gE
-  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+  let fCount := mkApp (mkConst bitF) gE
+  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst bitF) (mkRawNatLit w)
   let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``bitW_windowR)
+    mkAppN (mkConst bitWin)
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
     gRecip bRecip (·.recip) wins winNames
   let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount
     gCount bCount (·.count) wins winNames
+  let aProof := match conv with
+    | none => mkConst aName
+    | some (cr, _) => mkAppN (mkConst cr)
+        #[gE, loE, SE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit A, mkConst aName]
+  let cProof := match conv with
+    | none => mkConst cName
+    | some (_, cb) => mkAppN (mkConst cb)
+        #[gE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit C, mkConst cName]
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
@@ -1038,7 +1057,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
         mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
-        mkConst aName, mkConst cName])
+        aProof, cProof])
   logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
 divisors to {B}; A = {A}, C = {C}"
 

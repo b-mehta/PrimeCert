@@ -18,6 +18,24 @@ namespace PrimeCert.Sieve
 /-- Whether bit `i` of `b` is set (`testBitK_eq_testBit` in `SieveCorrect`). -/
 @[expose] public def testBitK (b i : Nat) : Bool := Nat.ble 1 (b.land (Nat.shiftLeft 1 i))
 
+/-- `testBitK` with the two arguments of `Nat.land` the other way round, for timing against it. -/
+@[expose] public def testBitS (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftLeft 1 i).land b)
+
+/-- `testBitK` asking whether the masked value differs from zero, for timing against it. -/
+@[expose] public def testBitB (b i : Nat) : Bool := !Nat.beq (b.land (Nat.shiftLeft 1 i)) 0
+
+/-- `testBitK` with raw numeric literals in place of the elaborated ones, for timing against it. -/
+@[expose] public def testBitR (b i : Nat) : Bool :=
+  Nat.ble (nat_lit 1) (b.land (Nat.shiftLeft (nat_lit 1) i))
+
+public theorem testBitB_eq (b i : Nat) : testBitB b i = testBitK b i := by
+  rw [testBitB, testBitK]
+  cases Nat.land b (Nat.shiftLeft 1 i) with
+  | zero => rfl
+  | succ n => rfl
+
+public theorem testBitR_eq (b i : Nat) : testBitR b i = testBitK b i := rfl
+
 /-- The number sitting at coprime-to-6 index `k`: `0↦1, 1↦5, 2↦7, 3↦11, 4↦13, …`. -/
 @[expose] public def value (k : Nat) : Nat := (k * 3 + 1) + k % 2
 

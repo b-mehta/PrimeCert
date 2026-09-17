@@ -726,6 +726,159 @@ public theorem bitW_windowR (g k B w : ℕ)
     sumB (bitAtW g) k B (nat_lit 1) = sumB (bitAtW w) (nat_lit 0) B (nat_lit 1) :=
   bitW_window g k B w hw
 
+/-- `recipW_windowR` with the batch stated as a step-free fold, so that the statement the emitter
+builds and the statement this concludes are the same term. -/
+public theorem recipW_window1 (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtW g lo S) k B (nat_lit 1) = sumB1 (recipAtW w lok S) B := by
+  rw [sumB1_eq]
+  exact recipW_windowR g S lo k lok B w hlok hw
+
+/-- The count fold counterpart of `recipW_window1`. -/
+public theorem bitW_window1 (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtW g) k B (nat_lit 1) = sumB1 (bitAtW w) B := by
+  rw [sumB1_eq]
+  exact bitW_windowR g k B w hw
+
+/-! ## Three variants of the per-position summands
+
+The kernel expands the bit test twice per position, once for the total and once for the count, so
+the shape of that test is worth timing. These three agree with `recipAtW` and `bitAtW` and differ
+only in it: `S` swaps the arguments of `Nat.land`, `B` asks whether the masked value differs from
+zero, and `R` writes every number as a raw literal. The emitter picks between them, so one job can
+time all four. -/
+
+/-- `recipAtW` with the arguments of `Nat.land` the other way round in the bit test. -/
+@[expose] public def recipAtWS (w lo S i : ℕ) : ℕ :=
+  (Sieve.testBitS w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
+
+/-- `bitAtW` with the arguments of `Nat.land` the other way round in the bit test. -/
+@[expose] public def bitAtWS (w i : ℕ) : ℕ := (Sieve.testBitS w i).rec 0 1
+
+/-- `recipAtW` with a comparison against zero in the bit test. -/
+@[expose] public def recipAtWB (w lo S i : ℕ) : ℕ :=
+  (Sieve.testBitB w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
+
+/-- `bitAtW` with a comparison against zero in the bit test. -/
+@[expose] public def bitAtWB (w i : ℕ) : ℕ := (Sieve.testBitB w i).rec 0 1
+
+/-- `recipAtW` with raw literals throughout. -/
+@[expose] public def recipAtWR (w lo S i : ℕ) : ℕ :=
+  (Sieve.testBitR w i).rec (nat_lit 0) (S.div (Sieve.valueK (Nat.add lo i)))
+
+/-- `bitAtW` with raw literals throughout. -/
+@[expose] public def bitAtWR (w i : ℕ) : ℕ :=
+  (Sieve.testBitR w i).rec (nat_lit 0) (nat_lit 1)
+
+theorem testBitS_eq (b i : ℕ) : Sieve.testBitS b i = Sieve.testBitK b i := by
+  rw [Sieve.testBitS, Sieve.testBitK]
+  congr 1
+  exact Nat.land_comm _ _
+
+theorem recipAtWS_eq (w lo S : ℕ) : recipAtWS w lo S = recipAtW w lo S := by
+  funext i
+  rw [recipAtWS, recipAtW, testBitS_eq]
+
+theorem bitAtWS_eq (w : ℕ) : bitAtWS w = bitAtW w := by
+  funext i
+  rw [bitAtWS, bitAtW, testBitS_eq]
+
+theorem recipAtWB_eq (w lo S : ℕ) : recipAtWB w lo S = recipAtW w lo S := by
+  funext i
+  rw [recipAtWB, recipAtW, Sieve.testBitB_eq]
+
+theorem bitAtWB_eq (w : ℕ) : bitAtWB w = bitAtW w := by
+  funext i
+  rw [bitAtWB, bitAtW, Sieve.testBitB_eq]
+
+theorem recipAtWR_eq (w lo S : ℕ) : recipAtWR w lo S = recipAtW w lo S := rfl
+
+theorem bitAtWR_eq (w : ℕ) : bitAtWR w = bitAtW w := rfl
+
+/-- `recipW_windowR` for the swapped bit test. -/
+public theorem recipWS_windowR (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtWS g lo S) k B (nat_lit 1)
+      = sumB (recipAtWS w lok S) (nat_lit 0) B (nat_lit 1) := by
+  rw [recipAtWS_eq, recipAtWS_eq]
+  exact recipW_windowR g S lo k lok B w hlok hw
+
+/-- `bitW_windowR` for the swapped bit test. -/
+public theorem bitWS_windowR (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtWS g) k B (nat_lit 1) = sumB (bitAtWS w) (nat_lit 0) B (nat_lit 1) := by
+  rw [bitAtWS_eq, bitAtWS_eq]
+  exact bitW_windowR g k B w hw
+
+/-- `recipW_windowR` for the comparison against zero. -/
+public theorem recipWB_windowR (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtWB g lo S) k B (nat_lit 1)
+      = sumB (recipAtWB w lok S) (nat_lit 0) B (nat_lit 1) := by
+  rw [recipAtWB_eq, recipAtWB_eq]
+  exact recipW_windowR g S lo k lok B w hlok hw
+
+/-- `bitW_windowR` for the comparison against zero. -/
+public theorem bitWB_windowR (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtWB g) k B (nat_lit 1) = sumB (bitAtWB w) (nat_lit 0) B (nat_lit 1) := by
+  rw [bitAtWB_eq, bitAtWB_eq]
+  exact bitW_windowR g k B w hw
+
+/-- `recipW_windowR` for the raw-literal bodies. -/
+public theorem recipWR_windowR (g S lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtWR g lo S) k B (nat_lit 1)
+      = sumB (recipAtWR w lok S) (nat_lit 0) B (nat_lit 1) :=
+  recipW_windowR g S lo k lok B w hlok hw
+
+/-- `bitW_windowR` for the raw-literal bodies. -/
+public theorem bitWR_windowR (g k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (bitAtWR g) k B (nat_lit 1) = sumB (bitAtWR w) (nat_lit 0) B (nat_lit 1) :=
+  bitW_windowR g k B w hw
+
+/-- Carry a fold over the swapped bit test back to the one the segment lemma wants. -/
+public theorem recipWS_conv (g lo S k W st A : ℕ)
+    (h : sumB (recipAtWS g lo S) k W st = A) : sumB (recipAtW g lo S) k W st = A := by
+  rwa [recipAtWS_eq] at h
+
+/-- The count fold counterpart of `recipWS_conv`. -/
+public theorem bitWS_conv (g k W st A : ℕ) (h : sumB (bitAtWS g) k W st = A) :
+    sumB (bitAtW g) k W st = A := by
+  rwa [bitAtWS_eq] at h
+
+/-- Carry a fold over the comparison against zero back to the one the segment lemma wants. -/
+public theorem recipWB_conv (g lo S k W st A : ℕ)
+    (h : sumB (recipAtWB g lo S) k W st = A) : sumB (recipAtW g lo S) k W st = A := by
+  rwa [recipAtWB_eq] at h
+
+/-- The count fold counterpart of `recipWB_conv`. -/
+public theorem bitWB_conv (g k W st A : ℕ) (h : sumB (bitAtWB g) k W st = A) :
+    sumB (bitAtW g) k W st = A := by
+  rwa [bitAtWB_eq] at h
+
+/-- Carry a fold over the raw-literal bodies back to the one the segment lemma wants. -/
+public theorem recipWR_conv (g lo S k W st A : ℕ)
+    (h : sumB (recipAtWR g lo S) k W st = A) : sumB (recipAtW g lo S) k W st = A := h
+
+/-- The count fold counterpart of `recipWR_conv`. -/
+public theorem bitWR_conv (g k W st A : ℕ) (h : sumB (bitAtWR g) k W st = A) :
+    sumB (bitAtW g) k W st = A := h
+
 /-! ## Reading a segment above the sieve
 
 A segment literal `g` covering the numbers from `a` upward has bit `j` for the number at position
