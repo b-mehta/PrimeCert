@@ -505,24 +505,29 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     let gw := gE wb.w wb.lo
     let t := pick wb
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{k}")
-    -- eight positions to a recursor step where the fold is the packed one and the batch allows it
-    let unrolled := if wb.len % 8 == 0 then gw.getAppFn.constName?.map (· == ``packAtW) else none
+    -- the reciprocal fold visits only the set bits, taking its step count from the popcount
+    let overBits := gw.getAppFn.constName?.map (· == ``recipAtW) == some true
+      && gw.getAppNumArgs == 3
     let hb := bridge wb.lo wb.len wb.w winNames[k]!
     let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
-    if unrolled == some true && gw.getAppNumArgs == 4 then
+    if overBits then
       let args := gw.getAppArgs
+      let wE := args[0]!
+      let loE := args[1]!
+      let sE' := args[2]!
+      let lenE := mkRawNatLit wb.len
       addHarmonicThm stepName
         (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
-          (mkAppN (mkConst ``packSum8)
-            #[args[0]!, args[1]!, args[2]!, args[3]!, mkRawNatLit (wb.len / 8)])
+          (mkAppN (mkConst ``recipBits)
+            #[loE, sE', mkAppN (mkConst ``popK) #[lenE, wE], wE])
           (mkRawNatLit t)))
         Lean.reflBoolTrue
       addHarmonicThm eqName
-        (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
+        (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, lenE, oneE])
           (mkRawNatLit t))
-        (mkAppN (mkConst ``sumB_windowEqR8)
-          #[fE, args[0]!, args[1]!, args[2]!, args[3]!, mkRawNatLit wb.lo, mkRawNatLit wb.len,
-            mkRawNatLit (wb.len / 8), mkRawNatLit t, Lean.reflBoolTrue, hb, mkConst stepName])
+        (mkAppN (mkConst ``sumB_windowEqRBits)
+          #[fE, wE, loE, sE', mkRawNatLit wb.lo, lenE, mkRawNatLit t,
+            Lean.reflBoolTrue, hb, mkConst stepName])
     else
       addHarmonicThm stepName
         (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
@@ -1027,33 +1032,36 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
     mkAppN (mkConst ``bitW_windowR)
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
-  let P := W * S + 1
-  let PE := mkRawNatLit P
-  let fPack := mkApp4 (mkConst ``packAtW) gE loE SE PE
-  let gPack : Nat → Nat → Expr := fun w k ↦
-    mkApp4 (mkConst ``packAtW) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE PE
-  let bPack : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``packW_windowR)
-      #[gE, SE, PE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
-        Lean.reflBoolTrue, mkConst nm]
-  let (T, tName) ← emitWindowedFoldOver (base ++ Name.mkSimple "pack") fPack
-    gPack bPack (fun wb ↦ wb.recip + P * wb.count) wins winNames
-  let A := T % P
-  let C := T / P
+  let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
+    gRecip bRecip (·.recip) wins winNames
+  -- the count of the whole segment in one popcount rather than a fold over its positions
+  let C := wins.foldl (fun acc wb ↦ acc + wb.count) 0
+  let popName := base ++ Name.mkSimple "pop"
+  addHarmonicThm popName
+    (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+      (mkAppN (mkConst ``popK) #[mkRawNatLit W, gE]) (mkRawNatLit C)))
+    Lean.reflBoolTrue
+  let cName := base ++ Name.mkSimple "count"
+  addHarmonicThm cName
+    (mkNatEq (mkAppN (mkConst ``sumB)
+      #[mkApp (mkConst ``bitAtW) gE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1])
+      (mkRawNatLit C))
+    (mkAppN (mkConst ``count_of_popK)
+      #[gE, mkRawNatLit W, mkRawNatLit C, Lean.reflBoolTrue, mkConst popName])
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
       #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit C, SE])
-    (mkAppN (mkConst ``primeRecipRange_of_segRunPack)
-      #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, PE, gE,
-        mkRawNatLit T, loE, mkRawNatLit next,
+    (mkAppN (mkConst ``primeRecipRange_of_segRun)
+      #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit next,
         mkAppN (mkConst ``Sieve.IsSieve.monoB)
           #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
             mkConst cache.isSieveName, Lean.reflBoolTrue],
         mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
-        mkConst tName])
+        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+        mkConst aName, mkConst cName])
   logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
 divisors to {B}; A = {A}, C = {C}"
 
