@@ -28,4 +28,4 @@ it to the enclosure for the primes up to `10 ^ 8` gives the sum past a billion.
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_join 100000001 262144 31721 20 1152
+run_harmonic_join 100000001 1048576 31721 20 288
