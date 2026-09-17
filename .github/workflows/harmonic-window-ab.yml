@@ -16,7 +16,7 @@ jobs:
         include:
           - n: "numerals"
             rounds: 1
-            cases: "Raw1e7_Plain Raw1e7_Raw"
+            cases: "Raw1e7_Plain Raw1e7_Raw Raw1e7_Step"
     steps:
       - uses: actions/checkout@v7
 

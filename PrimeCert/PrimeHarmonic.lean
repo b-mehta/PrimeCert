@@ -54,6 +54,11 @@ open Finset
 @[expose] public def sumB (f : ℕ → ℕ) (start len step : ℕ) : ℕ :=
   len.rec 0 fun n b ↦ (f ((n.mul step).add start)).add b
 
+/-- The fold a windowed batch actually needs: `f` over `0 … len - 1`, with no step to multiply by
+and no start to add. `sumB1_eq` identifies it with `sumB f 0 len 1`. -/
+@[expose] public def sumB1 (f : ℕ → ℕ) (len : ℕ) : ℕ :=
+  len.rec 0 fun n b ↦ (f n).add b
+
 @[simp, grind =] public theorem sumB_zero (f : ℕ → ℕ) (start step : ℕ) :
     sumB f start 0 step = 0 :=
   rfl
@@ -61,6 +66,19 @@ open Finset
 @[simp, grind =] theorem sumB_succ (f : ℕ → ℕ) (start len step : ℕ) :
     sumB f start (len + 1) step = f ((len.mul step).add start) + sumB f start len step :=
   rfl
+
+@[simp, grind =] theorem sumB1_succ (f : ℕ → ℕ) (len : ℕ) :
+    sumB1 f (len + 1) = f len + sumB1 f len :=
+  rfl
+
+/-- The step-free fold is the unit-step fold from `0`. -/
+public theorem sumB1_eq (f : ℕ → ℕ) (len : ℕ) :
+    sumB1 f len = sumB f (nat_lit 0) len (nat_lit 1) := by
+  induction len with
+  | zero => rfl
+  | succ n ih =>
+    rw [sumB1_succ, ih, sumB_succ]
+    simp
 
 /-- Read the fold as a `Finset` sum over the indices `0` to `len`. -/
 public theorem sumB_eq_sum (f : ℕ → ℕ) (start len step : ℕ) :
@@ -561,6 +579,14 @@ public theorem bit_window (s lo B w : ℕ)
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, bitAtK_eq, bitAtW, Bool.rec_eq,
     Sieve.testBitK_eq_testBit, hb]
 
+/-- `recip_window` landing in the step-free fold. -/
+public theorem recip_window1 (s S lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (recipAtK s S) lo B (nat_lit 1) = sumB1 (recipAtW w lo S) B := by
+  rw [sumB1_eq]
+  exact recip_window s S lo B w hw
+
 /-- `bit_window` with its numerals written as raw literals. -/
 public theorem bit_windowR (s lo B w : ℕ)
     (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
@@ -575,6 +601,14 @@ public theorem sumB_windowEq (f g : ℕ → ℕ) (start len t : ℕ)
     (hb : sumB f start len 1 = sumB g 0 len 1)
     (h : Nat.beq (sumB g 0 len 1) t = true) :
     sumB f start len 1 = t := by
+  grind [Nat.beq_eq]
+
+/-- `sumB_windowEq` with the batch's own fold written without a step to multiply by or a start to
+add, which is what a windowed batch needs. -/
+public theorem sumB_windowEq1 (f g : ℕ → ℕ) (start len t : ℕ)
+    (hb : sumB f start len (nat_lit 1) = sumB1 g len)
+    (h : Nat.beq (sumB1 g len) t = true) :
+    sumB f start len (nat_lit 1) = t := by
   grind [Nat.beq_eq]
 
 /-- `sumB_windowEq` with its numerals written as raw literals, the form the emitter builds. The two
@@ -971,6 +1005,14 @@ public theorem pack_windowR (s S P lo B w : ℕ)
     sumB (packAtK s S P) lo B (nat_lit 1)
       = sumB (packAtW w lo S P) (nat_lit 0) B (nat_lit 1) :=
   pack_window s S P lo B w hw
+
+/-- `pack_window` landing in the step-free fold, which is the form the packed batches use. -/
+public theorem pack_window1 (s S P lo B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s lo)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (packAtK s S P) lo B (nat_lit 1) = sumB1 (packAtW w lo S P) B := by
+  rw [sumB1_eq]
+  exact pack_window s S P lo B w hw
 
 /-- `primeRecipIcc_of` from the packed fold alone: with `len * S < P`, its total `T` holds the
 reciprocal fold as `T % P` and the count fold as `T / P`. -/
