@@ -480,7 +480,7 @@ meta def joinNodes (parent : Name) (fE : Expr) (nodes : Array RunNode) : MetaM R
 commands so that the forms can be timed against each other in one job. `0` is the statements with
 ordinary numerals, `1` those whose numerals are raw literals, matching the terms the emitter builds,
 and `2` those whose batch fold also drops the step to multiply by and the start to add. -/
-meta def statementForm : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 2)
+meta def statementForm : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 1)
 
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
 in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
@@ -669,12 +669,12 @@ segments of {G}, one fold, sieve {cache.litName}; A = {aTot}, width {len} / S"
 with the batches grouped into segments of `G` (`0` for one chain) and `folds` equal to `1`, `2`
 or `3` (see `runHarmonicWindow`). The trailing numeral picks the form of the batch statements, `0`
 ordinary numerals, `1` raw literals, `2` raw literals and a step-free batch fold, for timing the
-three against each other; it defaults to `2`. -/
+three against each other; it defaults to `1`, which wins from `10 ^ 8` up. -/
 elab "run_harmonic_window" bStx:num eStx:num lStx:num gStx:num fStx:num rStx:(num)? : command =>
   liftTermElabM <| do
-    statementForm.set (match rStx with | none => 2 | some r => r.getNat)
+    statementForm.set (match rStx with | none => 1 | some r => r.getNat)
     runHarmonicWindow bStx.getNat eStx.getNat lStx.getNat gStx.getNat fStx.getNat
-    statementForm.set 2
+    statementForm.set 1
 
 /-! ## Runs of positions that share a quotient
 
@@ -1147,14 +1147,14 @@ meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
 
 /-- `run_harmonic_series a W B e batch len n` sieves, sums and joins `n` neighbouring windows of
 `W` positions from `a` (see `runHarmonicSeries`). As for `run_harmonic_window`, a trailing numeral
-picks the form of the batch statements and defaults to `2`. -/
+picks the form of the batch statements and defaults to `1`. -/
 elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num nStx:num
     rStx:(num)? : command =>
   liftTermElabM <| do
-    statementForm.set (match rStx with | none => 2 | some r => r.getNat)
+    statementForm.set (match rStx with | none => 1 | some r => r.getNat)
     runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
       lStx.getNat nStx.getNat
-    statementForm.set 2
+    statementForm.set 1
 
 /-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
 `runHarmonicJoin`). -/
