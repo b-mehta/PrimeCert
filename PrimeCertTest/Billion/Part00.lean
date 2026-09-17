@@ -19,6 +19,6 @@ namespace PrimeCert.Billion.P00
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_series 100000001 1048576 31721 20 2048 1536 24
+run_harmonic_series 100000001 262144 31721 20 2048 1536 96
 
 end PrimeCert.Billion.P00
