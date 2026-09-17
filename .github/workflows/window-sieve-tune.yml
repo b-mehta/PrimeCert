@@ -23,10 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Time one segment at the best setting found so far
+      - name: Split one segment's kernel time by the kind of prime
         run: |
-          chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/tags.sh
+          chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/split.sh
           PrimeCertTest/SegTune/run.sh 1 V7_M11
+          PrimeCertTest/SegTune/split.sh 456 out-V7_M11-1.txt
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
