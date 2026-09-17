@@ -394,8 +394,14 @@ meta instance : Inhabited WindowBatch := ⟨⟨0, 0, 0, 0, 0⟩⟩
 `lo + i`. -/
 meta def twinWindow (mark : ByteArray) (lo n : Nat) : Nat := Id.run do
   let mut w := 0
-  for i in [0:n] do
-    w := 2 * w + (if mark.get! (lo + n - 1 - i) == 1 then 1 else 0)
+  let mut i := n
+  while i > 0 do
+    let k := Nat.min 64 i
+    let mut chunk := 0
+    for j in [0:k] do
+      chunk := 2 * chunk + (if mark.get! (lo + i - 1 - j) == 1 then 1 else 0)
+    w := (w <<< k) ||| chunk
+    i := i - k
   return w
 
 /-- The batches of `B` consecutive positions covering `1 … len`, with their windows and totals. -/
