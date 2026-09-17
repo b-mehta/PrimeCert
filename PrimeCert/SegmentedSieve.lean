@@ -138,6 +138,38 @@ base index `start + i`. -/
   fuel.rec seg fun i b =>
     (testBitK c i).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
 
+/-- `segMarkCK` with the mask built to the window's own width by `buildMaskNK`. -/
+@[expose] public noncomputable def segMarkNK (seg p lo Wm1 n : Nat) : Nat :=
+  clearHitK seg
+    ((buildMaskNK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg)
+
+/-- `segLoopSCK` marking with `segMarkNK`. -/
+@[expose] public noncomputable def segLoopSNK (c lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkNK b (valueK (start.add i)) lo Wm1 n)
+
+/-- The number of terms of `A, A + 2p, A + 4p, …` that can land at or below `M`. -/
+@[expose] public noncomputable def termsK (p M : Nat) : Nat :=
+  (M.div (p.mul 2)).succ
+
+/-- `buildMaskCK`'s progression built to exactly `termsK p M` terms, by reading the binary digits
+of that count from the top down: each round doubles the terms so far, and a set digit adds one more
+copy of the seeds. The mask's top bit is then within `2*p` of `M`, where the doubling rounds of
+`buildMaskCK` can carry it to nearly `2*M`. `n` counts digits, so `n` must reach the width of
+`termsK p M`. -/
+@[expose] public noncomputable def buildMaskNK (p M A B n : Nat) : Nat :=
+  Nat.rec
+    0
+    (fun i Mk =>
+      let c := (termsK p M).shiftRight (n.sub i)
+      let doubled := Mk.lor (Mk.shiftLeft ((p.mul 2).mul c))
+      (Nat.beq (((termsK p M).shiftRight (n.sub i.succ)).land 1) 1).rec
+        doubled
+        (doubled.lor
+          (((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B)).shiftLeft ((p.mul 2).mul (c.mul 2)))))
+    n
+
 /-- One prime's mask joined into a running mask, leaving the window untouched. -/
 @[expose] public noncomputable def segAccK (acc p lo Wm1 n : Nat) : Nat :=
   acc.lor (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
@@ -1150,6 +1182,35 @@ meta def segMarkC (seg p lo Wm1 n : Nat) : Nat :=
   let hit := mask &&& seg
   if hit = 0 then seg else seg - hit
 
+/-- Twin of `buildMaskNK`. -/
+meta def buildMaskN (p M A B n : Nat) : Nat := Id.run do
+  let terms := M / (p * 2) + 1
+  let seeds := (1 <<< A) ||| (1 <<< B)
+  let mut m := 0
+  for i in [0:n] do
+    let c := terms >>> (n - i)
+    m := m ||| (m <<< (p * 2 * c))
+    if (terms >>> (n - i - 1)) &&& 1 = 1 then
+      m := m ||| (seeds <<< (p * 2 * (c * 2)))
+  return m
+
+/-- Twin of `segMarkNK`. -/
+meta def segMarkN (seg p lo Wm1 n : Nat) : Nat :=
+  let A := firstLoc (index (p * 5)) lo (p * 2)
+  let B := firstLoc (index (p * 7)) lo (p * 2)
+  let hit := buildMaskN p Wm1 A B n &&& seg
+  if hit = 0 then seg else seg - hit
+
+/-- Twin of `segLoopSNK`, reading the base primes from the batch's own slice. -/
+meta def segLoopN (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      b := segMarkN b (value (start + i)) lo Wm1 n
+    c := c >>> 1
+  return b
+
 /-- Twin of `segAccLoopK`, joining the batch's masks into the running accumulator. -/
 meta def segAccLoopC (s lo Wm1 n acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
@@ -1278,7 +1339,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 16 then throwError "run_segment_variant: mode {mode} is not 0 to 16"
+  if mode > 18 then throwError "run_segment_variant: mode {mode} is not 0 to 18"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1305,6 +1366,31 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
   let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  if mode == 17 || mode == 18 then
+    -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through
+    -- `segLoopSNK` and mode 18 through `segLoopSCK`, so the pair isolates the mask builder.
+    let mut bitsT := initSeg W
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let owed := fuel - i * step0
+      let stepN := Nat.min step0 owed
+      let next := if mode == 17 then segLoopN sVal lo wm1 rounds bitsT start stepN
+        else segLoopC sVal lo wm1 rounds bitsT start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let cE := mkRawNatLit cVal
+      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let loopName := if mode == 17 then ``segLoopSNK else ``segLoopSCK
+      let batchE := mkAppN (mkConst loopName)
+        #[cE, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsT := next
+    return
   if mode == 16 then
     let mut acc := 0
     let mut accE := mkRawNatLit 0
