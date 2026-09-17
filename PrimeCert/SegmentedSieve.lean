@@ -138,17 +138,6 @@ base index `start + i`. -/
   fuel.rec seg fun i b =>
     (testBitK c i).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
 
-/-- `segMarkCK` with the mask built to the window's own width by `buildMaskNK`. -/
-@[expose] public noncomputable def segMarkNK (seg p lo Wm1 n : Nat) : Nat :=
-  clearHitK seg
-    ((buildMaskNK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg)
-
-/-- `segLoopSCK` marking with `segMarkNK`. -/
-@[expose] public noncomputable def segLoopSNK (c lo Wm1 n seg start fuel : Nat) : Nat :=
-  fuel.rec seg fun i b =>
-    (testBitK c i).rec b (segMarkNK b (valueK (start.add i)) lo Wm1 n)
-
 /-- The number of terms of `A, A + 2p, A + 4p, …` that can land at or below `M`. -/
 @[expose] public noncomputable def termsK (p M : Nat) : Nat :=
   (M.div (p.mul 2)).succ
@@ -169,6 +158,17 @@ copy of the seeds. The mask's top bit is then within `2*p` of `M`, where the dou
         (doubled.lor
           (((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B)).shiftLeft ((p.mul 2).mul (c.mul 2)))))
     n
+
+/-- `segMarkCK` with the mask built to the window's own width by `buildMaskNK`. -/
+@[expose] public noncomputable def segMarkNK (seg p lo Wm1 n : Nat) : Nat :=
+  clearHitK seg
+    ((buildMaskNK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg)
+
+/-- `segLoopSCK` marking with `segMarkNK`. -/
+@[expose] public noncomputable def segLoopSNK (c lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkNK b (valueK (start.add i)) lo Wm1 n)
 
 /-- One prime's mask joined into a running mask, leaving the window untouched. -/
 @[expose] public noncomputable def segAccK (acc p lo Wm1 n : Nat) : Nat :=
