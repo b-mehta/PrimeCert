@@ -1274,7 +1274,7 @@ Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 1
 command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
 the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
 and a chain, so mode 11 is the arm to compare it against. -/
-meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
+public meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"

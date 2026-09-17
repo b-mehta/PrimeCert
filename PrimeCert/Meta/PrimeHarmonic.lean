@@ -988,8 +988,10 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let batch := Nat.max 1 batch
   let S := 10 ^ scaleExp
   let ns ← getCurrNamespace
-  let tag := s!"{a}_{W}_{fuel}_{Nat.max 1 len}"
-  let segLit := ns ++ Name.mkSimple s!"segBits_{tag}"
+  -- the segment comes from the variant emitter's mode 16, which joins a batch's masks and clears
+  -- the window once rather than once per prime
+  let tag := s!"{a}_{W}_{fuel}_{Nat.max 1 len}_m16"
+  let segLit := ns ++ Name.mkSimple s!"segBitsV_{tag}"
   let segEqI := ns ++ Name.mkSimple s!"segEqI_{tag}"
   let env ← getEnv
   let some info := env.find? segLit
@@ -1163,7 +1165,7 @@ meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
   let ns ← getCurrNamespace
   let mut start := a
   for _ in [0:n] do
-    Sieve.runSegment ns cache.litName start W fuel len
+    Sieve.runSegmentV ns cache.litName 16 start W fuel len
     runHarmonicSegment start W B scaleExp batch len
     start := nextSegmentStart start W
   runHarmonicJoin a W B scaleExp n
