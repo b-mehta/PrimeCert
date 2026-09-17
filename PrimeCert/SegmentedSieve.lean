@@ -1249,6 +1249,16 @@ meta def mkSegBeqTrue (a b : Expr) : Expr :=
 meta def mkSegLoopK (sE loE wE segE : Expr) (start len : Nat) : Expr :=
   mkAppN (mkConst ``segLoopK) #[sE, loE, wE, segE, mkRawNatLit start, mkRawNatLit len]
 
+/-- Batch length as a function of where the batch starts: short batches over the small primes,
+whose masks are grown by doubling and are the widest the kernel holds at once, and long batches
+over the large primes, whose masks are two bits. Each batch also leaves one window-sized literal
+in the environment for the file's life, so the long end keeps that count down. -/
+meta def batchLen (start : Nat) : Nat :=
+  if start < 20000 then 256
+  else if start < 300000 then 512
+  else if start < 700000 then 768
+  else 3072
+
 /-- Add a theorem declaration with the given statement and proof term. -/
 meta def addSegThm (name : Name) (type value : Expr) : MetaM Unit :=
   addDecl <| Declaration.thmDecl { name, levelParams := [], type, value }
@@ -1339,15 +1349,16 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 19 then throwError "run_segment_variant: mode {mode} is not 0 to 19"
+  if mode > 20 then throwError "run_segment_variant: mode {mode} is not 0 to 20"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
-  let clamped := mode % 4 == 1 || mode % 4 == 3
-  let slice := mode % 4 == 2 || mode % 4 == 3
-  let tree := mode % 8 ≥ 4
+  let sched := mode == 20
+  let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
+  let slice := mode % 4 == 2 || mode % 4 == 3 || sched
+  let tree := mode % 8 ≥ 4 && !sched
   let fastTwin := mode ≥ 8
   let lo := index a
   let wm1 := W - 1
@@ -1469,10 +1480,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let mut bitsE := initE
   let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
   let mut nodes : Array (Name × Nat × Nat × Nat × Nat) := #[]
-  for i in [0:(fuel + step0 - 1) / step0] do
-    let start := 1 + i * step0
-    let owed := fuel - i * step0
-    let stepN := Nat.min step0 owed
+  let mut i := 0
+  let mut start := 1
+  while start ≤ fuel do
+    let owed := fuel + 1 - start
+    let stepN := Nat.min (if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
@@ -1541,6 +1553,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
               mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
+    start := start + stepN
+    i := i + 1
   if tree then
     let mut level := 0
     while nodes.size > 1 do
