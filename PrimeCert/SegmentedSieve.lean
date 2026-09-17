@@ -1339,7 +1339,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 18 then throwError "run_segment_variant: mode {mode} is not 0 to 18"
+  if mode > 19 then throwError "run_segment_variant: mode {mode} is not 0 to 19"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1366,6 +1366,18 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
   let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  if mode == 19 then
+    -- Measurement only: the command's own computation, with one declaration emitted at the end,
+    -- so its peak separates the loop's own footprint from the 2171 literals the other modes keep.
+    let mut bitsL := initSeg W
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let owed := fuel - i * step0
+      bitsL := segLoopC sVal lo wm1 rounds bitsL start (Nat.min step0 owed)
+    addDecl <| Declaration.defnDecl
+      { name := litName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
+    return
   if mode == 17 || mode == 18 then
     -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through
     -- `segLoopSNK` and mode 18 through `segLoopSCK`, so the pair isolates the mask builder.
