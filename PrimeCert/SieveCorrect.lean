@@ -9,12 +9,9 @@ public import PrimeCert.Sieve
 public import Mathlib.Data.Nat.Prime.Basic
 
 import Mathlib.Data.Nat.Bitwise
-import Mathlib.Tactic.Ring
 import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Algebra.Order.Monoid.Canonical.Basic
 import PrimeCert.ForLean
-import PrimeCert.ForMathlib
+import PrimeCert.ForMathlibBitwise
 
 /-!
 # Correctness of the mod-6 wheel sieve
