@@ -175,7 +175,7 @@ the seed lies outside that slice. -/
 
 /-- One prime's two seeds joined into a 65536-bit slice of the window rather than a number as wide
 as the window. For a prime past half the window's width these two bits are all it can hit. -/
-@[expose] public noncomputable def stripeMarkK (acc p lo Wm1 base : Nat) : Nat :=
+@[expose] public noncomputable def stripeMarkK (acc p lo _Wm1 base : Nat) : Nat :=
   acc.lor ((seedStripeK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) base).lor
     (seedStripeK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) base))
 
@@ -1236,7 +1236,7 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
 /-- Twin of `segLoopStripeK`. -/
-meta def segLoopStripe (s lo Wm1 base acc start fuel : Nat) : Nat := Id.run do
+meta def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
   let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
   for i in [0:fuel] do
