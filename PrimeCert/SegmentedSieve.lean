@@ -1401,7 +1401,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 22 then throwError "run_segment_variant: mode {mode} is not 0 to 22"
+  if mode > 23 then throwError "run_segment_variant: mode {mode} is not 0 to 23"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1441,6 +1441,19 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
+    return
+  if mode == 23 then
+    -- Measurement only: batches over an all-zero slice, so every step of the fold finds no prime
+    -- and the window is returned unchanged. `fuel` steps in batches of `len` give the cost of the
+    -- steps that a real run spends on positions holding no prime.
+    let initLit := mkRawNatLit (initSeg W)
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (fuel - i * step0)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let batchE := mkAppN (mkConst ``segLoopSCK)
+        #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
     return
   if mode == 17 || mode == 18 || mode == 22 then
     -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through
