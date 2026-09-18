@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "coarse12"
+          - n: "segonly12"
             rounds: 2
-            cases: "Ht12 TaylorHt12 TaylorOHt12 Taylor2Ht12 CountHt12 Ht12_E14"
+            cases: "Ht12 SegOnlyHt12 CountHt12"
     steps:
       - uses: actions/checkout@v7
 
