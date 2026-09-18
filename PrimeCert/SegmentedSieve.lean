@@ -168,6 +168,45 @@ bit lands within `2*p` of `M`. -/
       (Nat.sub (Nat.pow 2 (p.mul 2)) 1)).mul
     ((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B))
 
+/-! ### Sorting the large primes into slices of the window
+
+A prime past half the window's width hits the window at most twice, yet `segMarkCK` gives it a mask
+as wide as the window. These definitions take the hits of a whole batch of such primes, sorted by
+which 65536-bit slice of the window they land in, and write each into its slice. The state threaded
+through both folds is one number: the slice being filled in its low 65536 bits, then one bit per
+position of the batch for each of the two progressions, so that a completed batch can say which
+positions it accounted for. -/
+
+/-- One entry of a slice's list: its low bit picks the progression, the rest is the position within
+the batch. The entry is used only if the batch's slice says that position holds a prime and the
+seed really lands in slice `k`; otherwise the state is left alone, and the missing bit in the two
+tallies is what a completed batch notices. -/
+@[expose] public noncomputable def stripeEntryK (st c lo start k len e : Nat) : Nat :=
+  let i := e.shiftRight 1
+  let p := valueK (start.add i)
+  let X := (Nat.beq (e.land 1) 0).rec
+    (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
+    (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+  (testBitK c i).rec st
+    ((Nat.beq (X.shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 (X.land 65535)).lor
+        (Nat.shiftLeft 1 (Nat.add 65536 (Nat.add i (Nat.mul (e.land 1) len)))))))
+
+/-- The entries of one slice's list, packed 13 bits each. -/
+@[expose] public noncomputable def stripeSlotK (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryK s c lo start k len ((slot.shiftRight (j.mul 13)).land 8191)
+
+/-- Every slice of the window in turn, each filled from its own list and then written into its
+place in the mask, with the two tallies carried above the mask. -/
+@[expose] public noncomputable def stripeBatchK (c lo start len W slotW Ls Cs : Nat) : Nat :=
+  (64 : Nat).rec 0 fun k asm =>
+    let slot := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt := (Cs.shiftRight (k.mul 16)).land 65535
+    let st := stripeSlotK c lo start k len slot cnt 0
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
 @[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
@@ -1235,6 +1274,37 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
   let m := p * 2
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
+/-- Sort a batch's large primes by the slice of the window each seed lands in. Returns the packed
+lists, the packed counts, the widest slot in bits, and the value `stripeBatchK` should give. -/
+meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let mut slots : Array (Array Nat) := Array.replicate 64 #[]
+  let mut seen := 0
+  let mut asm := 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in [0:len] do
+    if (c >>> i) &&& 1 = 1 then
+      let p := value (start + i)
+      for w in [0, 1] do
+        let X := if w = 0 then firstLoc (index (p * 5)) lo (p * 2)
+          else firstLoc (index (p * 7)) lo (p * 2)
+        if X ≤ Wm1 then
+          let k := X >>> 16
+          slots := slots.set! k ((slots[k]!).push (2 * i + w))
+          seen := seen ||| (1 <<< (i + w * len))
+          asm := asm ||| (1 <<< X)
+  let mut slotW := 13
+  for k in [0:64] do
+    slotW := Nat.max slotW (13 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:64] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (13 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- Twin of `segLoopStripeK`. -/
 meta def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
@@ -1430,7 +1500,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 24 then throwError "run_segment_variant: mode {mode} is not 0 to 24"
+  if mode > 25 then throwError "run_segment_variant: mode {mode} is not 0 to 25"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1470,6 +1540,20 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
+    return
+  if mode == 25 then
+    -- Measurement only: the large primes of each batch sorted into slices of the window, one
+    -- theorem a batch, against mode 18's batches over the same positions.
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (fuel - i * step0)
+      let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let batchE := mkAppN (mkConst ``stripeBatchK)
+        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W,
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
     return
   if mode == 24 then
     -- Measurement only: the same walk over the same primes, writing each prime's hits into one
