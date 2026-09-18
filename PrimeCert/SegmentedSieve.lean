@@ -1259,6 +1259,15 @@ meta def batchLen (start : Nat) : Nat :=
   else if start < 700000 then 768
   else 3072
 
+/-- `batchLen` with a longer tail: past the point where a prime's mask is its two seed bits, a
+batch holds little whatever its length, while every batch costs one window-sized literal in the
+environment for the file's life, so the count is what the tail should minimise. -/
+meta def batchLenWide (start : Nat) : Nat :=
+  if start < 20000 then 256
+  else if start < 300000 then 512
+  else if start < 700000 then 1024
+  else 8192
+
 /-- Add a theorem declaration with the given statement and proof term. -/
 meta def addSegThm (name : Name) (type value : Expr) : MetaM Unit :=
   addDecl <| Declaration.thmDecl { name, levelParams := [], type, value }
@@ -1349,13 +1358,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 20 then throwError "run_segment_variant: mode {mode} is not 0 to 20"
+  if mode > 21 then throwError "run_segment_variant: mode {mode} is not 0 to 21"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
-  let sched := mode == 20
+  let sched := mode == 20 || mode == 21
+  let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
   let slice := mode % 4 == 2 || mode % 4 == 3 || sched
   let tree := mode % 8 ≥ 4 && !sched
@@ -1484,7 +1494,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let mut start := 1
   while start ≤ fuel do
     let owed := fuel + 1 - start
-    let stepN := Nat.min (if sched then batchLen start else step0) owed
+    let stepN := Nat.min
+      (if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
