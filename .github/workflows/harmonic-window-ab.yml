@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "bittest"
-            rounds: 6
-            cases: "Bitn1e8_F1 Bitn1e8_F3 Bitn1e8_F4 Bitn1e8_F5 Bitn1e8_F6"
+          - n: "height"
+            rounds: 1
+            cases: "Bitn1e8_F1 Ht09 Ht10 Ht11 Ht12 Ht13 Ht14 Ht15"
     steps:
       - uses: actions/checkout@v7
 
