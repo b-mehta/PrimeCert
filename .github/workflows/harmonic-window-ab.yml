@@ -14,9 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "whole12"
+          - n: "loop08"
             rounds: 2
-            cases: "Ht12 Ht12_M3 Ht12_M11"
+            cases: "Bitn1e8_M0 Bitn1e8_M11"
+          - n: "loop13"
+            rounds: 2
+            cases: "Ht13_M0 Ht13_M11"
     steps:
       - uses: actions/checkout@v7
 
@@ -34,7 +37,7 @@ jobs:
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCert.SegmentedSieve
-          lake build PrimeCertTest.HarmonicBench.SieveHt12
+          lake build PrimeCertTest.HarmonicBench.SieveHt13
 
       - name: Record the runner
         run: |
