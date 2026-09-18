@@ -7,7 +7,7 @@ module
 
 public meta import PrimeCert.Meta.PrimeHarmonic
 public meta import PrimeCert.SegmentedSieve
-public import PrimeCertTest.HarmonicBench.SplitSieve1e8
+public import PrimeCertTest.HarmonicBench.SieveHt15
 
 /-! # One window at `10 ^ 15` (see `Ht09`)
 

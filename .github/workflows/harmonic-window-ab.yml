@@ -14,9 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "height"
+          - n: "height15"
             rounds: 1
-            cases: "Ht12 Ht13 Ht14"
+            cases: "Ht15"
+          - n: "repeat"
+            rounds: 3
+            cases: "Ht12 Ht13"
     steps:
       - uses: actions/checkout@v7
 
@@ -37,6 +40,7 @@ jobs:
           lake build PrimeCertTest.HarmonicBench.SieveHt12
           lake build PrimeCertTest.HarmonicBench.SieveHt13
           lake build PrimeCertTest.HarmonicBench.SieveHt14
+          lake build PrimeCertTest.HarmonicBench.SieveHt15
 
       - name: Record the runner
         run: |
