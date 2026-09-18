@@ -159,6 +159,26 @@ copy of the seeds. The mask's top bit is then within `2*p` of `M`, where the dou
           (((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B)).shiftLeft ((p.mul 2).mul (c.mul 2)))))
     n
 
+/-- The same set of positions as `buildMaskCK`, in closed form: the number whose binary digits are
+`1` at every multiple of `2*p` below `2*p*k` is `(2 ^ (2*p*k) - 1) / (2 ^ (2*p) - 1)`, and
+multiplying it by the two seed bits places the two progressions. No doubling history, and the top
+bit lands within `2*p` of `M`. -/
+@[expose] public noncomputable def buildMaskRK (p M A B : Nat) : Nat :=
+  ((Nat.sub (Nat.pow 2 ((p.mul 2).mul (termsK p M))) 1).div
+      (Nat.sub (Nat.pow 2 (p.mul 2)) 1)).mul
+    ((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B))
+
+/-- `segMarkCK` with the mask in the closed form of `buildMaskRK`. -/
+@[expose] public noncomputable def segMarkRK (seg p lo Wm1 : Nat) : Nat :=
+  clearHitK seg
+    ((buildMaskRK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+      (firstLocK (indexK (p.mul 7)) lo (p.mul 2))).land seg)
+
+/-- `segLoopSCK` marking with `segMarkRK`. -/
+@[expose] public noncomputable def segLoopSRK (c lo Wm1 seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkRK b (valueK (start.add i)) lo Wm1)
+
 /-- `segMarkCK` with the mask built to the window's own width by `buildMaskNK`. -/
 @[expose] public noncomputable def segMarkNK (seg p lo Wm1 n : Nat) : Nat :=
   clearHitK seg
@@ -1194,6 +1214,28 @@ meta def buildMaskN (p M A B n : Nat) : Nat := Id.run do
       m := m ||| (seeds <<< (p * 2 * (c * 2)))
   return m
 
+/-- Twin of `buildMaskRK`. -/
+meta def buildMaskR (p M A B : Nat) : Nat :=
+  let m := p * 2
+  ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
+
+/-- Twin of `segMarkRK`. -/
+meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
+  let A := firstLoc (index (p * 5)) lo (p * 2)
+  let B := firstLoc (index (p * 7)) lo (p * 2)
+  let hit := buildMaskR p Wm1 A B &&& seg
+  if hit = 0 then seg else seg - hit
+
+/-- Twin of `segLoopSRK`. -/
+meta def segLoopR (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      b := segMarkR b (value (start + i)) lo Wm1
+    c := c >>> 1
+  return b
+
 /-- Twin of `segMarkNK`. -/
 meta def segMarkN (seg p lo Wm1 n : Nat) : Nat :=
   let A := firstLoc (index (p * 5)) lo (p * 2)
@@ -1359,7 +1401,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 21 then throwError "run_segment_variant: mode {mode} is not 0 to 21"
+  if mode > 22 then throwError "run_segment_variant: mode {mode} is not 0 to 22"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1400,15 +1442,17 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 17 || mode == 18 then
+  if mode == 17 || mode == 18 || mode == 22 then
     -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through
-    -- `segLoopSNK` and mode 18 through `segLoopSCK`, so the pair isolates the mask builder.
+    -- `segLoopSNK`, mode 18 through `segLoopSCK` and mode 22 through `segLoopSRK`, so the three
+    -- isolate the mask builder.
     let mut bitsT := initSeg W
     for i in [0:(fuel + step0 - 1) / step0] do
       let start := 1 + i * step0
       let owed := fuel - i * step0
       let stepN := Nat.min step0 owed
       let next := if mode == 17 then segLoopN sVal lo wm1 rounds bitsT start stepN
+        else if mode == 22 then segLoopR sVal lo wm1 bitsT start stepN
         else segLoopC sVal lo wm1 rounds bitsT start stepN
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let cE := mkRawNatLit cVal
@@ -1419,9 +1463,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         (mkApp2 (mkConst ``Nat.sub)
           (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
       addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
-      let loopName := if mode == 17 then ``segLoopSNK else ``segLoopSCK
-      let batchE := mkAppN (mkConst loopName)
-        #[cE, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
+      let batchE := if mode == 22 then
+          mkAppN (mkConst ``segLoopSRK)
+            #[cE, loE, wE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
+        else
+          mkAppN (mkConst (if mode == 17 then ``segLoopSNK else ``segLoopSCK))
+            #[cE, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsT := next
     return
