@@ -22,7 +22,8 @@ namespace PrimeCert.Sieve
 @[expose] public def testBitS (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftLeft 1 i).land b)
 
 /-- `testBitK` asking whether the masked value differs from zero, for timing against it. -/
-@[expose] public def testBitB (b i : Nat) : Bool := !Nat.beq (b.land (Nat.shiftLeft 1 i)) 0
+@[expose] public noncomputable def testBitB (b i : Nat) : Bool :=
+  (Nat.beq (b.land (Nat.shiftLeft 1 i)) 0).not'
 
 /-- `testBitK` shifting the bit down to position zero, for timing against it. -/
 @[expose] public def testBitH (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftRight b i).land 1)
@@ -32,7 +33,7 @@ namespace PrimeCert.Sieve
   Nat.ble (nat_lit 1) (b.land (Nat.shiftLeft (nat_lit 1) i))
 
 public theorem testBitB_eq (b i : Nat) : testBitB b i = testBitK b i := by
-  rw [testBitB, testBitK]
+  rw [testBitB, testBitK, Bool.not'_eq_not]
   cases Nat.land b (Nat.shiftLeft 1 i) with
   | zero => rfl
   | succ n => rfl

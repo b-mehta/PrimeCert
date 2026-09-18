@@ -767,11 +767,11 @@ time all four. -/
 @[expose] public def bitAtWH (w i : ℕ) : ℕ := (Sieve.testBitH w i).rec 0 1
 
 /-- `recipAtW` with a comparison against zero in the bit test. -/
-@[expose] public def recipAtWB (w lo S i : ℕ) : ℕ :=
+@[expose] public noncomputable def recipAtWB (w lo S i : ℕ) : ℕ :=
   (Sieve.testBitB w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
 
 /-- `bitAtW` with a comparison against zero in the bit test. -/
-@[expose] public def bitAtWB (w i : ℕ) : ℕ := (Sieve.testBitB w i).rec 0 1
+@[expose] public noncomputable def bitAtWB (w i : ℕ) : ℕ := (Sieve.testBitB w i).rec 0 1
 
 /-- `recipAtW` with raw literals throughout. -/
 @[expose] public def recipAtWR (w lo S i : ℕ) : ℕ :=
