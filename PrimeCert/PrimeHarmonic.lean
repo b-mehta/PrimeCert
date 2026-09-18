@@ -19,7 +19,9 @@ import Mathlib.Algebra.BigOperators.Field
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Algebra.Order.Interval.Finset.SuccPred
 import Mathlib.Data.Nat.Cast.Order.Field
+import Mathlib.Tactic.FieldSimp
 import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.Positivity
 import Mathlib.Tactic.NormNum.Prime
 import Mathlib.Tactic.Ring
 
@@ -1268,5 +1270,280 @@ public theorem primeRecipIcc_of_pack {Nb N S P s len T : ℕ} (hs : Sieve.IsSiev
   have hC : sumB (bitAtK s) 1 len 1 = T / P := by
     rw [← hT, Nat.add_mul_div_left _ _ (by omega), Nat.div_eq_of_lt hlt, Nat.zero_add]
   exact primeRecipIcc_of hs hcov hS hlen hlen' h5 hA hC
+
+/-! ## The expansion in the offset from the start of the window
+
+Equation (8.2) of Bach, Klyve and Sorenson, *Computing prime harmonic sums*, Math. Comp. 78 (2009)
+2283–2305, replaces `1 / p` for a prime `p` in a window starting at `o` by the leading terms of its
+expansion in the offset `p - o`. Two polynomial identities carry the whole enclosure:
+
+* `(2 * o - p) * p ≤ o ^ 2`, which is `0 ≤ (o - p) ^ 2`;
+* `o ^ 3 ≤ (3 * o ^ 2 - 3 * o * p + p ^ 2) * p`, which is `0 ≤ (p - o) ^ 3` and needs `o ≤ p`.
+
+Summed over the primes of the window these give an enclosure in terms of three folds of the
+*numbers* at the set bits and no division at all: the count `C`, the total `V = ∑ p` and the total
+of squares `Q = ∑ p ^ 2`. The interval is
+
+  `(2 * o * C - V) / o ^ 2  ≤  ∑ 1 / p  ≤  (3 * o ^ 2 * C - 3 * o * V + Q) / o ^ 3`
+
+whose width is `∑ (p - o) ^ 2 / o ^ 3`. Rescaling both ends to the common denominator `S` that the
+joins use costs two divisions per window rather than one per prime, and those two happen in the
+emitter: the theorem takes the rescaled ends `A` and `A + Cw` and checks them with two `Nat.ble`
+comparisons, written without subtraction so that every literal in them is a natural number. -/
+
+/-- Compare two quotients by cross-multiplying, with both denominators positive. -/
+theorem div_le_div_of_cross {a b c d : ℚ} (hb : 0 < b) (hd : 0 < d) (h : a * d ≤ c * b) :
+    a / b ≤ c / d := by
+  have key : c / d - a / b = (c * b - a * d) / (b * d) := by
+    field_simp
+  have hnn : 0 ≤ (c * b - a * d) / (b * d) := div_nonneg (by linarith) (by positivity)
+  linarith
+
+/-- The number at one sieve position where its bit is set, `0` where it is clear. -/
+@[expose] public def valAtK (s t : ℕ) : ℕ :=
+  (Sieve.testBitK s t).rec 0 (Sieve.valueK t)
+
+/-- The square of the number at one sieve position where its bit is set, `0` where it is clear. -/
+@[expose] public def sqAtK (s t : ℕ) : ℕ :=
+  (Sieve.testBitK s t).rec 0 (Nat.mul (Sieve.valueK t) (Sieve.valueK t))
+
+@[simp, grind =] theorem valAtK_eq (s t : ℕ) :
+    valAtK s t = if s.testBit t then Sieve.value t else 0 := by
+  rw [valAtK, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value]
+
+@[simp, grind =] theorem sqAtK_eq (s t : ℕ) :
+    sqAtK s t = if s.testBit t then Sieve.value t * Sieve.value t else 0 := by
+  rw [sqAtK, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.mul_eq]
+
+/-- `0 ≤ (o - p) ^ 2` as a lower bound for `1 / p`. -/
+theorem taylor_lower {o p : ℚ} (ho : 0 < o) (hp : 0 < p) : (2 * o - p) / o ^ 2 ≤ p⁻¹ := by
+  have key : p⁻¹ - (2 * o - p) / o ^ 2 = (o - p) ^ 2 / (o ^ 2 * p) := by
+    field_simp
+    ring
+  have hnn : 0 ≤ (o - p) ^ 2 / (o ^ 2 * p) :=
+    div_nonneg (sq_nonneg _) (by positivity)
+  linarith
+
+/-- `0 ≤ (p - o) ^ 3` as an upper bound for `1 / p`. -/
+theorem taylor_upper {o p : ℚ} (ho : 0 < o) (hp : 0 < p) (hop : o ≤ p) :
+    p⁻¹ ≤ (3 * o ^ 2 - 3 * o * p + p ^ 2) / o ^ 3 := by
+  have key : (3 * o ^ 2 - 3 * o * p + p ^ 2) / o ^ 3 - p⁻¹ = (p - o) ^ 3 / (o ^ 3 * p) := by
+    field_simp
+    ring
+  have hnn : 0 ≤ (p - o) ^ 3 / (o ^ 3 * p) :=
+    div_nonneg (pow_nonneg (sub_nonneg.mpr hop) 3) (by positivity)
+  linarith
+
+/-- The two-term expansion summed over the scan: a lower bound needing only the count fold and the
+fold of the numbers themselves. -/
+public theorem taylor_le_recipSum {o : ℕ} (s start len step : ℕ) (ho : 0 < o) :
+    (2 * (o : ℚ) * ((sumB (bitAtK s) start len step : ℕ) : ℚ)
+        - ((sumB (valAtK s) start len step : ℕ) : ℚ)) / (o : ℚ) ^ 2
+      ≤ recipSum s start len step := by
+  rw [recipSum, sumB_eq_sum, sumB_eq_sum, Nat.cast_sum, Nat.cast_sum, Finset.mul_sum,
+    ← Finset.sum_sub_distrib, Finset.sum_div]
+  refine Finset.sum_le_sum fun n _ ↦ ?_
+  rw [bitAtK_eq, valAtK_eq]
+  have hoQ : (0 : ℚ) < (o : ℚ) := by exact_mod_cast ho
+  have hpQ : (0 : ℚ) < (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast Nat.pos_of_ne_zero (value_ne_zero _)
+  split
+  · push_cast
+    rw [mul_one]
+    exact taylor_lower hoQ hpQ
+  · simp
+
+/-- The three-term expansion summed over the scan: an upper bound needing the count fold, the fold
+of the numbers and the fold of their squares. Every scanned position must lie at or above `o`. -/
+public theorem recipSum_le_taylor {o : ℕ} (s start len step : ℕ) (ho : 0 < o)
+    (hv : ∀ n < len, o ≤ Sieve.value (n * step + start)) :
+    recipSum s start len step
+      ≤ (3 * (o : ℚ) ^ 2 * ((sumB (bitAtK s) start len step : ℕ) : ℚ)
+          - 3 * (o : ℚ) * ((sumB (valAtK s) start len step : ℕ) : ℚ)
+          + ((sumB (sqAtK s) start len step : ℕ) : ℚ)) / (o : ℚ) ^ 3 := by
+  rw [recipSum, sumB_eq_sum, sumB_eq_sum, sumB_eq_sum, Nat.cast_sum, Nat.cast_sum, Nat.cast_sum,
+    Finset.mul_sum, Finset.mul_sum, ← Finset.sum_sub_distrib, ← Finset.sum_add_distrib,
+    Finset.sum_div]
+  refine Finset.sum_le_sum fun n hn ↦ ?_
+  rw [bitAtK_eq, valAtK_eq, sqAtK_eq]
+  have hoQ : (0 : ℚ) < (o : ℚ) := by exact_mod_cast ho
+  have hpQ : (0 : ℚ) < (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast Nat.pos_of_ne_zero (value_ne_zero _)
+  have hopQ : (o : ℚ) ≤ (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast hv n (Finset.mem_range.mp hn)
+  split
+  · push_cast
+    have hsq : (Sieve.value (n * step + start) : ℚ) * (Sieve.value (n * step + start) : ℚ)
+        = (Sieve.value (n * step + start) : ℚ) ^ 2 := by ring
+    rw [mul_one, hsq]
+    exact taylor_upper hoQ hpQ hopQ
+  · simp
+
+/-- A scan of the positions `lo … lo + len - 1` encloses the sum over the primes it covers, with the
+enclosure built from the three offset folds and rescaled to the denominator `S` by the two
+comparisons `hAb` and `hUb`. -/
+public theorem primeRecipRange_of_taylor {s S lo len o A C V Q Cw : ℕ} (hlo : 1 ≤ lo)
+    (hS : Nat.blt 0 S = true)
+    (ho : Sieve.value lo = o)
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime))
+    (hC : sumB (bitAtK s) lo len 1 = C)
+    (hV : sumB (valAtK s) lo len 1 = V)
+    (hQ : sumB (sqAtK s) lo len 1 = Q)
+    (hAb : Nat.ble (A * o ^ 2 + V * S) (2 * o * C * S) = true)
+    (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * V * S) = true) :
+    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A Cw S := by
+  rw [Nat.blt_eq] at hS
+  rw [Nat.ble_eq] at hAb hUb
+  subst ho
+  have hopos : 0 < Sieve.value lo := by rw [Sieve.value]; omega
+  have hv : ∀ n < len, Sieve.value lo ≤ Sieve.value (n * 1 + lo) :=
+    fun n _ ↦ Sieve.value_strictMono.monotone (by omega)
+  have heq := recipSum_eq_primeSum_range hlo hbit
+  have h1 := taylor_le_recipSum (o := Sieve.value lo) s lo len 1 hopos
+  have h2 := recipSum_le_taylor (o := Sieve.value lo) s lo len 1 hopos hv
+  rw [hC, hV] at h1
+  rw [hC, hV, hQ] at h2
+  have hSQ : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+  have hoQ : (0 : ℚ) < (Sieve.value lo : ℚ) := by exact_mod_cast hopos
+  have hq1 : (A : ℚ) * (Sieve.value lo : ℚ) ^ 2 + (V : ℚ) * S
+      ≤ 2 * (Sieve.value lo : ℚ) * C * S := by exact_mod_cast hAb
+  have hq2 : 3 * (Sieve.value lo : ℚ) ^ 2 * C * S + (Q : ℚ) * S
+      ≤ ((A : ℚ) + Cw) * (Sieve.value lo : ℚ) ^ 3 + 3 * (Sieve.value lo : ℚ) * V * S := by
+    exact_mod_cast hUb
+  rw [PrimeRecipRange, ← heq]
+  refine ⟨le_trans ?_ h1, h2.trans ?_⟩
+  · exact div_le_div_of_cross hSQ (by positivity) (by nlinarith [hq1])
+  · exact div_le_div_of_cross (by positivity) hSQ (by nlinarith [hq2])
+
+/-- The number at position `lo + i` where bit `i` of the window `w` is set, `0` where clear. -/
+@[expose] public def valAtW (w lo i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0 (Sieve.valueK (Nat.add lo i))
+
+/-- The square of the number at position `lo + i` where bit `i` of `w` is set. -/
+@[expose] public def sqAtW (w lo i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0
+    (Nat.mul (Sieve.valueK (Nat.add lo i)) (Sieve.valueK (Nat.add lo i)))
+
+/-- The scan of the shifted segment is the windowed fold of the numbers. -/
+public theorem val_shift (g lo len : ℕ) :
+    sumB (valAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (valAtW g lo) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, valAtK_eq, valAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq, testBit_shiftLeft_add]
+
+/-- The scan of the shifted segment is the windowed fold of the squares. -/
+public theorem sq_shift (g lo len : ℕ) :
+    sumB (sqAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (sqAtW g lo) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, sqAtK_eq, sqAtW, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.mul_eq, Nat.add_eq,
+    testBit_shiftLeft_add]
+
+/-- A batch of the fold of the numbers over a segment literal, read through a window of it. -/
+public theorem valW_window (g lo k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (valAtW g lo) k B 1 = sumB (valAtW w (lo + k)) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  have harg : lo + (i + k) = lo + k + i := by omega
+  simp only [valAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
+    Nat.mul_one, Nat.add_zero, hbit, harg]
+
+/-- `valW_window` with its numerals written as raw literals, the form the emitter builds. -/
+public theorem valW_windowR (g lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (valAtW g lo) k B (nat_lit 1) = sumB (valAtW w lok) (nat_lit 0) B (nat_lit 1) := by
+  rw [Nat.beq_eq] at hlok
+  subst hlok
+  exact valW_window g lo k B w hw
+
+/-- A batch of the fold of the squares over a segment literal, read through a window of it. -/
+public theorem sqW_window (g lo k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (sqAtW g lo) k B 1 = sumB (sqAtW w (lo + k)) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  have harg : lo + (i + k) = lo + k + i := by omega
+  simp only [sqAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
+    Nat.mul_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
+
+/-- `sqW_window` with its numerals written as raw literals. -/
+public theorem sqW_windowR (g lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (sqAtW g lo) k B (nat_lit 1) = sumB (sqAtW w lok) (nat_lit 0) B (nat_lit 1) := by
+  rw [Nat.beq_eq] at hlok
+  subst hlok
+  exact sqW_window g lo k B w hw
+
+/-- `primeRecipRange_of_segRun` with the three offset folds in place of the reciprocal fold: the
+numbers at the set bits and their squares are summed without a division, and the two `Nat.ble`
+comparisons rescale the resulting interval to the denominator `S`. -/
+public theorem primeRecipRange_of_segRun_taylor {s B a W S g C V Q A Cw lo next : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hV : sumB (valAtW g lo) 0 W 1 = V)
+    (hQ : sumB (sqAtW g lo) 0 W 1 = Q)
+    (hAb : Nat.ble (A * a ^ 2 + V * S) (2 * a * C * S) = true)
+    (hUb : Nat.ble (3 * a ^ 2 * C * S + Q * S) ((A + Cw) * a ^ 3 + 3 * a * V * S) = true) :
+    PrimeRecipRange a next A Cw S := by
+  rw [Nat.beq_eq] at hlo htv
+  subst hlo
+  subst htv
+  rw [Nat.ble_eq] at ha5 hB1 h7B
+  rw [Nat.blt_eq] at hW htop
+  rw [Sieve.segRun_eq] at hseg
+  have hsound' := Sieve.segmentSound_of hs ha hW hB1 h7B
+  have hcomplete' := Sieve.segmentComplete_of hs hB6 hW h7B
+  rw [Sieve.SegmentSound] at hsound'
+  rw [Sieve.SegmentComplete] at hcomplete'
+  rw [hseg] at hsound' hcomplete'
+  have hval : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
+  have hmono : ∀ j, Sieve.value (Sieve.index a) ≤ Sieve.value (Sieve.index a + j) := fun j ↦
+    Sieve.value_strictMono.monotone (Nat.le_add_right _ _)
+  have hlow : ∀ j < W, B < Sieve.value (Sieve.index a + j) := by
+    intro j _
+    have := hmono j
+    omega
+  have hhigh : ∀ j < W, Sieve.value (Sieve.index a + j) < B ^ 2 := by
+    intro j hj
+    have : Sieve.value (Sieve.index a + j) ≤ Sieve.value (Sieve.index a + W - 1) :=
+      Sieve.value_strictMono.monotone (by omega)
+    omega
+  have hiff := segment_bit_iff (fun j hj h ↦ hsound' j hj h) hcomplete' hlow hhigh
+  have hbit : ∀ t, Sieve.index a ≤ t → t < Sieve.index a + W →
+      ((Nat.shiftLeft g (Sieve.index a)).testBit t ↔ (Sieve.value t).Prime) := by
+    intro t h1 h2
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le h1
+    rw [testBit_shiftLeft_add]
+    exact hiff j (by omega)
+  have h1 : 1 ≤ Sieve.index a := by
+    rw [Sieve.index]
+    omega
+  have hC' : sumB (bitAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = C := by
+    rw [bit_shift]; exact hC
+  have hV' : sumB (valAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = V := by
+    rw [val_shift]; exact hV
+  have hQ' : sumB (sqAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = Q := by
+    rw [sq_shift]; exact hQ
+  have := primeRecipRange_of_taylor h1 hS hval hbit hC' hV' hQ' hAb hUb
+  rwa [hval] at this
 
 end PrimeCert
