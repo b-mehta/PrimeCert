@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "segloop12"
+          - n: "whole12"
             rounds: 2
-            cases: "SegV0Ht12 SegV1Ht12 SegV3Ht12"
+            cases: "Ht12 Ht12_M3 Ht12_M11"
     steps:
       - uses: actions/checkout@v7
 
