@@ -168,6 +168,22 @@ bit lands within `2*p` of `M`. -/
       (Nat.sub (Nat.pow 2 (p.mul 2)) 1)).mul
     ((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B))
 
+/-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
+the seed lies outside that slice. -/
+@[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
+  (base.ble A).rec 0 (((A.sub base).ble 65535).rec 0 (Nat.shiftLeft 1 (A.sub base)))
+
+/-- One prime's two seeds joined into a 65536-bit slice of the window rather than a number as wide
+as the window. For a prime past half the window's width these two bits are all it can hit. -/
+@[expose] public noncomputable def stripeMarkK (acc p lo Wm1 base : Nat) : Nat :=
+  acc.lor ((seedStripeK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) base).lor
+    (seedStripeK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) base))
+
+/-- `segLoopSCK` writing into a 65536-bit slice through `stripeMarkK`. -/
+@[expose] public noncomputable def segLoopStripeK (c lo Wm1 base acc start fuel : Nat) : Nat :=
+  fuel.rec acc fun i a =>
+    (testBitK c i).rec a (stripeMarkK a (valueK (start.add i)) lo Wm1 base)
+
 /-- `segMarkCK` with the mask in the closed form of `buildMaskRK`. -/
 @[expose] public noncomputable def segMarkRK (seg p lo Wm1 : Nat) : Nat :=
   clearHitK seg
@@ -1219,6 +1235,19 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
   let m := p * 2
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
+/-- Twin of `segLoopStripeK`. -/
+meta def segLoopStripe (s lo Wm1 base acc start fuel : Nat) : Nat := Id.run do
+  let mut a := acc
+  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
+  for i in [0:fuel] do
+    if c &&& 1 = 1 then
+      let p := value (start + i)
+      for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
+        if base ≤ X && X - base ≤ 65535 then
+          a := a ||| (1 <<< (X - base))
+    c := c >>> 1
+  return a
+
 /-- Twin of `segMarkRK`. -/
 meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
   let A := firstLoc (index (p * 5)) lo (p * 2)
@@ -1401,7 +1430,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 23 then throwError "run_segment_variant: mode {mode} is not 0 to 23"
+  if mode > 24 then throwError "run_segment_variant: mode {mode} is not 0 to 24"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1441,6 +1470,23 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
+    return
+  if mode == 24 then
+    -- Measurement only: the same walk over the same primes, writing each prime's hits into one
+    -- 65536-bit slice of the window instead of a number as wide as the window. Against mode 18 it
+    -- gives what the width-dependent work costs per prime.
+    let mut accT := 0
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (fuel - i * step0)
+      let next := segLoopStripe sVal lo wm1 0 accT start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let batchE := mkAppN (mkConst ``segLoopStripeK)
+        #[mkRawNatLit cVal, loE, wE, mkRawNatLit 0, mkRawNatLit accT, mkRawNatLit start,
+          mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      accT := next
     return
   if mode == 23 then
     -- Measurement only: batches over an all-zero slice, so every step of the fold finds no prime
