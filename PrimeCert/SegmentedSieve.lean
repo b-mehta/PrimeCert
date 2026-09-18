@@ -1259,14 +1259,15 @@ meta def batchLen (start : Nat) : Nat :=
   else if start < 700000 then 768
   else 3072
 
-/-- `batchLen` with a longer tail: past the point where a prime's mask is its two seed bits, a
-batch holds little whatever its length, while every batch costs one window-sized literal in the
-environment for the file's life, so the count is what the tail should minimise. -/
+/-- `batchLen` with a shorter run over the large primes. A batch holds about 869 KB per prime while
+its theorem is checked, against one window-sized literal, 512 KB, per batch in the environment for
+the file's life, so the two terms trade off and 3072 was measured against 8192 rather than
+reasoned. -/
 meta def batchLenWide (start : Nat) : Nat :=
   if start < 20000 then 256
   else if start < 300000 then 512
-  else if start < 700000 then 1024
-  else 8192
+  else if start < 700000 then 768
+  else 1536
 
 /-- Add a theorem declaration with the given statement and proof term. -/
 meta def addSegThm (name : Name) (type value : Expr) : MetaM Unit :=
