@@ -386,9 +386,14 @@ structure WindowBatch where
   w : Nat
   recip : Nat
   count : Nat
+  /-- The batch total of the numbers at the set bits, for the offset expansion. -/
+  val : Nat := 0
+  /-- The batch total of their squares, for the offset expansion. -/
+  sq : Nat := 0
 
 /-- The empty batch, so that the elaborator can index arrays of batches with `!`. -/
-meta instance : Inhabited WindowBatch := ⟨⟨0, 0, 0, 0, 0⟩⟩
+meta instance : Inhabited WindowBatch :=
+  ⟨{ lo := 0, len := 0, w := 0, recip := 0, count := 0 }⟩
 
 /-- The window literal for the positions `lo … lo + n - 1`: bit `i` is the twin's mark at
 `lo + i`. -/
@@ -997,11 +1002,17 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
     rest := rest >>> m
     let mut tot := 0
     let mut cnt := 0
+    let mut vsum := 0
+    let mut qsum := 0
     for j in [0:m] do
       if w.testBit j then
-        tot := tot + S / twinValue (lo + k + j)
+        let v := twinValue (lo + k + j)
+        tot := tot + S / v
         cnt := cnt + 1
-    wins := wins.push { lo := k, len := m, w, recip := tot, count := cnt }
+        vsum := vsum + v
+        qsum := qsum + v * v
+    wins := wins.push
+      { lo := k, len := m, w, recip := tot, count := cnt, val := vsum, sq := qsum }
   let base := `PrimeCert ++ Name.mkSimple s!"harmonicSegment_{a}_{W}_{B}_{scaleExp}_{batch}"
   let mut winNames : Array Name := #[]
   for k in [0:wins.size] do
@@ -1010,6 +1021,68 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
     addHarmonicThm nm (mkWindowEq gE wb.lo wb.len wb.w) Lean.reflBoolTrue
     winNames := winNames.push nm
   let form ← statementForm.get
+  -- form 8 replaces the reciprocal fold by the expansion of `1 / p` in the offset from `a`: the
+  -- folds are the count, the total of the numbers and the total of their squares, and the two
+  -- divisions that rescale the resulting interval to the denominator `S` happen here, once for the
+  -- whole window, rather than once per prime inside the kernel
+  if form == 8 then
+    let fCount := mkApp (mkConst ``bitAtW) gE
+    let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+    let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+      mkAppN (mkConst ``bitW_windowR)
+        #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    let fVal := mkApp2 (mkConst ``valAtW) gE loE
+    let gVal : Nat → Nat → Expr := fun w k ↦
+      mkApp2 (mkConst ``valAtW) (mkRawNatLit w) (mkRawNatLit (lo + k))
+    let bVal : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+      mkAppN (mkConst ``valW_windowR)
+        #[gE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
+          Lean.reflBoolTrue, mkConst nm]
+    let fSq := mkApp2 (mkConst ``sqAtW) gE loE
+    let gSq : Nat → Nat → Expr := fun w k ↦
+      mkApp2 (mkConst ``sqAtW) (mkRawNatLit w) (mkRawNatLit (lo + k))
+    let bSq : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+      mkAppN (mkConst ``sqW_windowR)
+        #[gE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
+          Lean.reflBoolTrue, mkConst nm]
+    let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
+      (fun wb : WindowBatch ↦ wb.count) wins winNames
+    let (V, vName) ← emitWindowedFoldOver (base ++ Name.mkSimple "val") fVal gVal bVal
+      (fun wb : WindowBatch ↦ wb.val) wins winNames
+    let (Q, qName) ← emitWindowedFoldOver (base ++ Name.mkSimple "sq") fSq gSq bSq
+      (fun wb : WindowBatch ↦ wb.sq) wins winNames
+    let twoAC := 2 * a * C
+    if V > twoAC then
+      throwError "run_harmonic_segment: the window reaches past twice its start, \
+so the lower end of the expansion is negative"
+    let A := (twoAC - V) * S / a ^ 2
+    let upNum := 3 * a ^ 2 * C + Q
+    let downNum := 3 * a * V
+    if downNum > upNum then
+      throwError "run_harmonic_segment: the upper end of the expansion is negative"
+    let U := (upNum - downNum) * S / a ^ 3 + 1
+    if U < A then
+      throwError "run_harmonic_segment: the rescaled interval is empty"
+    let Cw := U - A
+    let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipRange)
+        #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit Cw, SE])
+      (mkAppN (mkConst ``primeRecipRange_of_segRun_taylor)
+        #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+          mkRawNatLit C, mkRawNatLit V, mkRawNatLit Q, mkRawNatLit A, mkRawNatLit Cw,
+          loE, mkRawNatLit next,
+          mkAppN (mkConst ``Sieve.IsSieve.monoB)
+            #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
+              mkConst cache.isSieveName, Lean.reflBoolTrue],
+          mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+          mkConst cName, mkConst vName, mkConst qName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue])
+    logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
+{batch}, divisors to {B}, offset expansion; A = {A}, Cw = {Cw}"
+    return
   -- forms 3, 4 and 5 sum over a variant of the bit test, carried back by a conversion theorem
   let (recipF, bitF, recipWin, bitWin, conv) := match form with
     | 2 => (``recipAtW, ``bitAtW, ``recipW_window1, ``bitW_window1, none)
