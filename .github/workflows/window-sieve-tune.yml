@@ -23,10 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Measure the three memory changes together
+      - name: Time one segment alone against two at once
         run: |
-          chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 2 S7_Sched
+          chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/pair.sh
+          PrimeCertTest/SegTune/run.sh 1 S7_Sched
+          PrimeCertTest/SegTune/pair.sh S7_Sched S7_SchedB
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
