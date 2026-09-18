@@ -9,7 +9,7 @@ import Lean.Elab.Command
 public import PrimeCert.Sieve
 public import PrimeCert.SieveCorrect
 public import PrimeCert.SieveBase
-public import PrimeCert.ForMathlib
+public import PrimeCert.ForMathlibBitwise
 public import Mathlib.Data.Nat.Bitwise
 
 /-!
