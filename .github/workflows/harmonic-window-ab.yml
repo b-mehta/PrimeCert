@@ -173,6 +173,53 @@ jobs:
           run_split 1e8
           exit "$fail"
 
+  shape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the parts depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCertTest.HarmonicBench.SieveHt12
+
+      - name: Build the twelve parts at once and time them
+        run: |
+          set +e +o pipefail
+          start=$(date +%s)
+          lake build PrimeCertTest.Shape.All > out-shape.txt 2>&1 &
+          pid=$!
+          peak=0
+          while kill -0 "$pid" 2>/dev/null; do
+            r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+            if [ "$r" -gt "$peak" ]; then peak=$r; fi
+            sleep 1
+          done
+          wait "$pid"
+          code=$?
+          wall=$(( $(date +%s) - start ))
+          echo "RESULT shape | exit $code | wall ${wall}s | 24 windows | $(( wall * 4 * 1000 / 24 )) milli-core-s per window | peak ${peak} KB"
+          grep -E "run_harmonic_join|error" out-shape.txt | tail -6
+          exit "$code"
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-shape
+          path: out-shape.txt
+
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4
