@@ -13,7 +13,8 @@ for f in "$@"; do
   pids+=($!)
 done
 summed=0
-while kill -0 "${pids[0]}" 2>/dev/null || kill -0 "${pids[1]}" 2>/dev/null; do
+alive() { for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null && return 0; done; return 1; }
+while alive; do
   total=0
   for p in "${pids[@]}"; do
     lp=$(pgrep -P "$p" 2>/dev/null)
