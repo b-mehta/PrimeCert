@@ -1388,7 +1388,7 @@ public theorem primeRecipRange_of_taylor {s S lo len o A C V Q Cw : ℕ} (hlo : 
     (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime))
     (hC : sumB (bitAtK s) lo len 1 = C)
     (hV : sumB (valAtK s) lo len 1 = V)
-    (hQ : sumB (sqAtK s) lo len 1 = Q)
+    (hQ : sumB (sqAtK s) lo len 1 ≤ Q)
     (hAb : Nat.ble (A * o ^ 2 + V * S) (2 * o * C * S) = true)
     (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * V * S) = true) :
     PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A Cw S := by
@@ -1402,7 +1402,16 @@ public theorem primeRecipRange_of_taylor {s S lo len o A C V Q Cw : ℕ} (hlo : 
   have h1 := taylor_le_recipSum (o := Sieve.value lo) s lo len 1 hopos
   have h2 := recipSum_le_taylor (o := Sieve.value lo) s lo len 1 hopos hv
   rw [hC, hV] at h1
-  rw [hC, hV, hQ] at h2
+  rw [hC, hV] at h2
+  have hQ' : ((sumB (sqAtK s) lo len 1 : ℕ) : ℚ) ≤ (Q : ℚ) := by exact_mod_cast hQ
+  have hd3 : (0 : ℚ) < (Sieve.value lo : ℚ) ^ 3 := by
+    have : (0 : ℚ) < (Sieve.value lo : ℚ) := by exact_mod_cast hopos
+    positivity
+  replace h2 : recipSum s lo len 1
+      ≤ (3 * (Sieve.value lo : ℚ) ^ 2 * C - 3 * (Sieve.value lo : ℚ) * V + (Q : ℚ))
+          / (Sieve.value lo : ℚ) ^ 3 := by
+    refine h2.trans ?_
+    gcongr
   have hSQ : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
   have hoQ : (0 : ℚ) < (Sieve.value lo : ℚ) := by exact_mod_cast hopos
   have hq1 : (A : ℚ) * (Sieve.value lo : ℚ) ^ 2 + (V : ℚ) * S
@@ -1500,7 +1509,7 @@ public theorem primeRecipRange_of_segRun_taylor {s B a W S g C V Q A Cw lo next 
     (hseg : Sieve.segRun s a W B = g)
     (hC : sumB (bitAtW g) 0 W 1 = C)
     (hV : sumB (valAtW g lo) 0 W 1 = V)
-    (hQ : sumB (sqAtW g lo) 0 W 1 = Q)
+    (hQ : sumB (sqAtW g lo) 0 W 1 ≤ Q)
     (hAb : Nat.ble (A * a ^ 2 + V * S) (2 * a * C * S) = true)
     (hUb : Nat.ble (3 * a ^ 2 * C * S + Q * S) ((A + Cw) * a ^ 3 + 3 * a * V * S) = true) :
     PrimeRecipRange a next A Cw S := by
@@ -1541,9 +1550,345 @@ public theorem primeRecipRange_of_segRun_taylor {s B a W S g C V Q A Cw lo next 
     rw [bit_shift]; exact hC
   have hV' : sumB (valAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = V := by
     rw [val_shift]; exact hV
-  have hQ' : sumB (sqAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = Q := by
+  have hQ' : sumB (sqAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 ≤ Q := by
     rw [sq_shift]; exact hQ
   have := primeRecipRange_of_taylor h1 hS hval hbit hC' hV' hQ' hAb hUb
+  rwa [hval] at this
+
+/-- Weaken a fold equation to the inequality the enclosure asks for, with every argument
+explicit so that the emitter can build the application. -/
+public theorem sumB_le_of_eq (f : ℕ → ℕ) (start len step t : ℕ)
+    (h : sumB f start len step = t) : sumB f start len step ≤ t := h.le
+
+/-! ### Two folds instead of three
+
+`∑ p ^ 2` over the window is at most `top * ∑ p`, where `top` is the last number the window covers,
+so the fold of the squares can be replaced by one multiplication on the literals. The interval this
+leaves is `∑ p * (top - p) / o ^ 3` wider than the one the three folds give. -/
+
+theorem sqAtW_le_mul {g lo top i : ℕ} (h : Sieve.value (lo + i) ≤ top) :
+    sqAtW g lo i ≤ top * valAtW g lo i := by
+  rw [sqAtW, valAtW, Sieve.valueK_eq_value, Nat.mul_eq, Nat.add_eq]
+  cases Sieve.testBitK g i with
+  | false => simp
+  | true => exact Nat.mul_le_mul_right _ h
+
+/-- The fold of the squares is at most `top` times the fold of the numbers. -/
+public theorem sumB_sqAtW_le_mul {g lo top len : ℕ}
+    (h : ∀ i < len, Sieve.value (lo + i) ≤ top) :
+    sumB (sqAtW g lo) 0 len 1 ≤ top * sumB (valAtW g lo) 0 len 1 := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, sumB_succ, Nat.mul_add]
+    have h1 := ih fun i hi ↦ h i (Nat.lt_succ_of_lt hi)
+    have h2 : sqAtW g lo ((n.mul 1).add 0) ≤ top * valAtW g lo ((n.mul 1).add 0) := by
+      refine sqAtW_le_mul ?_
+      have := h n (Nat.lt_succ_self n)
+      simpa using this
+    omega
+
+/-- `primeRecipRange_of_segRun_taylor` with the fold of the squares replaced by the product of the
+last number in the window with the fold of the numbers. -/
+public theorem primeRecipRange_of_segRun_taylor2 {s B a W S g C V Q A Cw lo next top : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hW1 : Nat.ble 1 W = true)
+    (htv2 : Nat.beq (Sieve.value (lo + W - 1)) top = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hV : sumB (valAtW g lo) 0 W 1 = V)
+    (hQ : Nat.beq (Nat.mul top V) Q = true)
+    (hAb : Nat.ble (A * a ^ 2 + V * S) (2 * a * C * S) = true)
+    (hUb : Nat.ble (3 * a ^ 2 * C * S + Q * S) ((A + Cw) * a ^ 3 + 3 * a * V * S) = true) :
+    PrimeRecipRange a next A Cw S := by
+  rw [Nat.ble_eq] at hW1
+  rw [Nat.beq_eq] at htv2 hQ
+  subst htv2
+  have hle : ∀ i < W, Sieve.value (lo + i) ≤ Sieve.value (lo + W - 1) := fun i hi ↦
+    Sieve.value_strictMono.monotone (by omega)
+  have hQ' : sumB (sqAtW g lo) 0 W 1 ≤ Q := by
+    rw [← hQ, ← hV]
+    exact sumB_sqAtW_le_mul hle
+  exact primeRecipRange_of_segRun_taylor hs ha hB6 ha5 hW hB1 h7B hS hlo htv htop hseg hC hV hQ'
+    hAb hUb
+
+/-! ### The paper's own variables
+
+Bach, Klyve and Sorenson fold the offsets `d = p - o` rather than the numbers themselves. The two
+are related by `∑ p = C * o + ∑ d` and `∑ p ^ 2 = C * o ^ 2 + 2 * o * ∑ d + ∑ d ^ 2`, so the
+enclosure is the same one; what changes is the size of the numbers the kernel adds up. -/
+
+/-- The offset of the number at position `lo + i` from `o`, where bit `i` of `w` is set. -/
+@[expose] public def offAtW (w lo o i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0 (Nat.sub (Sieve.valueK (Nat.add lo i)) o)
+
+/-- The square of that offset. -/
+@[expose] public def osqAtW (w lo o i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec 0
+    (Nat.mul (Nat.sub (Sieve.valueK (Nat.add lo i)) o) (Nat.sub (Sieve.valueK (Nat.add lo i)) o))
+
+/-- A batch of the offset fold over a segment literal, read through a window of it. -/
+public theorem offW_window (g lo o k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (offAtW g lo o) k B 1 = sumB (offAtW w (lo + k) o) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  have harg : lo + (i + k) = lo + k + i := by omega
+  simp only [offAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
+    Nat.sub_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
+
+/-- `offW_window` with its numerals written as raw literals. -/
+public theorem offW_windowR (g lo o k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (offAtW g lo o) k B (nat_lit 1) = sumB (offAtW w lok o) (nat_lit 0) B (nat_lit 1) := by
+  rw [Nat.beq_eq] at hlok
+  subst hlok
+  exact offW_window g lo o k B w hw
+
+/-- A batch of the fold of the squared offsets, read through a window of the segment. -/
+public theorem osqW_window (g lo o k B w : ℕ)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (osqAtW g lo o) k B 1 = sumB (osqAtW w (lo + k) o) 0 B 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := window_testBit hw (Finset.mem_range.mp hi)
+  have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
+  have harg : lo + (i + k) = lo + k + i := by omega
+  simp only [osqAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
+    Nat.sub_eq, Nat.mul_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
+
+/-- `osqW_window` with its numerals written as raw literals. -/
+public theorem osqW_windowR (g lo o k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (osqAtW g lo o) k B (nat_lit 1) = sumB (osqAtW w lok o) (nat_lit 0) B (nat_lit 1) := by
+  rw [Nat.beq_eq] at hlok
+  subst hlok
+  exact osqW_window g lo o k B w hw
+
+theorem valAtW_eq_add {g lo o i : ℕ} (h : o ≤ Sieve.value (lo + i)) :
+    valAtW g lo i = o * bitAtW g i + offAtW g lo o i := by
+  rw [valAtW, bitAtW, offAtW, Sieve.valueK_eq_value, Nat.add_eq, Nat.sub_eq]
+  cases Sieve.testBitK g i with
+  | false => simp
+  | true => simp; omega
+
+theorem sqAtW_eq_add {g lo o i : ℕ} (h : o ≤ Sieve.value (lo + i)) :
+    sqAtW g lo i = o ^ 2 * bitAtW g i + 2 * o * offAtW g lo o i + osqAtW g lo o i := by
+  rw [sqAtW, bitAtW, offAtW, osqAtW, Sieve.valueK_eq_value, Nat.add_eq, Nat.sub_eq, Nat.mul_eq]
+  cases Sieve.testBitK g i with
+  | false => simp
+  | true =>
+    obtain ⟨d, hd⟩ := Nat.exists_eq_add_of_le h
+    rw [hd]
+    simp only [Nat.add_sub_cancel_left, Nat.mul_eq]
+    ring
+
+/-- The fold of the numbers in terms of the count and the fold of the offsets. -/
+public theorem sumB_valAtW_eq {g lo o len : ℕ} (h : ∀ i < len, o ≤ Sieve.value (lo + i)) :
+    sumB (valAtW g lo) 0 len 1
+      = o * sumB (bitAtW g) 0 len 1 + sumB (offAtW g lo o) 0 len 1 := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, sumB_succ, sumB_succ, ih fun i hi ↦ h i (Nat.lt_succ_of_lt hi), Nat.mul_add]
+    have hn : o ≤ Sieve.value (lo + (n.mul 1).add 0) := by
+      have := h n (Nat.lt_succ_self n)
+      simpa using this
+    rw [valAtW_eq_add hn]
+    omega
+
+/-- The fold of the squares in terms of the count and the two offset folds. -/
+public theorem sumB_sqAtW_eq {g lo o len : ℕ} (h : ∀ i < len, o ≤ Sieve.value (lo + i)) :
+    sumB (sqAtW g lo) 0 len 1
+      = o ^ 2 * sumB (bitAtW g) 0 len 1 + 2 * o * sumB (offAtW g lo o) 0 len 1
+        + sumB (osqAtW g lo o) 0 len 1 := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, sumB_succ, sumB_succ, sumB_succ,
+      ih fun i hi ↦ h i (Nat.lt_succ_of_lt hi), Nat.mul_add, Nat.mul_add]
+    have hn : o ≤ Sieve.value (lo + (n.mul 1).add 0) := by
+      have := h n (Nat.lt_succ_self n)
+      simpa using this
+    rw [sqAtW_eq_add hn]
+    omega
+
+/-- `primeRecipRange_of_segRun_taylor` with the offsets from `a` folded in place of the numbers,
+the two totals carried back to `∑ p` and `∑ p ^ 2` by literal arithmetic. -/
+public theorem primeRecipRange_of_segRun_taylorOff
+    {s B a W S g C D E V Q A Cw lo next : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hD : sumB (offAtW g lo a) 0 W 1 = D)
+    (hE : sumB (osqAtW g lo a) 0 W 1 = E)
+    (hVb : Nat.beq (Nat.add (Nat.mul a C) D) V = true)
+    (hQb : Nat.beq (Nat.add (Nat.add (Nat.mul (a ^ 2) C) (Nat.mul (Nat.mul 2 a) D)) E) Q = true)
+    (hAb : Nat.ble (A * a ^ 2 + V * S) (2 * a * C * S) = true)
+    (hUb : Nat.ble (3 * a ^ 2 * C * S + Q * S) ((A + Cw) * a ^ 3 + 3 * a * V * S) = true) :
+    PrimeRecipRange a next A Cw S := by
+  rw [Nat.beq_eq] at hlo hVb hQb
+  have hval : Sieve.value lo = a := by
+    rw [← hlo]
+    exact Sieve.value_index ha
+  have hle : ∀ i < W, a ≤ Sieve.value (lo + i) := fun i _ ↦ by
+    have := Sieve.value_strictMono.monotone (Nat.le_add_right lo i)
+    omega
+  have hV : sumB (valAtW g lo) 0 W 1 = V := by
+    rw [sumB_valAtW_eq hle, hC, hD, ← hVb]
+    simp
+  have hQ : sumB (sqAtW g lo) 0 W 1 = Q := by
+    rw [sumB_sqAtW_eq hle, hC, hD, hE, ← hQb]
+    simp
+  exact primeRecipRange_of_segRun_taylor hs ha hB6 ha5 hW hB1 h7B hS
+    (Nat.beq_eq .. ▸ hlo) htv htop hseg hC hV hQ.le hAb hUb
+
+/-! ### The count alone
+
+Every prime the window covers lies between the window's first number `o` and its last number `top`,
+so the count `C` on its own gives `C / top ≤ ∑ 1 / p ≤ C / o`, an interval of width
+`C * (top - o) / (o * top)`. This is the coarsest enclosure of the family and needs one fold. -/
+
+theorem recipSum_count_ge {s start len step top : ℕ} (htop : 0 < top)
+    (hhi : ∀ n < len, Sieve.value (n * step + start) ≤ top) :
+    ((sumB (bitAtK s) start len step : ℕ) : ℚ) / top ≤ recipSum s start len step := by
+  rw [recipSum, sumB_eq_sum, Nat.cast_sum, Finset.sum_div]
+  refine Finset.sum_le_sum fun n hn ↦ ?_
+  rw [bitAtK_eq]
+  have hp : (0 : ℚ) < (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast Nat.pos_of_ne_zero (value_ne_zero _)
+  have htQ : (0 : ℚ) < (top : ℚ) := by exact_mod_cast htop
+  have hle : (Sieve.value (n * step + start) : ℚ) ≤ (top : ℚ) := by
+    exact_mod_cast hhi n (Finset.mem_range.mp hn)
+  split
+  · push_cast
+    rw [inv_eq_one_div]
+    exact div_le_div_of_cross htQ hp (by linarith)
+  · simp
+
+theorem recipSum_count_le {s start len step o : ℕ} (ho : 0 < o)
+    (hlow : ∀ n < len, o ≤ Sieve.value (n * step + start)) :
+    recipSum s start len step ≤ ((sumB (bitAtK s) start len step : ℕ) : ℚ) / o := by
+  rw [recipSum, sumB_eq_sum, Nat.cast_sum, Finset.sum_div]
+  refine Finset.sum_le_sum fun n hn ↦ ?_
+  rw [bitAtK_eq]
+  have hp : (0 : ℚ) < (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast Nat.pos_of_ne_zero (value_ne_zero _)
+  have hoQ : (0 : ℚ) < (o : ℚ) := by exact_mod_cast ho
+  have hle : (o : ℚ) ≤ (Sieve.value (n * step + start) : ℚ) := by
+    exact_mod_cast hlow n (Finset.mem_range.mp hn)
+  split
+  · push_cast
+    rw [inv_eq_one_div]
+    exact div_le_div_of_cross hp hoQ (by linarith)
+  · simp
+
+/-- The count fold on its own, rescaled to the denominator `S`. -/
+public theorem primeRecipRange_of_count {s S lo len top C A Cw : ℕ} (hlo : 1 ≤ lo)
+    (hS : Nat.blt 0 S = true) (hlen : 1 ≤ len)
+    (htopv : Sieve.value (lo + len - 1) = top)
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime))
+    (hC : sumB (bitAtK s) lo len 1 = C)
+    (hAb : Nat.ble (A * top) (C * S) = true)
+    (hUb : Nat.ble (C * S) ((A + Cw) * Sieve.value lo) = true) :
+    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A Cw S := by
+  rw [Nat.blt_eq] at hS
+  rw [Nat.ble_eq] at hAb hUb
+  subst htopv
+  have hopos : 0 < Sieve.value lo := by rw [Sieve.value]; omega
+  have htpos : 0 < Sieve.value (lo + len - 1) := by rw [Sieve.value]; omega
+  have hhi : ∀ n < len, Sieve.value (n * 1 + lo) ≤ Sieve.value (lo + len - 1) := fun n hn ↦
+    Sieve.value_strictMono.monotone (by omega)
+  have hlow : ∀ n < len, Sieve.value lo ≤ Sieve.value (n * 1 + lo) := fun n _ ↦
+    Sieve.value_strictMono.monotone (by omega)
+  have heq := recipSum_eq_primeSum_range hlo hbit
+  have h1 := recipSum_count_ge (s := s) (start := lo) (len := len) (step := 1) htpos hhi
+  have h2 := recipSum_count_le (s := s) (start := lo) (len := len) (step := 1) hopos hlow
+  rw [hC] at h1 h2
+  have hSQ : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+  have hoQ : (0 : ℚ) < (Sieve.value lo : ℚ) := by exact_mod_cast hopos
+  have htQ : (0 : ℚ) < (Sieve.value (lo + len - 1) : ℚ) := by exact_mod_cast htpos
+  have hq1 : (A : ℚ) * (Sieve.value (lo + len - 1) : ℚ) ≤ (C : ℚ) * S := by exact_mod_cast hAb
+  have hq2 : (C : ℚ) * S ≤ ((A : ℚ) + Cw) * (Sieve.value lo : ℚ) := by exact_mod_cast hUb
+  rw [PrimeRecipRange, ← heq]
+  exact ⟨le_trans (div_le_div_of_cross hSQ htQ (by linarith)) h1,
+    h2.trans (div_le_div_of_cross hoQ hSQ (by linarith))⟩
+
+/-- `primeRecipRange_of_segRun` with the count fold alone and no arithmetic on the numbers. -/
+public theorem primeRecipRange_of_segRun_count {s B a W S g C A Cw lo next top : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hW1 : Nat.ble 1 W = true)
+    (htv2 : Nat.beq (Sieve.value (lo + W - 1)) top = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hAb : Nat.ble (A * top) (C * S) = true)
+    (hUb : Nat.ble (C * S) ((A + Cw) * a) = true) :
+    PrimeRecipRange a next A Cw S := by
+  rw [Nat.beq_eq] at hlo htv htv2
+  subst hlo
+  subst htv
+  rw [Nat.ble_eq] at ha5 hB1 h7B hW1
+  rw [Nat.blt_eq] at hW htop
+  rw [Sieve.segRun_eq] at hseg
+  have hsound' := Sieve.segmentSound_of hs ha hW hB1 h7B
+  have hcomplete' := Sieve.segmentComplete_of hs hB6 hW h7B
+  rw [Sieve.SegmentSound] at hsound'
+  rw [Sieve.SegmentComplete] at hcomplete'
+  rw [hseg] at hsound' hcomplete'
+  have hval : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
+  have hmono : ∀ j, Sieve.value (Sieve.index a) ≤ Sieve.value (Sieve.index a + j) := fun j ↦
+    Sieve.value_strictMono.monotone (Nat.le_add_right _ _)
+  have hlow : ∀ j < W, B < Sieve.value (Sieve.index a + j) := by
+    intro j _
+    have := hmono j
+    omega
+  have hhigh : ∀ j < W, Sieve.value (Sieve.index a + j) < B ^ 2 := by
+    intro j hj
+    have : Sieve.value (Sieve.index a + j) ≤ Sieve.value (Sieve.index a + W - 1) :=
+      Sieve.value_strictMono.monotone (by omega)
+    omega
+  have hiff := segment_bit_iff (fun j hj h ↦ hsound' j hj h) hcomplete' hlow hhigh
+  have hbit : ∀ t, Sieve.index a ≤ t → t < Sieve.index a + W →
+      ((Nat.shiftLeft g (Sieve.index a)).testBit t ↔ (Sieve.value t).Prime) := by
+    intro t h1 h2
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le h1
+    rw [testBit_shiftLeft_add]
+    exact hiff j (by omega)
+  have h1 : 1 ≤ Sieve.index a := by
+    rw [Sieve.index]
+    omega
+  have hC' : sumB (bitAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = C := by
+    rw [bit_shift]; exact hC
+  have hUb' : Nat.ble (C * S) ((A + Cw) * Sieve.value (Sieve.index a)) = true := by
+    rwa [hval]
+  have := primeRecipRange_of_count h1 hS hW1 htv2 hbit hC' hAb hUb'
   rwa [hval] at this
 
 end PrimeCert
