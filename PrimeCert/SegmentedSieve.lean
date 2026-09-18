@@ -946,7 +946,7 @@ about `segLoopK`: `0` walks every base index and builds a full mask for each pri
 prime whose two starting positions miss the window, stops the doubling at the window's width,
 leaves the segment alone where a mask meets nothing, and reads each batch's own slice of the base
 sieve, and `11` is `3` with the compiled twin that mirrors those savings. -/
-public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) (mode : Nat := 0) :
+public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) (mode : Nat := 11) :
     MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment: the window start {a} is not 1 or 5 modulo 6"

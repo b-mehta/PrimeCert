@@ -496,7 +496,7 @@ the loops can be timed against each other in one job. `0` walks every base index
 mask for each prime; `3` and `11` drop the primes whose starting positions miss the window, stop
 the doubling at the window's width, skip the masks that meet nothing, and read each batch's own
 slice of the base sieve. -/
-meta def segmentMode : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 0)
+meta def segmentMode : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 11)
 
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
 in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
@@ -1317,11 +1317,11 @@ elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num
     rStx:(num)? mStx:(num)? : command =>
   liftTermElabM <| do
     statementForm.set (match rStx with | none => 2 | some r => r.getNat)
-    segmentMode.set (match mStx with | none => 0 | some m => m.getNat)
+    segmentMode.set (match mStx with | none => 11 | some m => m.getNat)
     runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
       lStx.getNat nStx.getNat
     statementForm.set 2
-    segmentMode.set 0
+    segmentMode.set 11
 
 /-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
 `runHarmonicJoin`). -/
