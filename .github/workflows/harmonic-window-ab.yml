@@ -16,7 +16,7 @@ jobs:
         include:
           - n: "height"
             rounds: 1
-            cases: "Bitn1e8_F1 Ht09 Ht10 Ht11 Ht12 Ht13 Ht14 Ht15"
+            cases: "Ht12 Ht13 Ht14"
     steps:
       - uses: actions/checkout@v7
 
@@ -29,11 +29,14 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
 
-      - name: Build what the cases depend on, the sieve to 1e8 included
+      - name: Build what the cases depend on, the sieves included
         run: |
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCertTest.HarmonicBench.SplitSieve1e8
+          lake build PrimeCertTest.HarmonicBench.SieveHt12
+          lake build PrimeCertTest.HarmonicBench.SieveHt13
+          lake build PrimeCertTest.HarmonicBench.SieveHt14
 
       - name: Record the runner
         run: |
