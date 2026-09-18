@@ -14,9 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "top"
+          - n: "share12"
             rounds: 2
-            cases: "Ht14 Ht15"
+            cases: "SegOnlyHt12 CountHt12 Ht12"
+          - n: "width12"
+            rounds: 2
+            cases: "WideW1Ht12 WideW2Ht12 WideW4Ht12"
     steps:
       - uses: actions/checkout@v7
 
@@ -34,8 +37,7 @@ jobs:
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCert.SegmentedSieve
-          lake build PrimeCertTest.HarmonicBench.SieveHt14
-          lake build PrimeCertTest.HarmonicBench.SieveHt15
+          lake build PrimeCertTest.HarmonicBench.SieveHt12
 
       - name: Record the runner
         run: |
