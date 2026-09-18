@@ -939,23 +939,39 @@ meta def addSegThm (name : Name) (type value : Expr) : MetaM Unit :=
 the bitset `baseLit`, scanning `fuel` base indices in batches of `len`. Emits
 `ns.segBits_{a}_{W}_{fuel}_{len} : Nat` and `ns.segEq_{a}_{W}_{fuel}_{len} : segLoopK … =
 segBits_…`, the latter chained from one kernel-checked `Nat.beq` lemma per batch. `ns` is the
-namespace the call sits in, so the same window can be built in two modules without a clash. -/
-public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit := do
+namespace the call sits in, so the same window can be built in two modules without a clash.
+
+`mode` picks the loop the batch lemmas are stated over, all three ending at the same equation
+about `segLoopK`: `0` walks every base index and builds a full mask for each prime, `3` drops a
+prime whose two starting positions miss the window, stops the doubling at the window's width,
+leaves the segment alone where a mask meets nothing, and reads each batch's own slice of the base
+sieve, and `11` is `3` with the compiled twin that mirrors those savings. -/
+public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) (mode : Nat := 0) :
+    MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment: the window is empty"
+  if mode ≠ 0 && mode ≠ 3 && mode ≠ 11 then
+    throwError "run_segment: mode {mode} is not 0, 3 or 11"
   let env ← getEnv
   let some info := env.find? baseLit | throwError "run_segment: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment: the base sieve {baseLit} is not a numeral"
+  let fast := mode ≥ 8
+  let clamped := mode % 4 == 3
   let lo := index a
   let wm1 := W - 1
+  let rounds := Nat.log2 wm1 + 1
   let step0 := Nat.max 1 len
   let sE := mkConst baseLit
   let loE := mkRawNatLit lo
   let wE := mkRawNatLit wm1
+  let nE := mkRawNatLit rounds
   let initE := mkApp (mkConst ``initSegK) (mkRawNatLit W)
-  let lhsLoop := mkSegLoopK sE loE wE initE 1 fuel
+  let plainLoop := mkSegLoopK sE loE wE initE 1 fuel
+  let lhsLoop := if clamped then
+      mkAppN (mkConst ``segLoopCK) #[sE, loE, wE, nE, initE, mkRawNatLit 1, mkRawNatLit fuel]
+    else plainLoop
   let tag := s!"{a}_{W}_{fuel}_{step0}"
   let parent := ns ++ Name.mkSimple s!"segEq_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBits_{tag}"
@@ -966,24 +982,54 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
     let start := 1 + i * step0
     let owed := fuel - i * step0
     let stepN := Nat.min step0 owed
-    let next := segLoop sVal lo wm1 bits start stepN
+    let next := if fast then segLoopC sVal lo wm1 rounds bits start stepN
+      else segLoop sVal lo wm1 bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
-    addSegThm stepName
-      (mkSegBeqTrue (mkSegLoopK sE loE wE bitsE start stepN) (mkRawNatLit next)) Lean.reflBoolTrue
-    proof := if owed == stepN then
-        mkAppN (mkConst ``segLoopK_last)
-          #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
-            proof, mkConst stepName]
-      else
-        mkAppN (mkConst ``segLoopK_chain)
-          #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
-            mkRawNatLit (owed - stepN), proof, mkConst stepName]
+    let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+    let cE := mkRawNatLit cVal
+    let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+    if clamped then
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      addSegThm stepName
+        (mkSegBeqTrue (mkAppN (mkConst ``segLoopSCK)
+          #[cE, loE, wE, nE, bitsE, mkRawNatLit start, mkRawNatLit stepN]) (mkRawNatLit next))
+        Lean.reflBoolTrue
+      proof := if owed == stepN then
+          mkAppN (mkConst ``segLoopSCK_last)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, proof, mkConst chunkName, mkConst stepName]
+        else
+          mkAppN (mkConst ``segLoopSCK_chain)
+            #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, cE, mkRawNatLit start,
+              mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst chunkName,
+              mkConst stepName]
+    else
+      addSegThm stepName
+        (mkSegBeqTrue (mkSegLoopK sE loE wE bitsE start stepN) (mkRawNatLit next))
+        Lean.reflBoolTrue
+      proof := if owed == stepN then
+          mkAppN (mkConst ``segLoopK_last)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              proof, mkConst stepName]
+        else
+          mkAppN (mkConst ``segLoopK_chain)
+            #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit (owed - stepN), proof, mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
   addDecl <| Declaration.defnDecl
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
-  addSegThm parent (mkNatEq lhsLoop (mkConst litName)) proof
+  let finalProof := if clamped then
+      mkAppN (mkConst ``segEq_of_clamped)
+        #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkRawNatLit bits,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, proof]
+    else proof
+  addSegThm parent (mkNatEq plainLoop (mkConst litName)) finalProof
   let bVal := value fuel
   addSegThm (ns ++ Name.mkSimple s!"segEqI_{a}_{W}_{fuel}_{step0}")
     (mkNatEq (mkAppN (mkConst ``segRun)
