@@ -182,9 +182,9 @@ the batch. The entry is used only if the batch's slice says that position holds 
 seed really lands in slice `k`; otherwise the state is left alone, and the missing bit in the two
 tallies is what a completed batch notices. -/
 @[expose] public noncomputable def stripeEntryK (st c lo start k len e : Nat) : Nat :=
-  let i := e.shiftRight 1
-  let p := valueK (start.add i)
-  let X := (Nat.beq (e.land 1) 0).rec
+  let i : Nat := e.shiftRight 1
+  let p : Nat := valueK (start.add i)
+  let X : Nat := (Nat.beq (e.land 1) 0).rec
     (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
     (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
   (testBitK c i).rec st
@@ -201,9 +201,9 @@ tallies is what a completed batch notices. -/
 place in the mask, with the two tallies carried above the mask. -/
 @[expose] public noncomputable def stripeBatchK (c lo start len W slotW Ls Cs : Nat) : Nat :=
   (64 : Nat).rec 0 fun k asm =>
-    let slot := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
-    let cnt := (Cs.shiftRight (k.mul 16)).land 65535
-    let st := stripeSlotK c lo start k len slot cnt 0
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := stripeSlotK c lo start k len slot cnt 0
     (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
       ((st.shiftRight 65536).shiftLeft W)
 
