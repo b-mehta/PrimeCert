@@ -1036,30 +1036,35 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
     gRecip bRecip (·.recip) wins winNames
-  let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount
-    gCount bCount (·.count) wins winNames
+  -- form 7 skips the count fold and takes the window's width as the count instead
+  let single := form == 7
+  let (C, cName) ← if single then pure (W, Name.anonymous) else
+    emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
+      (fun wb : WindowBatch ↦ wb.count) wins winNames
   let aProof := match conv with
     | none => mkConst aName
     | some (cr, _) => mkAppN (mkConst cr)
         #[gE, loE, SE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit A, mkConst aName]
   let cProof := match conv with
-    | none => mkConst cName
-    | some (_, cb) => mkAppN (mkConst cb)
+    | some (_, cb) => if single then mkConst cName else mkAppN (mkConst cb)
         #[gE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit C, mkConst cName]
+    | none => mkConst cName
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
       #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit C, SE])
-    (mkAppN (mkConst ``primeRecipRange_of_segRun)
-      #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
-        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit next,
+    (let head := #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+        mkRawNatLit A]
+      let tail := #[loE, mkRawNatLit next,
         mkAppN (mkConst ``Sieve.IsSieve.monoB)
           #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
             mkConst cache.isSieveName, Lean.reflBoolTrue],
         mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
-        aProof, cProof])
+        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI, aProof]
+      if single then mkAppN (mkConst ``primeRecipRange_of_segRun_single) (head ++ tail)
+      else mkAppN (mkConst ``primeRecipRange_of_segRun)
+        (head ++ #[mkRawNatLit C] ++ tail ++ #[cProof]))
   logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
 divisors to {B}; A = {A}, C = {C}"
 

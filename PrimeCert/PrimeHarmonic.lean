@@ -1147,6 +1147,42 @@ public theorem primeRecipIcc_of_single {Nb N S s len A : ℕ} (hs : Sieve.IsSiev
   refine ⟨hlo, hhi.trans ?_⟩
   gcongr
 
+theorem bitAtW_le_one (w i : ℕ) : bitAtW w i ≤ 1 := by
+  rw [bitAtW]
+  cases Sieve.testBitK w i <;> simp
+
+/-- The window counterpart of `sumB_bitAtK_le`. -/
+public theorem sumB_bitAtW_le (w start len step : ℕ) : sumB (bitAtW w) start len step ≤ len := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ]
+    have := bitAtW_le_one w ((n.mul step).add start)
+    omega
+
+/-- `primeRecipRange_of_segRun` with the reciprocal fold alone: the count of primes in the window is
+at most the number of positions in it, so the interval has width `W / S` and the count fold need not
+be run. At `W = 262144` and `S = 10 ^ 20` that costs about nine times the width per window, which
+raising `S` by a digit more than repays. -/
+public theorem primeRecipRange_of_segRun_single {s B a W S g A lo next : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hA : sumB (recipAtW g lo S) 0 W 1 = A) :
+    PrimeRecipRange a next A W S := by
+  have h := primeRecipRange_of_segRun hs ha hB6 ha5 hW hB1 h7B hS hlo htv htop hseg hA rfl
+  have hC : sumB (bitAtW g) 0 W 1 ≤ W := sumB_bitAtW_le g 0 W 1
+  rw [PrimeRecipRange] at h ⊢
+  obtain ⟨hlo', hhi⟩ := h
+  refine ⟨hlo', hhi.trans ?_⟩
+  gcongr
+
 /-! ## Packing both folds into one
 
 With `P` above every possible reciprocal total, the summand `S / value t + P` at a set bit carries

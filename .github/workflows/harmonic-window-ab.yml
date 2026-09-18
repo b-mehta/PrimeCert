@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "height15"
-            rounds: 1
-            cases: "Ht15"
-          - n: "repeat"
+          - n: "nocount"
             rounds: 3
-            cases: "Ht12 Ht13"
+            cases: "Bitn1e8_F1 Nocount1e8"
     steps:
       - uses: actions/checkout@v7
 
