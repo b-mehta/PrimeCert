@@ -70,10 +70,11 @@ for round in $(seq 1 "$rounds"); do
     steps=$(ksum "$out" "segEqV_.*step_")
     chunks=$(ksum "$out" "segEqV_.*chunk_")
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
+    cpu=$(grep -E 'User time|System time' "$tim" | awk '{s += $NF} END {printf "%.1f", s}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
     nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | slice lemmas" \
-      "${chunks}s | wall $wall | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
-      "batch lemma count $nsteps"
+      "${chunks}s | wall $wall | processor ${cpu}s | peak ${peak} KiB |" \
+      "sampled tree peak ${sampled} KiB | batch lemma count $nsteps"
   done
 done

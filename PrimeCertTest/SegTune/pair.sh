@@ -30,5 +30,6 @@ echo "pair wall $((finish - start)) s | summed tree peak ${summed} KiB"
 for f in "$@"; do
   peak=$(grep 'Maximum resident set size' "time-pair-$f.txt" | awk '{print $6}')
   w=$(grep 'Elapsed (wall clock)' "time-pair-$f.txt" | awk '{print $8}')
-  echo "  $f | wall $w | peak ${peak} KiB"
+  cpu=$(grep -E 'User time|System time' "time-pair-$f.txt" | awk '{s += $NF} END {printf "%.1f", s}')
+  echo "  $f | wall $w | processor ${cpu}s | peak ${peak} KiB"
 done
