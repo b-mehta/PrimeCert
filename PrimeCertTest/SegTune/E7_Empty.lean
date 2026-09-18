@@ -18,6 +18,6 @@ namespace PrimeCert.SegTune.E7_Empty
 
 run_sieve 10000000
 
-run_segment_variant 23 100000000000001 4194304 3333332 3072 10000000
+run_segment_variant 23 100000000000001 4194304 3333332 1024 10000000
 
 end PrimeCert.SegTune.E7_Empty
