@@ -1369,7 +1369,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
   let slice := mode % 4 == 2 || mode % 4 == 3 || sched
-  let tree := mode % 8 ≥ 4 && !sched
+  let tree := (mode % 8 ≥ 4 && !sched) || wideTail
   let fastTwin := mode ≥ 8
   let lo := index a
   let wm1 := W - 1
