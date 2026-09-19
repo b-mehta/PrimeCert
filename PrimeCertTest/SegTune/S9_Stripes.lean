@@ -13,12 +13,13 @@ public meta import PrimeCert.SegmentedSieve
 `S7_Sched` with one change: a batch every one of whose primes is bigger than half the segment, so
 that each hits the segment at most twice, is settled by sorting those hits into slices of the
 segment rather than by marking the segment once per prime. Same segment, same divisors, same
-emitted statements, so the pair is the change on its own. -/
+emitted statements, so the pair is the change on its own. Such a batch holds 16384 positions, which
+`S9_Tail4096`, `S9_Tail8192` and `S9_Tail16384` settled. -/
 
 namespace PrimeCert.SegTune.S9_Stripes
 
 run_sieve 10000000
 
-run_segment_variant 28 100000000000001 4194304 3333332 3072 10000000
+run_segment_variant 28 100000000000001 4194304 3333332 16384 10000000
 
 end PrimeCert.SegTune.S9_Stripes

@@ -2553,7 +2553,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         else if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
-    let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+    -- A batch settled by sorting is named `sstep_` rather than `step_`, so that a timing run can
+    -- report the two kinds apart.
+    let stepName := mkPrivateName env (parent ++ Name.mkSimple
+      (if stripes && wm1 < 2 * value start then s!"sstep_{i}" else s!"step_{i}"))
     let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
     let cE := mkRawNatLit cVal
     let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
