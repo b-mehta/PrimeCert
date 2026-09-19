@@ -210,6 +210,33 @@ seed of every prime it holds. -/
     ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
       (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
 
+/-- The same seed as `entrySeedK`, written so that the divisor's value and its stride each appear
+once rather than once per use. Timing only, until a measurement says whether the kernel cares. -/
+@[expose] public noncomputable def entrySeedTK (lo start e : Nat) : Nat :=
+  let w : Nat := e.land 7
+  let p : Nat := valueK (start.add (e.shiftRight 3))
+  let d : Nat := p.mul 2
+  Nat.add
+    ((Nat.beq (w.land 1) 0).rec
+      (firstLocK (indexK (p.mul 7)) lo d)
+      (firstLocK (indexK (p.mul 5)) lo d))
+    (Nat.mul (w.shiftRight 1) d)
+
+/-- `stripeEntryK` with the seed written once rather than once for the slice test and once for the
+bit it sets. -/
+@[expose] public noncomputable def stripeEntryTK (st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    (let s : Nat := entrySeedTK lo start e
+     (Nat.beq (s.shiftRight 16) k).rec st
+       (st.lor ((Nat.shiftLeft 1 (s.land 65535)).lor
+         (Nat.shiftLeft 1 (entryTallyK len e)))))
+
+/-- `stripeOutK` through the shared-subterm seed. -/
+@[expose] public noncomputable def stripeOutTK (st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    ((Nat.blt Wm1 (entrySeedTK lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
+
 /-- The entries of one slice's list, packed 16 bits each. -/
 @[expose] public noncomputable def stripeSlotK (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
@@ -238,6 +265,35 @@ holds, so slice `np` is the list of seeds that fall past the window's end. -/
 and then the list of seeds past its end. -/
 @[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1)
+
+/-- The entries of one slice's list, through the shared-subterm entry. -/
+@[expose] public noncomputable def stripeSlotTK (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryTK s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- The entries of the out-of-window list, through the shared-subterm entry. -/
+@[expose] public noncomputable def stripeOutSlotTK (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutTK s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` through the shared-subterm entry. -/
+@[expose] public noncomputable def stripeUpToTK
+    (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k np).rec
+      (stripeSlotTK c lo start k len slot cnt 0)
+      (stripeOutSlotTK c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- The same assembled number as `stripeBatchK`, reached with each shared subterm of a record
+written once. The two agree by computation, so a timing pair over the same divisors is the cost of
+the repeated subterms on its own. -/
+@[expose] public noncomputable def stripeBatchTK
+    (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToTK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
 /-- The state a slice's list is walked from, and what it contributes to the assembled number. -/
 @[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs np k : Nat) : Nat :=
@@ -3204,8 +3260,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 36 then throwError "run_segment_variant: mode {mode} is not 0 to 36"
-  if (mode == 28 || mode == 34) && len > 8192 then
+  if mode > 37 then throwError "run_segment_variant: mode {mode} is not 0 to 37"
+  if (mode == 28 || mode == 34 || mode == 37) && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
   let env ← getEnv
@@ -3329,12 +3385,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 34 || mode == 35 then
+  if mode == 34 || mode == 35 || mode == 37 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
     -- the octave below the band mode 29 covers, and it holds 47 percent of the divisors that the
     -- sorting leaves untouched today.
+    -- Mode 37 sorts them exactly as mode 34 does but through `stripeBatchTK`, which reaches the
+    -- same number with each shared subterm of a record written once, so the pair prices the
+    -- repeated subterms on their own.
     let mut first := 1
     while 8 * value first ≤ wm1 do
       first := first + 1
@@ -3357,7 +3416,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
-      let batchE := mkAppN (mkConst ``stripeBatchK)
+      let batchE := mkAppN (mkConst (if mode == 37 then ``stripeBatchTK else ``stripeBatchK))
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
