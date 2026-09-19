@@ -400,6 +400,24 @@ public theorem testBit_shiftUp {x b s : Nat} :
   have hs : x.shiftLeft s = x <<< s := rfl
   rw [hs, Nat.testBit_shiftLeft]
 
+/-- The list of seeds past the end of the window sets only tally bits, so it contributes nothing to
+the window itself. -/
+public theorem stripeOutSlotK_low {c lo start Wm1 len slot cnt b : Nat} (hb : b < 65536) :
+    (stripeOutSlotK c lo start Wm1 len slot cnt 0).testBit b = false := by
+  rcases Bool.eq_false_or_eq_true
+    ((stripeOutSlotK c lo start Wm1 len slot cnt 0).testBit b) with h | h
+  · exact h
+  · rcases (testBit_stripeOutSlotK cnt).mp h with hz | ⟨m, _, he⟩
+    · simp at hz
+    · unfold outHits at he
+      have hj := (Bool.and_eq_true ..).mp he
+      have hbeq : b = entryTallyK len ((slot.shiftRight (m.mul 13)).land 8191) :=
+        Nat.eq_of_beq_eq_true hj.2
+      have hge : 65536 ≤ entryTallyK len ((slot.shiftRight (m.mul 13)).land 8191) := by
+        unfold entryTallyK
+        lia
+      exact absurd hbeq (by lia)
+
 /-- Below the window's width, a bit of the assembled number comes from exactly one slice: the one
 its position falls in. -/
 public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W)
