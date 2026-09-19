@@ -2998,7 +2998,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   while start ≤ fuel do
     let owed := fuel + 1 - start
     let stepN := Nat.min
-      (if stripes then (if start < 300000 then batchLen start else step0)
+      -- The batches whose divisors strike three or four times keep the graded length: sorting
+      -- lets them run longer, but four records to a divisor over a long batch holds far more at
+      -- once, and how many segments share a runner is what the whole computation is priced in.
+      (if stripes then (if start < 700000 then batchLen start else step0)
         else if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
