@@ -1027,6 +1027,33 @@ public theorem buildMaskCK_wide {p M A B n : Nat} (hw : M < p * 2) :
       exact Nat.mul_le_mul_left p h2
     rw [if_neg (by lia)]
 
+/-- A divisor whose double fits the window and whose quadruple does not gets exactly one round,
+whatever `n` says beyond the first. -/
+public theorem buildMaskCK_band {p M A B n : Nat} (h4 : M < p * 4) (hn : 1 ≤ n) :
+    buildMaskCK p M A B n = buildMaskCK p M A B 1 := by
+  induction n with
+  | zero => exact absurd hn (by lia)
+  | succ n ih =>
+    rcases Nat.eq_or_lt_of_le hn with h | h
+    · rw [← h]
+    · have hn' : 1 ≤ n := by lia
+      rw [buildMaskCK_succ, ih hn']
+      have hle : p * 4 ≤ p * 2 ^ (n + 1) := by
+        have h2 : (4 : Nat) ≤ 2 ^ (n + 1) := by
+          have hx : (2 : Nat) ^ 2 ≤ 2 ^ (n + 1) := Nat.pow_le_pow_right (by lia) (by lia)
+          have hy : (2 : Nat) ^ 2 = 4 := rfl
+          rw [hy] at hx
+          exact hx
+        exact Nat.mul_le_mul_left p h2
+      rw [if_neg (by lia)]
+
+/-- That one round is the two clamped seeds joined with the same two a double along. -/
+public theorem buildMaskCK_one {p M A B : Nat} (h2 : p * 2 ≤ M) :
+    buildMaskCK p M A B 1
+      = (seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2) := by
+  have hp : (2 : Nat) ^ (0 + 1) = 2 := rfl
+  rw [buildMaskCK_succ, hp, if_pos h2, buildMaskCK_zero]
+
 /-- Below `M`, the clamped mask is the mask. -/
 public theorem buildMaskCK_testBit {p M A B n : Nat} :
     ∀ i ≤ M, (buildMaskCK p M A B n).testBit i = (buildMaskK p M A B n).testBit i := by
@@ -1485,6 +1512,120 @@ public theorem testBit_segAccLoopSK_wide {c lo Wm1 n start len j : Nat} (hj : j 
             exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr
               (Or.inr (hB.mpr hs))))
 
+/-- Where every divisor of the batch has its double inside the window and its quadruple past the
+end, the batch's joined mask holds exactly the in-window strikes of the divisors the slice names,
+and each has four of them. -/
+public theorem testBit_segAccLoopSK_band {c lo Wm1 n start len j : Nat} (hj : j ≤ Wm1) (hn : 1 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 2 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 4) :
+    (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 4 ∧ testBitK c i = true
+        ∧ entrySeedK lo start (4 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : segAccLoopSK c lo Wm1 n 0 start 0 = 0 := rfl
+    rw [hz]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have ih' := ih fun i hi => hband i (by lia)
+    cases hb : testBitK c len with
+    | false =>
+      rw [segAccLoopSK_skip hb, ih']
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      obtain ⟨hp2, hp4⟩ := hband len (by lia)
+      have hm2 : valueK (start + len) * 2 ≤ Wm1 := hp2
+      rw [segAccLoopSK_take hb, segAccK_eq, buildMaskCK_band (by lia) hn, buildMaskCK_one hm2,
+        Nat.testBit_or, Nat.testBit_or, Nat.testBit_or, Nat.testBit_shiftLeft,
+        seedK_testBit hj, seedK_testBit hj]
+      have hsub : j - valueK (start + len) * 2 ≤ Wm1 := by lia
+      rw [Nat.testBit_or, seedK_testBit hsub, seedK_testBit hsub]
+      have hdist : ∀ d x y : Bool, (d && (x || y)) = ((d && x) || (d && y)) := by
+        intro d x y
+        cases d <;> cases x <;> cases y <;> rfl
+      rw [hdist]
+      have hone : ∀ A x : Nat, ((1 : Nat) <<< A).testBit x = true ↔ A = x := by
+        intro A x
+        have hs : (1 : Nat) <<< A = Nat.shiftLeft 1 A := rfl
+        rw [hs, testBit_oneShift]
+        exact ⟨fun h => (Nat.eq_of_beq_eq_true h).symm, fun h => by rw [h]; exact beq_self⟩
+      have hmul : (valueK (start + len)).mul 2 = valueK (start + len) * 2 := rfl
+      have hstep : ∀ X : Nat, (decide (j ≥ valueK (start + len) * 2) &&
+          ((1 : Nat) <<< X).testBit (j - valueK (start + len) * 2)) = true ↔
+          X + (valueK (start + len)).mul 2 = j := by
+        intro X
+        constructor
+        · intro h
+          obtain ⟨hd, hb2⟩ := (Bool.and_eq_true ..).mp h
+          have hge : valueK (start + len) * 2 ≤ j := of_decide_eq_true hd
+          have hx := (hone X _).mp hb2
+          lia
+        · intro h
+          exact (Bool.and_eq_true ..).mpr
+            ⟨decide_eq_true (by lia), (hone X _).mpr (by lia)⟩
+      have hA : ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 5)) lo
+          ((valueK (start + len)).mul 2)).testBit j = true ↔
+          entrySeedK lo start (4 * len + 0) = j := by
+        rw [entrySeedK_five]
+        exact hone _ _
+      have hB : ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 7)) lo
+          ((valueK (start + len)).mul 2)).testBit j = true ↔
+          entrySeedK lo start (4 * len + 1) = j := by
+        rw [entrySeedK_seven]
+        exact hone _ _
+      have hA2 : (decide (j ≥ valueK (start + len) * 2) &&
+          ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 5)) lo
+            ((valueK (start + len)).mul 2)).testBit
+              (j - valueK (start + len) * 2)) = true ↔
+          entrySeedK lo start (4 * len + 2) = j := by
+        rw [entrySeedK_five']
+        exact hstep _
+      have hB2 : (decide (j ≥ valueK (start + len) * 2) &&
+          ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 7)) lo
+            ((valueK (start + len)).mul 2)).testBit
+              (j - valueK (start + len) * 2)) = true ↔
+          entrySeedK lo start (4 * len + 3) = j := by
+        rw [entrySeedK_seven']
+        exact hstep _
+      constructor
+      · intro h
+        rcases (Bool.or_eq_true ..).mp h with h' | h'
+        · rcases (Bool.or_eq_true ..).mp h' with h'' | h''
+          · rcases (Bool.or_eq_true ..).mp h'' with h3 | h3
+            · exact ⟨len, by lia, 0, by lia, hb, hA.mp h3⟩
+            · exact ⟨len, by lia, 1, by lia, hb, hB.mp h3⟩
+          · rcases (Bool.or_eq_true ..).mp h'' with h3 | h3
+            · exact ⟨len, by lia, 2, by lia, hb, hA2.mp h3⟩
+            · exact ⟨len, by lia, 3, by lia, hb, hB2.mp h3⟩
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := ih'.mp h'
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact (Bool.or_eq_true ..).mpr (Or.inr (ih'.mpr ⟨i, h, w, hw, hc, hs⟩))
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          refine (Bool.or_eq_true ..).mpr (Or.inl ?_)
+          rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3) with hw0 | hw1 | hw2 | hw3
+          · rw [hw0] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr (Or.inl (hA.mpr hs))))
+          · rw [hw1] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr (Or.inr (hB.mpr hs))))
+          · rw [hw2] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inr ((Bool.or_eq_true ..).mpr (Or.inl (hA2.mpr hs))))
+          · rw [hw3] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inr ((Bool.or_eq_true ..).mpr (Or.inr (hB2.mpr hs))))
+
 /-- The tally a completed batch carries is the batch's own slice, once per progression, so one
 equation above the window settles every position at once. -/
 public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
@@ -1596,6 +1737,92 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Na
     | true =>
       rw [hiff.mp h1]
 
+/-- Where a divisor has four strikes, the tally a finished batch carries is its own slice once per
+strike, so again one equation above the window settles every position. -/
+public theorem tally4_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+      = ((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) :
+    ∀ i, i < len → ∀ w, w < 4 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true := by
+  intro i hi w hw hc
+  have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs >>> W := rfl
+    rw [hx, Nat.testBit_shiftRight]
+  rw [← hsr, h, Nat.testBit_or, Nat.testBit_or, Nat.testBit_or]
+  rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3) with hw0 | hw1 | hw2 | hw3
+  · rw [hw0]
+    simp [hcb]
+  · rw [hw1, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw2, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw3, Nat.testBit_shiftLeft]
+    simp [hcb]
+
+/-- The same for a batch of divisors whose doubles fit the window and whose quadruples pass its
+end, where each has four strikes rather than two and the tally accounts for all four. -/
+public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (hn : 1 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 2 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 4)
+    (htal : ∀ i, i < len → ∀ w, w < 4 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true := by
+      constructor
+      · intro h
+        obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_band hj hn hband).mp h
+        have hX : entrySeedK lo start (4 * i + w) ≤ Wm1 := by rw [hsd]; exact hj
+        have := stripeBatchK_complete (c := c) (lo := lo) (start := start) (len := len) (W := W)
+          (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hc2 hi hW hWm1
+          (htal i hi w hw hc) hX
+        rwa [hsd] at this
+      · intro h
+        obtain ⟨k, m, hk, hm, hcbit, hk16, hsd⟩ :=
+          (testBit_stripeBatchK_eq (by lia : j < W)).mp h
+        refine (testBit_segAccLoopSK_band hj hn hband).mpr
+          ⟨(entryOf Ls slotW k m).shiftRight 2, ?_, (entryOf Ls slotW k m).land 3,
+            land_one_lt, hcbit, ?_⟩
+        · by_contra hge
+          rw [testBitK_of_lt hc2 (by lia)] at hcbit
+          simp at hcbit
+        · rw [entry_split]
+          exact hsd
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
 /-- Nothing above the batch's positions means below the batch's width. -/
 public theorem lt_two_pow_of_shiftRight {c len : Nat} (h : c.shiftRight len = 0) : c < 2 ^ len := by
   have h1 : c.shiftRight len = c / 2 ^ len := by
@@ -1626,6 +1853,20 @@ public theorem wide_of_blt {Wm1 start len : Nat}
   have h1 : Wm1 + 1 ≤ valueK start * 2 := Nat.le_of_ble_eq_true hb
   have h2 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
   lia
+
+/-- Two tests settle the whole batch: the last divisor's double still fits the window, and the
+first divisor's quadruple already passes its end. -/
+public theorem band_of_tests {Wm1 start len : Nat}
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 2) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 4) = true) :
+    ∀ i, i < len → valueK (start + i) * 2 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 4 := by
+  intro i hi
+  have h1 : valueK (start + len) * 2 ≤ Wm1 := Nat.le_of_ble_eq_true hlast
+  have hb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) 4) = true := hfirst
+  have h2 : Wm1 + 1 ≤ valueK start * 4 := Nat.le_of_ble_eq_true hb
+  have h3 : valueK (start + i) ≤ valueK (start + len) := valueK_le (by lia)
+  have h4 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
+  exact ⟨by lia, by lia⟩
 
 /-- A clear only takes bits away, so the window stays within its width. -/
 public theorem sub_lt_two_pow {seg m next Wm1 : Nat} (hseg : seg < 2 ^ (Wm1 + 1))
@@ -1663,6 +1904,37 @@ public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat
     (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hc2 hsr
   refine Nat.beq_eq.mpr ?_
   rw [segLoopSCK_eq_stripe hseg hc2 hW' hWm1' (wide_of_blt hwide) htal hnot, hb, ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
+
+/-- One batch of the band whose divisors strike three or four times, carried out by sorting those
+strikes into slices, with everything the kernel owes as a Boolean test or an equation. -/
+public theorem stripeStepBand {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (64 * 65536) W = true)
+    (hn : Nat.ble 1 n = true)
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 2) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 4) = true)
+    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs) lit = true)
+    (htally : Nat.beq (lit.shiftRight W)
+      (((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hW' : 64 * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hWm1' : Wm1 < W := by lia
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hb := Nat.eq_of_beq_eq_true hbatch
+  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+      = ((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len) := by
+    rw [hb]
+    exact Nat.eq_of_beq_eq_true htally
+  have htal := tally4_of_shiftRight (c := c) (lo := lo) (start := start) (len := len) (W := W)
+    (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hsr
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_stripe_band hseg (lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hc0)) hW'
+    hWm1' (Nat.le_of_ble_eq_true hn) (band_of_tests hlast hfirst) htal, hb, ldiff_eq_sub]
   exact Nat.eq_of_beq_eq_true hclear
 
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
@@ -2732,8 +3004,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       else segLoop sVal lo wm1 bits start stepN
     -- A batch settled by sorting is named `sstep_` rather than `step_`, so that a timing run can
     -- report the two kinds apart.
+    let sorted := stripes && (wm1 < 2 * value start
+      || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start))
     let stepName := mkPrivateName env (parent ++ Name.mkSimple
-      (if stripes && wm1 < 2 * value start then s!"sstep_{i}" else s!"step_{i}"))
+      (if sorted then s!"sstep_{i}" else s!"step_{i}"))
     let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
     let cE := mkRawNatLit cVal
     let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
@@ -2749,9 +3023,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         else
           mkAppN (mkConst ``segLoopSK) #[cE, loE, wE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       if stripes && wm1 < 2 * value start then
-        -- Every prime of this batch is wider than the window, so each has at most two seeds and
-        -- the batch is settled by sorting those seeds into slices instead of marking the window
-        -- once per prime. `stripeStep` names the eight tests the kernel then owes.
+        -- Every divisor of this batch has its double past the end of the segment, so each strikes
+        -- at most twice, and the batch is settled by sorting those strikes into slices of the
+        -- segment. `stripeStep` names the eight tests the kernel then owes.
         let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next))
           (mkAppN (mkConst ``stripeStep)
@@ -2760,6 +3034,17 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
               mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue])
+      else if stripes && 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
+        -- Every divisor of this batch has its double inside the segment and its quadruple past the
+        -- end, so each strikes at most four times and gets four records.
+        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next))
+          (mkAppN (mkConst ``stripeStepBand)
+            #[cE, loE, wE, nE, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, bitsE, mkRawNatLit expect,
+              mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
       else
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
     else
