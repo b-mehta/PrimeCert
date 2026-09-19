@@ -674,28 +674,38 @@ public theorem entryTallyK_inj {len e i w : Nat} (hi : (e.shiftRight 1) < len) (
       rw [hweq] at hadd
       exact ⟨by lia, hweq⟩
 
+/-- Halving, two ways. -/
+public theorem shiftRight1_eq {e : Nat} : e.shiftRight 1 = e / 2 := by
+  have h : e.shiftRight 1 = e >>> 1 := rfl
+  have h2 : (2 : Nat) ^ 1 = 2 := rfl
+  rw [h, Nat.shiftRight_eq_div_pow, h2]
+
+/-- The lowest bit, two ways. -/
+public theorem land1_eq {e : Nat} : e.land 1 = e % 2 := by
+  have h : e.land 1 = e &&& (2 ^ 1 - 1) := rfl
+  have h2 : (2 : Nat) ^ 1 = 2 := rfl
+  rw [h, Nat.and_two_pow_sub_one_eq_mod, h2]
+
 /-- An entry is its position and its progression bit. -/
 public theorem entry_split {e : Nat} : 2 * (e.shiftRight 1) + e.land 1 = e := by
-  have h1 : e.shiftRight 1 = e / 2 := by
-    have h : e.shiftRight 1 = e >>> 1 := rfl
-    have h2 : (2 : Nat) ^ 1 = 2 := rfl
-    rw [h, Nat.shiftRight_eq_div_pow, h2]
-  have h2 : e.land 1 = e % 2 := by
-    have h : e.land 1 = e &&& (2 ^ 1 - 1) := rfl
-    have h3 : (2 : Nat) ^ 1 = 2 := rfl
-    rw [h, Nat.and_two_pow_sub_one_eq_mod, h3]
-  rw [h1, h2]
+  rw [shiftRight1_eq, land1_eq]
   have := Nat.div_add_mod e 2
   lia
 
 /-- The progression bit is a bit. -/
 public theorem land_one_lt {e : Nat} : e.land 1 < 2 := by
-  have h : e.land 1 = e % 2 := by
-    have h : e.land 1 = e &&& (2 ^ 1 - 1) := rfl
-    have h3 : (2 : Nat) ^ 1 = 2 := rfl
-    rw [h, Nat.and_two_pow_sub_one_eq_mod, h3]
-  rw [h]
+  rw [land1_eq]
   exact Nat.mod_lt _ (by lia)
+
+/-- The position an assembled entry names. -/
+public theorem shiftRight1_pair {i w : Nat} (hw : w < 2) : (2 * i + w).shiftRight 1 = i := by
+  rw [shiftRight1_eq]
+  lia
+
+/-- The progression an assembled entry names. -/
+public theorem land1_pair {i w : Nat} (hw : w < 2) : (2 * i + w).land 1 = w := by
+  rw [land1_eq]
+  lia
 
 /-- Every seed of every prime the batch holds lands in the assembled number, given that the tally
 accounts for it. -/
@@ -1310,6 +1320,109 @@ public theorem segLoopSCK_eq {c s lo Wm1 n seg start len : Nat}
   | zero => rfl
   | succ m ih =>
     rw [segLoopSCK_succ, segLoopCK_succ, ih fun i hi => h i (by lia), h m (by lia)]
+
+/-! ### From the sorted slices back to the batch's run
+
+The fold over sorted slices assembles the same joined mask that the batch's run removes, provided
+every prime of the batch is wider than the window (so each has at most two seeds) and the two
+tallies account for every position the slice names. -/
+
+/-- The seed of the first progression of the prime at position `i` of the batch. -/
+public theorem entrySeedK_five {lo start i : Nat} :
+    entrySeedK lo start (2 * i + 0)
+      = firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2) := by
+  unfold entrySeedK
+  rw [shiftRight1_pair (by lia : (0 : Nat) < 2), land1_pair (by lia : (0 : Nat) < 2)]
+  rfl
+
+/-- The seed of the second progression of the prime at position `i` of the batch. -/
+public theorem entrySeedK_seven {lo start i : Nat} :
+    entrySeedK lo start (2 * i + 1)
+      = firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2) := by
+  unfold entrySeedK
+  rw [shiftRight1_pair (by lia : (1 : Nat) < 2), land1_pair (by lia : (1 : Nat) < 2)]
+  rfl
+
+/-- A position the slice passes over leaves the joined mask alone. -/
+public theorem segAccLoopSK_skip {c lo Wm1 n start len : Nat} (h : testBitK c len = false) :
+    segAccLoopSK c lo Wm1 n 0 start (len + 1) = segAccLoopSK c lo Wm1 n 0 start len := by
+  rw [segAccLoopSK_succ, h]
+
+/-- A position the slice names joins that prime's mask. -/
+public theorem segAccLoopSK_take {c lo Wm1 n start len : Nat} (h : testBitK c len = true) :
+    segAccLoopSK c lo Wm1 n 0 start (len + 1)
+      = segAccK (segAccLoopSK c lo Wm1 n 0 start len) (valueK (start + len)) lo Wm1 n := by
+  rw [segAccLoopSK_succ, h]
+
+/-- Where every prime of the batch is wider than the window, the batch's joined mask holds exactly
+the in-window seeds of the primes the slice names. -/
+public theorem testBit_segAccLoopSK_wide {c lo Wm1 n start len j : Nat} (hj : j ≤ Wm1)
+    (hwide : ∀ i, i < len → Wm1 < valueK (start + i) * 2) :
+    (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 2 ∧ testBitK c i = true
+        ∧ entrySeedK lo start (2 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : segAccLoopSK c lo Wm1 n 0 start 0 = 0 := rfl
+    rw [hz]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have ih' := ih fun i hi => hwide i (by lia)
+    cases hb : testBitK c len with
+    | false =>
+      rw [segAccLoopSK_skip hb, ih']
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      have hp : Wm1 < valueK (start + len) * 2 := hwide len (by lia)
+      rw [segAccLoopSK_take hb, segAccK_eq, buildMaskCK_wide hp, buildMaskCK_zero,
+        Nat.testBit_or, Nat.testBit_or, seedK_testBit hj, seedK_testBit hj]
+      have hone : ∀ A : Nat, ((1 : Nat) <<< A).testBit j = true ↔ A = j := by
+        intro A
+        have hs : (1 : Nat) <<< A = Nat.shiftLeft 1 A := rfl
+        rw [hs, testBit_oneShift]
+        exact ⟨fun h => (Nat.eq_of_beq_eq_true h).symm, fun h => by rw [h]; exact beq_self⟩
+      have hA : ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 5)) lo
+          ((valueK (start + len)).mul 2)).testBit j = true ↔
+          entrySeedK lo start (2 * len + 0) = j := by
+        rw [entrySeedK_five]
+        exact hone _
+      have hB : ((1 : Nat) <<< firstLocK (indexK ((valueK (start + len)).mul 7)) lo
+          ((valueK (start + len)).mul 2)).testBit j = true ↔
+          entrySeedK lo start (2 * len + 1) = j := by
+        rw [entrySeedK_seven]
+        exact hone _
+      constructor
+      · intro h
+        rcases (Bool.or_eq_true ..).mp h with h' | h'
+        · rcases (Bool.or_eq_true ..).mp h' with h'' | h''
+          · exact ⟨len, by lia, 0, by lia, hb, hA.mp h''⟩
+          · exact ⟨len, by lia, 1, by lia, hb, hB.mp h''⟩
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := ih'.mp h'
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact (Bool.or_eq_true ..).mpr (Or.inr (ih'.mpr ⟨i, h, w, hw, hc, hs⟩))
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          rcases (by lia : w = 0 ∨ w = 1) with hw0 | hw1
+          · rw [hw0] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr
+              (Or.inl (hA.mpr hs))))
+          · rw [hw1] at hs
+            exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr
+              (Or.inr (hB.mpr hs))))
 
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
 conditions as Boolean tests the kernel settles. -/
