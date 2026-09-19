@@ -3260,8 +3260,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 37 then throwError "run_segment_variant: mode {mode} is not 0 to 37"
-  if (mode == 28 || mode == 34 || mode == 37) && len > 8192 then
+  if mode > 38 then throwError "run_segment_variant: mode {mode} is not 0 to 38"
+  if (mode == 28 || mode == 34 || mode == 37 || mode == 38) && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
   let env ← getEnv
@@ -3269,7 +3269,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     | throwError "run_segment_variant: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
-  let stripes := mode == 28
+  -- Mode 38 is mode 28 with a batch's two theorems emitted as one: the sorted-batch proof goes
+  -- straight into `segLoopK_batch` rather than through a named intermediate. Same statements
+  -- reaching the chain, one declaration a batch fewer, which is an elaboration cost rather than a
+  -- kernel one.
+  let fold := mode == 38
+  let stripes := mode == 28 || fold
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -3672,42 +3677,44 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       let batchName := mkPrivateName env (parent ++ Name.mkSimple
         (if sorted then s!"sstep_{i}" else s!"step_{i}"))
-      if wm1 < 2 * value start then
-        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
-        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
-          (mkAppN (mkConst ``stripeStep)
+      let batchProof :=
+        if wm1 < 2 * value start then
+          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
+          mkAppN (mkConst ``stripeStep)
             #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
               mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
               mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue])
-      else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
-        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
-        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
-          (mkAppN (mkConst ``stripeStepBand)
+              Lean.reflBoolTrue, Lean.reflBoolTrue]
+        else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
+          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
+          mkAppN (mkConst ``stripeStepBand)
             #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
               mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
               mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
-      else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then
-        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
-        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
-          (mkAppN (mkConst ``stripeStepBand8)
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]
+        else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then
+          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
+          mkAppN (mkConst ``stripeStepBand8)
             #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
               mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
               mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
-      else
-        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
-      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"plain_{i}")
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]
+        else
+          Lean.reflBoolTrue
+      let batchRef ← if fold then pure batchProof else do
+        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) batchProof
+        pure (mkConst batchName)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple
+        (if fold && sorted then s!"sstep_{i}" else s!"plain_{i}"))
       addSegThm stepName
         (mkSegBeqTrue (mkSegLoopK sE loE wE bitsE start stepN) (mkRawNatLit next))
         (mkAppN (mkConst ``segLoopK_batch)
           #[sE, cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, bitsE, mkRawNatLit start,
             mkRawNatLit stepN, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
-            Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst chunkName, mkConst batchName])
+            Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst chunkName, batchRef])
       proof := if owed == stepN then
           mkAppN (mkConst ``segLoopK_last)
             #[lhsK, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
