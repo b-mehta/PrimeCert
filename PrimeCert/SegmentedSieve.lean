@@ -418,7 +418,8 @@ public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat
       exact absurd hk (by lia)
   | succ m ih =>
     have hlor : ∀ u v : Nat, u.lor v = u ||| v := fun _ _ => rfl
-    rw [stripeUpToK_succ, hlor, hlor, Nat.testBit_or, Nat.testBit_or, ih]
+    rw [stripeUpToK_succ, hlor, hlor, Nat.testBit_or, Nat.testBit_or, Bool.or_eq_true,
+      Bool.or_eq_true, ih]
     have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).shiftRight 65536).shiftLeft
         W).testBit j = false := by
       rw [testBit_shiftUp]
