@@ -1104,6 +1104,25 @@ public theorem buildMaskK_rounds {p M A B n : Nat} (hp : 1 ≤ p) (hM : M < 2 ^ 
     · have hnm : n = m + 1 := by lia
       rw [hnm]
 
+/-- Rounds past the point where a divisor's own stride covers the window change nothing, which is
+a weaker requirement on the round count than the window's own width gives. -/
+public theorem buildMaskK_rounds_stride {p M A B n : Nat} (hM : M < p * 2 ^ (n + 1)) :
+    ∀ m, n ≤ m → buildMaskK p M A B m = buildMaskK p M A B n := by
+  intro m
+  induction m with
+  | zero => intro h; grind
+  | succ m ih =>
+    intro h
+    rcases Nat.lt_or_ge n (m + 1) with hlt | hge
+    · have hnm : n ≤ m := by lia
+      have h1 : p * 2 ^ (n + 1) ≤ p * 2 ^ (m + 1) :=
+        Nat.mul_le_mul_left p (Nat.pow_le_pow_right (by lia) (by lia))
+      have hbig : ¬ (p * 2 ^ (m + 1) ≤ M) := by lia
+      rw [buildMaskK_succ', if_neg hbig]
+      exact ih hnm
+    · have hnm : n = m + 1 := by lia
+      rw [hnm]
+
 /-- For a prime wider than the window, every round is a no-op. -/
 public theorem buildMaskK_rounds_wide {p M A B : Nat} (hw : M < p * 2) :
     ∀ m, buildMaskK p M A B m = buildMaskK p M A B 0 := by
@@ -1196,6 +1215,61 @@ public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) 
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := rfl
     rw [if_neg hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
       land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
+
+/-- The value of a base index in ordinary notation. -/
+public theorem valueK_eq_add {k : Nat} : valueK k = k * 3 + 1 + k % 2 := rfl
+
+/-- Later base indices name larger numbers. -/
+public theorem valueK_le {i j : Nat} (h : i ≤ j) : valueK i ≤ valueK j := by
+  rw [valueK_eq_add, valueK_eq_add]
+  have hi : i % 2 < 2 := Nat.mod_lt _ (by lia)
+  have hj : j % 2 < 2 := Nat.mod_lt _ (by lia)
+  rcases Nat.eq_or_lt_of_le h with rfl | hlt
+  · lia
+  · lia
+
+/-- The same where the round count is measured against the divisor's own stride rather than the
+window's width, which is what lets a batch of large divisors be given fewer rounds. -/
+public theorem segMarkCK_eq_stride {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1))
+    (hn : Wm1 < p * 2 ^ (n + 1)) (hn32 : n ≤ 32) :
+    segMarkCK seg p lo Wm1 n = segMarkK seg p lo Wm1 := by
+  have hite : segMarkCK seg p lo Wm1 n
+      = if p * 2 ≤ Wm1
+        then clearHitK seg (seg.land (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n))
+        else clearHitK seg (seg.land
+          ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
+            (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))) := by
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, Nat.land_comm]
+  have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
+  rw [hite, segMarkK, hsub]
+  by_cases hc : p * 2 ≤ Wm1
+  · rw [if_pos hc, clearHitK_eq, buildMaskK_rounds_stride hn 32 hn32,
+      land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
+  · have hw : Wm1 < p * 2 := by lia
+    have hseed : (seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
+        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)
+        = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := rfl
+    rw [if_neg hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
+      land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
+
+/-- A batch whose smallest divisor's stride already covers the window in `n` rounds runs the same
+way as the unclamped loop, whatever the window's own width would ask for. -/
+public theorem segLoopCK_eq_stride {s lo Wm1 n seg start fuel : Nat} (hseg : seg < 2 ^ (Wm1 + 1))
+    (hn : Wm1 < valueK start * 2 ^ (n + 1)) (hn32 : n ≤ 32) :
+    segLoopCK s lo Wm1 n seg start fuel = segLoopK s lo Wm1 seg start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ m ih =>
+    rw [segLoopCK_succ, segLoopK_succ, ih]
+    cases testBitK s (start + m) with
+    | false => rfl
+    | true =>
+      have hle : valueK start ≤ valueK (start + m) := valueK_le (by lia)
+      have hmul : valueK start * 2 ^ (n + 1) ≤ valueK (start + m) * 2 ^ (n + 1) :=
+        Nat.mul_le_mul_right _ hle
+      exact segMarkCK_eq_stride (Nat.lt_of_le_of_lt segLoopK_le hseg) (by lia) hn32
 
 /-- Loop recurrence for `segLoopCK`, with the window bound carried along. -/
 public theorem segLoopCK_eq {s lo Wm1 n seg start fuel : Nat} (hseg : seg < 2 ^ (Wm1 + 1))
@@ -1886,18 +1960,6 @@ public theorem lt_two_pow_of_shiftRight {c len : Nat} (h : c.shiftRight len = 0)
     rw [hx, Nat.shiftRight_eq_div_pow]
   rw [h1] at h
   exact Nat.lt_of_div_eq_zero (Nat.two_pow_pos len) h
-
-/-- The value of a base index in ordinary notation. -/
-public theorem valueK_eq_add {k : Nat} : valueK k = k * 3 + 1 + k % 2 := rfl
-
-/-- Later base indices name larger numbers. -/
-public theorem valueK_le {i j : Nat} (h : i ≤ j) : valueK i ≤ valueK j := by
-  rw [valueK_eq_add, valueK_eq_add]
-  have hi : i % 2 < 2 := Nat.mod_lt _ (by lia)
-  have hj : j % 2 < 2 := Nat.mod_lt _ (by lia)
-  rcases Nat.eq_or_lt_of_le h with rfl | hlt
-  · lia
-  · lia
 
 /-- One test settles the whole batch: if the batch's first prime is wider than the window, so is
 every later one. -/
