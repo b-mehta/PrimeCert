@@ -232,6 +232,68 @@ place in the mask, with the two tallies carried above the mask. -/
 @[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
   stripeUpToK c lo start len W Wm1 slotW Ls Cs 65
 
+/-! ### Four records to a divisor, for the band that strikes three or four times
+
+A divisor whose double fits inside the segment but whose quadruple does not strikes each of the two
+progressions at most twice, since the first strike sits below the double and a further two doubles
+carry it past the end. So four records name every strike, the low two bits of a record picking one
+of them. The definitions below are those above with a two-bit field in place of a one-bit one, and
+a record's seed carrying the extra double. They are for timing only until the band earns its
+proofs. -/
+
+/-- One record of a slice's list, where a divisor gets four: the low bit picks the progression, the
+next says whether to step on by a further double, and the rest is the position within the batch. -/
+@[expose] public noncomputable def entrySeed4K (lo start e : Nat) : Nat :=
+  Nat.add
+    ((Nat.beq ((e.land 3).land 1) 0).rec
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight 2))).mul 7)) lo
+        ((valueK (start.add (e.shiftRight 2))).mul 2))
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight 2))).mul 5)) lo
+        ((valueK (start.add (e.shiftRight 2))).mul 2)))
+    (Nat.mul ((e.land 3).shiftRight 1) ((valueK (start.add (e.shiftRight 2))).mul 2))
+
+/-- The bit a record adds to the tally: one per position of the batch for each of the four. -/
+@[expose] public noncomputable def entryTally4K (len e : Nat) : Nat :=
+  Nat.add 65536 (Nat.add (e.shiftRight 2) (Nat.mul (e.land 3) len))
+
+/-- `stripeEntryK` for a four-record divisor. -/
+@[expose] public noncomputable def stripeEntry4K (st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 2)).rec st
+    ((Nat.beq ((entrySeed4K lo start e).shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeed4K lo start e).land 65535)).lor
+        (Nat.shiftLeft 1 (entryTally4K len e)))))
+
+/-- `stripeOutK` for a four-record divisor. -/
+@[expose] public noncomputable def stripeOut4K (st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 2)).rec st
+    ((Nat.blt Wm1 (entrySeed4K lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTally4K len e))))
+
+/-- `stripeSlotK` for four-record divisors. -/
+@[expose] public noncomputable def stripeSlot4K (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntry4K s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeOutSlotK` for four-record divisors. -/
+@[expose] public noncomputable def stripeOutSlot4K (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOut4K s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` for four-record divisors. -/
+@[expose] public noncomputable def stripeUpTo4K (c lo start len W Wm1 slotW Ls Cs n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k 64).rec
+      (stripeSlot4K c lo start k len slot cnt 0)
+      (stripeOutSlot4K c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- `stripeBatchK` for four-record divisors. -/
+@[expose] public noncomputable def stripeBatch4K (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
+  stripeUpTo4K c lo start len W Wm1 slotW Ls Cs 65
+
 /-- The state a slice's list is walked from, and what it contributes to the assembled number. -/
 @[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs k : Nat) : Nat :=
   (Nat.beq k 64).rec
@@ -2131,6 +2193,39 @@ meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := I
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
+/-- `stripeSort` for the band whose divisors strike three or four times, so each gets four records
+rather than two. The extra pair steps the two progressions on by a further double, and lands past
+the end of the segment often enough that the out-of-segment list carries it. -/
+meta def stripeSort4 (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let mut slots : Array (Array Nat) := Array.replicate 65 #[]
+  let mut seen := 0
+  let mut asm := 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in [0:len] do
+    if (c >>> i) &&& 1 = 1 then
+      let p := value (start + i)
+      for w in [0, 1, 2, 3] do
+        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+          else firstLoc (index (p * 7)) lo (p * 2)
+        let X := base + (w >>> 1) * (p * 2)
+        let k := if X ≤ Wm1 then X >>> 16 else 64
+        slots := slots.set! k ((slots[k]!).push (4 * i + w))
+        seen := seen ||| (1 <<< (i + w * len))
+        if X ≤ Wm1 then
+          asm := asm ||| (1 <<< X)
+  let mut slotW := 16
+  for k in [0:65] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:65] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- Twin of `segLoopStripeK`. -/
 meta def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
@@ -2326,7 +2421,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 28 then throwError "run_segment_variant: mode {mode} is not 0 to 28"
+  if mode > 30 then throwError "run_segment_variant: mode {mode} is not 0 to 30"
   if mode == 28 && len > 32768 then
     throwError "run_segment_variant: mode 28 packs an entry in 16 bits, so its batches hold at \
       most 32768 positions, not {len}"
@@ -2417,6 +2512,50 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
         addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+    return
+  if mode == 29 || mode == 30 then
+    -- Measurement only, over the band whose divisors have their double inside the segment and
+    -- their quadruple past it, so each strikes at most twice per progression: mode 29 sorts those
+    -- strikes into slices, four records to a divisor, and mode 30 marks the same batches as the
+    -- sieve does today. Mode 29 carries the tally and the clear a run would owe.
+    let mut first := 1
+    while 4 * value first ≤ wm1 do
+      first := first + 1
+    let mut last := first
+    while 2 * value (last + 1) ≤ wm1 do
+      last := last + 1
+    let count := last + 1 - first
+    let mut bitsL := initSeg W
+    for i in [0:(count + step0 - 1) / step0] do
+      let start := first + i * step0
+      let stepN := Nat.min step0 (count - i * step0)
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      if mode == 30 then
+        let next := segLoopC sVal lo wm1 rounds bitsL start stepN
+        let batchE := mkAppN (mkConst ``segLoopSCK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsL, mkRawNatLit start,
+            mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsL := next
+        continue
+      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W
+      let batchE := mkAppN (mkConst ``stripeBatch4K)
+        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
+      let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
+      let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
+      let mut wantV := 0
+      for w in [0, 1, 2, 3] do
+        wantV := wantV ||| (cVal <<< (w * stepN))
+      addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
+      let next := bitsL - (expect &&& bitsL)
+      let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+      let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+        (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
+      addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsL := next
     return
   if mode == 24 then
     -- Measurement only: the same walk over the same primes, writing each prime's hits into one
