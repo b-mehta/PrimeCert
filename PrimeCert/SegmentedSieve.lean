@@ -2261,7 +2261,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 26 then throwError "run_segment_variant: mode {mode} is not 0 to 26"
+  if mode > 27 then throwError "run_segment_variant: mode {mode} is not 0 to 27"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -2334,9 +2334,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       if mode == 27 then
-        let next := Nat.ldiff bitsL expect
+        -- The clear in the shape `clearHitK` and `ldiff_eq_sub` give it, an intersection and a
+        -- subtraction, which is what a run would owe once per batch.
+        let next := bitsL - (expect &&& bitsL)
         let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
-        let clearE := mkApp2 (mkConst ``Nat.ldiff) (mkRawNatLit bitsL) (mkRawNatLit expect)
+        let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+          (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
         addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
     return
