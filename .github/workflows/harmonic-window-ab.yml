@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "share12"
+          - n: "len12"
             rounds: 2
-            cases: "SegOnlyHt12 CountHt12 Ht12"
-          - n: "width12"
-            rounds: 2
-            cases: "WideW1Ht12 WideW2Ht12 WideW4Ht12"
+            cases: "Wid1Ht12 Wid2Ht12 Wid4Ht12 Wid8Ht12"
     steps:
       - uses: actions/checkout@v7
 
