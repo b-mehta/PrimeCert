@@ -2099,6 +2099,27 @@ public theorem testBitK_slice {s start len i : Nat} (hi : i < len) :
       = testBitK s (start + i) := by
   simp [testBitK_eq_testBit, Nat.shiftLeft_eq, Nat.testBit_shiftRight, hi]
 
+/-- A batch settled with its own round count, restated for the unclamped run. The round count
+appears nowhere in the conclusion, so batches with different counts chain together. -/
+public theorem segLoopK_batch {s c lo Wm1 n W seg start len next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hn32 : Nat.ble n 32 = true)
+    (hstride : Nat.blt Wm1 (Nat.mul (valueK start) (Nat.pow 2 (n + 1))) = true)
+    (hc : (Nat.land (Nat.shiftRight s start) (Nat.sub (Nat.shiftLeft 1 len) 1)).beq c = true)
+    (h : (segLoopSCK c lo Wm1 n seg start len).beq next = true) :
+    (segLoopK s lo Wm1 seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hsb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) (Nat.pow 2 (n + 1))) = true := hstride
+  have hst : Wm1 < valueK start * 2 ^ (n + 1) := Nat.le_of_ble_eq_true hsb
+  rw [Nat.beq_eq] at hc
+  subst hc
+  rw [segLoopSCK_eq fun i hi => testBitK_slice hi,
+    segLoopCK_eq_stride hseg hst (Nat.le_of_ble_eq_true hn32)] at h
+  exact h
+
 /-- One chain step from a slice batch: the slice equation and the batch equation together move the
 run forward by `len` steps of the base sieve. -/
 public theorem segLoopSK_chain {L s lo Wm1 b b' c start len rest : Nat}
@@ -3202,14 +3223,88 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let mut nodes : Array (Name × Nat × Nat × Nat × Nat) := #[]
   let mut i := 0
   let mut start := 1
+  if stripes then
+    -- The sorted run chains through the unclamped loop rather than the clamped one, so that each
+    -- batch can be handed the number of doubling rounds its own divisors need rather than the
+    -- number the widest mask needs. `segLoopK_batch` is what drops the round count from the
+    -- statement a batch contributes to the chain.
+    let lhsK := mkSegLoopK sE loE wE initE 1 fuel
+    proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsK]
+    while start ≤ fuel do
+      let owed := fuel + 1 - start
+      let stepN := Nat.min (if start < 700000 then batchLen start else step0) owed
+      let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
+      let next := segLoopC sVal lo wm1 nb bits start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let cE := mkRawNatLit cVal
+      let sorted := wm1 < 2 * value start
+        || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start)
+      let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
+      let sliceE := mkApp2 (mkConst ``Nat.land)
+        (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
+        (mkApp2 (mkConst ``Nat.sub)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
+      addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      let batchE := mkAppN (mkConst ``segLoopSCK)
+        #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
+      let batchName := mkPrivateName env (parent ++ Name.mkSimple
+        (if sorted then s!"sstep_{i}" else s!"step_{i}"))
+      if wm1 < 2 * value start then
+        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
+        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
+          (mkAppN (mkConst ``stripeStep)
+            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
+              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue])
+      else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
+        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
+        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
+          (mkAppN (mkConst ``stripeStepBand)
+            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
+              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
+      else
+        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"plain_{i}")
+      addSegThm stepName
+        (mkSegBeqTrue (mkSegLoopK sE loE wE bitsE start stepN) (mkRawNatLit next))
+        (mkAppN (mkConst ``segLoopK_batch)
+          #[sE, cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, bitsE, mkRawNatLit start,
+            mkRawNatLit stepN, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
+            Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst chunkName, mkConst batchName])
+      proof := if owed == stepN then
+          mkAppN (mkConst ``segLoopK_last)
+            #[lhsK, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              proof, mkConst stepName]
+        else
+          mkAppN (mkConst ``segLoopK_chain)
+            #[lhsK, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit (owed - stepN), proof, mkConst stepName]
+      bits := next
+      bitsE := mkRawNatLit next
+      start := start + stepN
+      i := i + 1
+    addDecl <| Declaration.defnDecl
+      { name := litName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    addSegThm parent (mkNatEq lhsK (mkConst litName)) proof
+    let bValS := value fuel
+    addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
+      (mkNatEq (mkAppN (mkConst ``segRun)
+          #[sE, mkRawNatLit a, mkRawNatLit W, mkRawNatLit bValS]) (mkConst litName))
+      (mkAppN (mkConst ``segRun_of)
+        #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bValS, mkRawNatLit fuel,
+          mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          mkConst parent])
+    return
   while start ≤ fuel do
     let owed := fuel + 1 - start
     let stepN := Nat.min
-      -- The batches whose divisors strike three or four times keep the graded length: sorting
-      -- lets them run longer, but four records to a divisor over a long batch holds far more at
-      -- once, and how many segments share a runner is what the whole computation is priced in.
-      (if stripes then (if start < 700000 then batchLen start else step0)
-        else if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
+      (if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
     -- A batch settled by sorting is named `sstep_` rather than `step_`, so that a timing run can
