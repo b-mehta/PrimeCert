@@ -1424,6 +1424,26 @@ public theorem testBit_segAccLoopSK_wide {c lo Wm1 n start len j : Nat} (hj : j 
             exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr
               (Or.inr (hB.mpr hs))))
 
+/-- The tally a completed batch carries is the batch's own slice, once per progression, so one
+equation above the window settles every position at once. -/
+public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W = c ||| c <<< len) :
+    ∀ i, i < len → ∀ w, w < 2 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true := by
+  intro i hi w hw hc
+  have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs >>> W := rfl
+    rw [hx, Nat.testBit_shiftRight]
+  rw [← hsr, h, Nat.testBit_or]
+  rcases (by lia : w = 0 ∨ w = 1) with hw0 | hw1
+  · rw [hw0]
+    simp [hcb]
+  · rw [hw1, Nat.testBit_shiftLeft]
+    simp [hcb]
+
 /-- Over a batch of primes each wider than the window, and given tallies that account for both
 progressions of every position the batch's slice names, the fold over sorted slices removes from
 the window exactly what the batch's run removes. -/
