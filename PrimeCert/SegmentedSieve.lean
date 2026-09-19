@@ -1544,23 +1544,31 @@ public theorem sub_lt_two_pow {seg m next Wm1 : Nat} (hseg : seg < 2 ^ (Wm1 + 1)
     exact Nat.sub_le _ _
   lia
 
-/-- One batch of the sieve run, carried out by sorting its primes into slices of the window: the
-three equations are what the kernel checks, and the three Boolean tests are settled once each. -/
+/-- One batch of the sieve run, carried out by sorting its primes into slices of the window. The
+window's own width appears twice over: as the place the tally starts, and as the bound the window
+sits under, which is why `Wm1 + 1 = W` is one of the tests. -/
 public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat}
-    (hseg : seg < 2 ^ (Wm1 + 1)) (hc0 : c.shiftRight len = 0)
-    (hW : Nat.ble (64 * 65536) W = true) (hWm1 : Nat.blt Wm1 W = true)
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (64 * 65536) W = true)
     (hwide : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true)
-    (hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs = lit)
-    (htally : lit.shiftRight W = c ||| c <<< len)
-    (hclear : Nat.sub seg (Nat.land lit seg) = next) :
-    segLoopSCK c lo Wm1 n seg start len = next := by
+    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs) lit = true)
+    (htally : Nat.beq (lit.shiftRight W) (c ||| c <<< len) = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
   have hW' : 64 * 65536 ≤ W := Nat.le_of_ble_eq_true hW
-  have hWm1b : Nat.ble (Wm1 + 1) W = true := hWm1
-  have hWm1' : Wm1 < W := Nat.le_of_ble_eq_true hWm1b
+  have hWm1' : Wm1 < W := by lia
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hb := Nat.eq_of_beq_eq_true hbatch
   have htal := tally_of_shiftRight (c := c) (lo := lo) (start := start) (len := len) (W := W)
-    (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) (by rw [hbatch]; exact htally)
-  rw [segLoopSCK_eq_stripe hseg (lt_two_pow_of_shiftRight hc0) hW' hWm1' (wide_of_blt hwide) htal,
-    hbatch, ldiff_eq_sub, hclear]
+    (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs)
+    (by rw [hb]; exact Nat.eq_of_beq_eq_true htally)
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_stripe hseg (lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hc0)) hW' hWm1'
+    (wide_of_blt hwide) htal, hb, ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
 
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
 conditions as Boolean tests the kernel settles. -/
@@ -2318,13 +2326,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 27 then throwError "run_segment_variant: mode {mode} is not 0 to 27"
+  if mode > 28 then throwError "run_segment_variant: mode {mode} is not 0 to 28"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_variant: the base sieve {baseLit} is not a numeral"
-  let sched := mode == 20 || mode == 21
+  let stripes := mode == 28
+  let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
   let slice := mode % 4 == 2 || mode % 4 == 3 || sched
@@ -2391,8 +2400,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       if mode == 27 then
-        -- The clear in the shape `clearHitK` and `ldiff_eq_sub` give it, an intersection and a
-        -- subtraction, which is what a run would owe once per batch.
+        -- The two equations a run owes besides the batch itself: the record of which positions the
+        -- batch accounted for, which is its own slice of the base sieve once per progression, and
+        -- the clear, in the shape `clearHitK` and `ldiff_eq_sub` give it.
+        let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
+        let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
+        let wantE := mkApp2 (mkConst ``Nat.lor) (mkRawNatLit cVal)
+          (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit cVal) (mkRawNatLit stepN))
+        addSegThm tallyName (mkSegBeqTrue tallyE wantE) Lean.reflBoolTrue
         let next := bitsL - (expect &&& bitsL)
         let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
         let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
@@ -2549,7 +2564,20 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             #[cE, loE, wE, nE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
         else
           mkAppN (mkConst ``segLoopSK) #[cE, loE, wE, bitsE, mkRawNatLit start, mkRawNatLit stepN]
-      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+      if stripes && wm1 < 2 * value start then
+        -- Every prime of this batch is wider than the window, so each has at most two seeds and
+        -- the batch is settled by sorting those seeds into slices instead of marking the window
+        -- once per prime. `stripeStep` names the eight tests the kernel then owes.
+        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next))
+          (mkAppN (mkConst ``stripeStep)
+            #[cE, loE, wE, nE, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, bitsE, mkRawNatLit expect,
+              mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue])
+      else
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
     else
       addSegThm stepName (mkSegBeqTrue (loopE bitsE start stepN) (mkRawNatLit next))
         Lean.reflBoolTrue
