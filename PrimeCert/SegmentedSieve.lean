@@ -406,7 +406,6 @@ public theorem stripeOutSlotK_low {c lo start Wm1 len slot cnt b : Nat} (hb : b 
     (stripeOutSlotK c lo start Wm1 len slot cnt 0).testBit b = false := by
   rcases Bool.eq_false_or_eq_true
     ((stripeOutSlotK c lo start Wm1 len slot cnt 0).testBit b) with h | h
-  · exact h
   · rcases (testBit_stripeOutSlotK cnt).mp h with hz | ⟨m, _, he⟩
     · simp at hz
     · unfold outHits at he
@@ -417,6 +416,7 @@ public theorem stripeOutSlotK_low {c lo start Wm1 len slot cnt b : Nat} (hb : b 
         unfold entryTallyK
         lia
       exact absurd hbeq (by lia)
+  · exact h
 
 /-- Below the window's width, a bit of the assembled number comes from exactly one slice: the one
 its position falls in. -/
