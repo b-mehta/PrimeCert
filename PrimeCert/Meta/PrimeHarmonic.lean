@@ -1042,7 +1042,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   -- folds are the count, the total of the numbers and the total of their squares, and the two
   -- divisions that rescale the resulting interval to the denominator `S` happen here, once for the
   -- whole window, rather than once per prime inside the kernel
-  if form == 8 || form == 9 || form == 10 || form == 11 then
+  if form == 8 || form == 9 || form == 10 || form == 11 || form == 12 then
     let aE := mkRawNatLit a
     let topE := mkRawNatLit top
     let sieveArg := mkAppN (mkConst ``Sieve.IsSieve.monoB)
@@ -1099,15 +1099,31 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
         pure (a * C + D, a ^ 2 * C + 2 * a * D + E,
           #[mkRawNatLit D, mkRawNatLit E, mkConst dName, mkConst eName])
       else do
-        let (V, vName) ← atLo "val" ``valAtW ``valW_windowR (fun wb : WindowBatch ↦ wb.val)
+        -- form 12 folds the twins whose numerals are raw literals, then converts back
+        let raw := form == 12
+        let (V, vName) ← if raw then
+            atLo "val" ``valAtWR ``valWR_windowR (fun wb : WindowBatch ↦ wb.val)
+          else atLo "val" ``valAtW ``valW_windowR (fun wb : WindowBatch ↦ wb.val)
+        let vProof := if raw then
+            mkAppN (mkConst ``valWR_conv)
+              #[gE, loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit V,
+                mkConst vName]
+          else mkConst vName
         if form == 9 then
-          pure (V, top * V, #[mkConst vName])
+          pure (V, top * V, #[vProof])
         else do
-          let (Q, qName) ← atLo "sq" ``sqAtW ``sqW_windowR (fun wb : WindowBatch ↦ wb.sq)
+          let (Q, qName) ← if raw then
+              atLo "sq" ``sqAtWR ``sqWR_windowR (fun wb : WindowBatch ↦ wb.sq)
+            else atLo "sq" ``sqAtW ``sqW_windowR (fun wb : WindowBatch ↦ wb.sq)
+          let qEq := if raw then
+              mkAppN (mkConst ``sqWR_conv)
+                #[gE, loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit Q,
+                  mkConst qName]
+            else mkConst qName
           let qLe := mkAppN (mkConst ``sumB_le_of_eq)
             #[mkApp2 (mkConst ``sqAtW) gE loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1,
-              mkRawNatLit Q, mkConst qName]
-          pure (V, Q, #[mkRawNatLit Q, mkConst vName, qLe])
+              mkRawNatLit Q, qEq]
+          pure (V, Q, #[mkRawNatLit Q, vProof, qLe])
     let twoAC := 2 * a * C
     if V > twoAC then
       throwError "run_harmonic_segment: the window reaches past twice its start, \
