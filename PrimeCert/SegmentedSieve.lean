@@ -466,6 +466,70 @@ public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat
         refine Or.inl (Or.inr ?_)
         simp [h1, h2, h3]
 
+/-- At or above the window's width, a bit of the assembled number is one of the tally bits, and any
+slice can have contributed it. -/
+public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : W ≤ j)
+    (hW : 64 * 65536 ≤ W) (n : Nat) (hn : n ≤ 65) :
+    (stripeUpToK c lo start len W Wm1 slotW Ls Cs n).testBit j = true ↔
+      ∃ k, k < n ∧
+        (stripeStateK c lo start len Wm1 slotW Ls Cs k).testBit (65536 + (j - W)) = true := by
+  induction n with
+  | zero =>
+    have h : stripeUpToK c lo start len W Wm1 slotW Ls Cs 0 = 0 := rfl
+    rw [h]
+    constructor
+    · intro hb
+      simp at hb
+    · rintro ⟨k, hk, _⟩
+      exact absurd hk (by lia)
+  | succ m ih =>
+    have hlor : ∀ u v : Nat, u.lor v = u ||| v := fun _ _ => rfl
+    rw [stripeUpToK_succ, hlor, hlor, Nat.testBit_or, Nat.testBit_or, Bool.or_eq_true,
+      Bool.or_eq_true, ih (by lia)]
+    have hmid : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).land
+        (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (m.mul 65536)).testBit j = false := by
+      have hm : m.mul 65536 = m * 65536 := rfl
+      rw [testBit_shiftUp, hm, testBit_maskLow]
+      rcases Nat.lt_or_ge m 64 with hlt | hge
+      · have : ¬ (j - m * 65536 < 65536) := by
+          have h1 : (m + 1) * 65536 ≤ 64 * 65536 := Nat.mul_le_mul_right 65536 (by lia)
+          lia
+        simp [this]
+      · have hm64 : m = 64 := by lia
+        rw [hm64]
+        rcases Nat.lt_or_ge (j - 64 * 65536) 65536 with hb | hb
+        · have hst : (stripeStateK c lo start len Wm1 slotW Ls Cs 64).testBit
+              (j - 64 * 65536) = false := by
+            have hdef : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+                = stripeOutSlotK c lo start Wm1 len
+                  ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+                  ((Cs.shiftRight ((64 : Nat).mul 16)).land 65535) 0 := rfl
+            rw [hdef]
+            exact stripeOutSlotK_low hb
+          simp [hst]
+        · simp [Nat.not_lt_of_ge hb]
+    have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).shiftRight 65536).shiftLeft
+        W).testBit j
+        = (stripeStateK c lo start len Wm1 slotW Ls Cs m).testBit (65536 + (j - W)) := by
+      have hsr : ∀ u v b : Nat, (u.shiftRight v).testBit b = u.testBit (v + b) := by
+        intro u v b
+        have h : u.shiftRight v = u >>> v := rfl
+        rw [h, Nat.testBit_shiftRight]
+      rw [testBit_shiftUp, hsr]
+      simp [hj]
+    rw [hmid, hhigh]
+    constructor
+    · rintro ((⟨k, hk, h3⟩ | hf) | hlast)
+      · exact ⟨k, by lia, h3⟩
+      · simp at hf
+      · exact ⟨m, by lia, hlast⟩
+    · rintro ⟨k, hk, h3⟩
+      rcases Nat.lt_or_ge k m with hkm | hkm
+      · exact Or.inl (Or.inl ⟨k, hkm, h3⟩)
+      · have hkeq : k = m := by lia
+        rw [hkeq] at h3
+        exact Or.inr h3
+
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
 @[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
