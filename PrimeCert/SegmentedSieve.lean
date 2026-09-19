@@ -674,6 +674,106 @@ public theorem entryTallyK_inj {len e i w : Nat} (hi : (e.shiftRight 1) < len) (
       rw [hweq] at hadd
       exact ⟨by lia, hweq⟩
 
+/-- An entry is its position and its progression bit. -/
+public theorem entry_split {e : Nat} : 2 * (e.shiftRight 1) + e.land 1 = e := by
+  have h1 : e.shiftRight 1 = e / 2 := by
+    have h : e.shiftRight 1 = e >>> 1 := rfl
+    have h2 : (2 : Nat) ^ 1 = 2 := rfl
+    rw [h, Nat.shiftRight_eq_div_pow, h2]
+  have h2 : e.land 1 = e % 2 := by
+    have h : e.land 1 = e &&& (2 ^ 1 - 1) := rfl
+    have h3 : (2 : Nat) ^ 1 = 2 := rfl
+    rw [h, Nat.and_two_pow_sub_one_eq_mod, h3]
+  rw [h1, h2]
+  have := Nat.div_add_mod e 2
+  lia
+
+/-- The progression bit is a bit. -/
+public theorem land_one_lt {e : Nat} : e.land 1 < 2 := by
+  have h : e.land 1 = e % 2 := by
+    have h : e.land 1 = e &&& (2 ^ 1 - 1) := rfl
+    have h3 : (2 : Nat) ^ 1 = 2 := rfl
+    rw [h, Nat.and_two_pow_sub_one_eq_mod, h3]
+  rw [h]
+  exact Nat.mod_lt _ (by lia)
+
+/-- Every seed of every prime the batch holds lands in the assembled number, given that the tally
+accounts for it. -/
+public theorem stripeBatchK_complete {c lo start len W Wm1 slotW Ls Cs i w : Nat}
+    (hc2 : c < 2 ^ len) (hi : i < len) (hw : w < 2) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (htally : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true)
+    (hX : entrySeedK lo start (2 * i + w) ≤ Wm1) :
+    (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit
+      (entrySeedK lo start (2 * i + w)) = true := by
+  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs
+      = stripeUpToK c lo start len W Wm1 slotW Ls Cs 65 := rfl
+  rw [hbatch] at htally
+  obtain ⟨k, hk65, hst⟩ :=
+    (testBit_stripeUpToK_high (by lia : W ≤ W + (i + w * len)) hW 65 (by lia)).mp htally
+  have hJ : 65536 + (W + (i + w * len) - W) = 65536 + (i + w * len) := by lia
+  rw [hJ] at hst
+  -- an entry whose tally bit this is names position `i` and progression `w`
+  have hentry : ∀ e : Nat, testBitK c (e.shiftRight 1) = true →
+      entryTallyK len e = Nat.add 65536 (Nat.add i (Nat.mul w len)) → e = 2 * i + w := by
+    intro e hce hte
+    have hlt : e.shiftRight 1 < len := by
+      by_contra hge
+      rw [testBitK_of_lt hc2 (by lia)] at hce
+      simp at hce
+    obtain ⟨h1, h2⟩ := entryTallyK_inj hlt land_one_lt hi hw hte
+    have := entry_split (e := e)
+    lia
+  rcases Nat.lt_or_ge k 64 with hk | hk64
+  · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+        = stripeSlotK c lo start k len
+          ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+          (cntOf Cs k) 0 := by
+      unfold stripeStateK cntOf
+      rw [beq_of_ne (by lia : k ≠ 64)]
+    rw [hstate] at hst
+    rcases (testBit_stripeSlotK (cntOf Cs k)).mp hst with hz | ⟨m, hm, he⟩
+    · simp at hz
+    · unfold entryHits at he
+      have h1 := (Bool.and_eq_true ..).mp he
+      have h2 := (Bool.and_eq_true ..).mp h1.1
+      have hbit : testBitK c ((entryOf Ls slotW k m).shiftRight 1) = true := h2.1
+      have hk16 : (entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16 = k :=
+        Nat.eq_of_beq_eq_true h2.2
+      rcases (Bool.or_eq_true ..).mp h1.2 with hseed | htal
+      · have hlow : 65536 + (i + w * len)
+            = (entrySeedK lo start (entryOf Ls slotW k m)).land 65535 :=
+          Nat.eq_of_beq_eq_true hseed
+        rw [land65535_eq] at hlow
+        have := Nat.mod_lt (entrySeedK lo start (entryOf Ls slotW k m)) (by lia : 0 < 65536)
+        lia
+      · have hte : entryTallyK len (entryOf Ls slotW k m)
+            = Nat.add 65536 (Nat.add i (Nat.mul w len)) :=
+          (Nat.eq_of_beq_eq_true htal).symm
+        have heq : entryOf Ls slotW k m = 2 * i + w := hentry _ hbit hte
+        exact (testBit_stripeBatchK_eq (by lia : entrySeedK lo start (2 * i + w) < W)).mpr
+          ⟨k, m, hk, hm, hbit, hk16, by rw [heq]⟩
+  · have hk64' : k = 64 := by lia
+    rw [hk64'] at hst
+    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+        = stripeOutSlotK c lo start Wm1 len
+          ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+          (cntOf Cs 64) 0 := rfl
+    rw [hstate] at hst
+    rcases (testBit_stripeOutSlotK (cntOf Cs 64)).mp hst with hz | ⟨m, hm, he⟩
+    · simp at hz
+    · unfold outHits at he
+      have h1 := (Bool.and_eq_true ..).mp he
+      have h2 := (Bool.and_eq_true ..).mp h1.1
+      have hte : entryTallyK len (entryOf Ls slotW 64 m)
+          = Nat.add 65536 (Nat.add i (Nat.mul w len)) := (Nat.eq_of_beq_eq_true h1.2).symm
+      have hbit : testBitK c ((entryOf Ls slotW 64 m).shiftRight 1) = true := h2.1
+      have heq : entryOf Ls slotW 64 m = 2 * i + w := hentry _ hbit hte
+      have hblt : Nat.blt Wm1 (entrySeedK lo start (entryOf Ls slotW 64 m)) = true := h2.2
+      rw [heq] at hblt
+      have hble : Nat.ble (Wm1 + 1) (entrySeedK lo start (2 * i + w)) = true := hblt
+      have := Nat.le_of_ble_eq_true hble
+      lia
+
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
 @[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
