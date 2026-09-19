@@ -248,12 +248,23 @@ public theorem testBit_oneShift {a b : Nat} : (Nat.shiftLeft 1 a).testBit b = Na
       simp at hb
     simp [hne]
 
+/-- Whether the entry `e` of slice `k`'s list sets bit `j`: it does when the batch holds a prime at
+the position `e` names, that prime's seed lands in slice `k`, and `j` is either that seed's place in
+the slice or the entry's place in the tally. -/
+@[expose] public noncomputable def entryHits (c lo start k len j e : Nat) : Bool :=
+  testBitK c (e.shiftRight 1) && Nat.beq ((entrySeedK lo start e).shiftRight 16) k &&
+    (Nat.beq j ((entrySeedK lo start e).land 65535) || Nat.beq j (entryTallyK len e))
+
+/-- The same for the out-of-window list, where only the tally bit is set. -/
+@[expose] public noncomputable def outHits (c lo start Wm1 len j e : Nat) : Bool :=
+  testBitK c (e.shiftRight 1) && Nat.blt Wm1 (entrySeedK lo start e) &&
+    Nat.beq j (entryTallyK len e)
+
 /-- A step of a slice's list, one bit at a time. -/
 public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
     (stripeEntryK st c lo start k len e).testBit j
-      = (st.testBit j || (testBitK c (e.shiftRight 1) &&
-          Nat.beq ((entrySeedK lo start e).shiftRight 16) k &&
-          (Nat.beq j ((entrySeedK lo start e).land 65535) || Nat.beq j (entryTallyK len e)))) := by
+      = (st.testBit j || entryHits c lo start k len j e) := by
+  unfold entryHits
   unfold stripeEntryK
   cases hc : testBitK c (e.shiftRight 1) with
   | false => simp
@@ -268,8 +279,8 @@ public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
 /-- A step of the out-of-window list, one bit at a time. -/
 public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
     (stripeOutK st c lo start Wm1 len e).testBit j
-      = (st.testBit j || (testBitK c (e.shiftRight 1) &&
-          Nat.blt Wm1 (entrySeedK lo start e) && Nat.beq j (entryTallyK len e))) := by
+      = (st.testBit j || outHits c lo start Wm1 len j e) := by
+  unfold outHits
   unfold stripeOutK
   cases hc : testBitK c (e.shiftRight 1) with
   | false => simp
@@ -280,6 +291,77 @@ public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
       have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
       rw [hlor, Nat.testBit_or, testBit_oneShift]
       simp
+
+/-- Walking one more entry. -/
+public theorem stripeSlotK_succ {c lo start k len slot cnt st : Nat} :
+    stripeSlotK c lo start k len slot (cnt + 1) st
+      = stripeEntryK (stripeSlotK c lo start k len slot cnt st) c lo start k len
+          ((slot.shiftRight (cnt.mul 13)).land 8191) := rfl
+
+/-- Walking one more entry of the out-of-window list. -/
+public theorem stripeOutSlotK_succ {c lo start Wm1 len slot cnt st : Nat} :
+    stripeOutSlotK c lo start Wm1 len slot (cnt + 1) st
+      = stripeOutK (stripeOutSlotK c lo start Wm1 len slot cnt st) c lo start Wm1 len
+          ((slot.shiftRight (cnt.mul 13)).land 8191) := rfl
+
+/-- A bit of a finished list is a bit of what the walk started from, or one that some entry of the
+list set. -/
+public theorem testBit_stripeSlotK {c lo start k len slot st j : Nat} (cnt : Nat) :
+    (stripeSlotK c lo start k len slot cnt st).testBit j = true ↔
+      (st.testBit j = true ∨ ∃ m, m < cnt ∧
+        entryHits c lo start k len j ((slot.shiftRight (m.mul 13)).land 8191) = true) := by
+  induction cnt with
+  | zero =>
+    have h : stripeSlotK c lo start k len slot 0 st = st := rfl
+    rw [h]
+    constructor
+    · exact fun hj => Or.inl hj
+    · rintro (hj | ⟨m, hm, _⟩)
+      · exact hj
+      · exact absurd hm (by lia)
+  | succ n ih =>
+    rw [stripeSlotK_succ, testBit_stripeEntryK, Bool.or_eq_true, ih]
+    constructor
+    · rintro ((hj | ⟨m, hm, he⟩) | hn)
+      · exact Or.inl hj
+      · exact Or.inr ⟨m, by lia, he⟩
+      · exact Or.inr ⟨n, by lia, hn⟩
+    · rintro (hj | ⟨m, hm, he⟩)
+      · exact Or.inl (Or.inl hj)
+      · rcases Nat.lt_or_ge m n with hmn | hmn
+        · exact Or.inl (Or.inr ⟨m, hmn, he⟩)
+        · have : m = n := by lia
+          rw [this] at he
+          exact Or.inr he
+
+/-- The same for the out-of-window list. -/
+public theorem testBit_stripeOutSlotK {c lo start Wm1 len slot st j : Nat} (cnt : Nat) :
+    (stripeOutSlotK c lo start Wm1 len slot cnt st).testBit j = true ↔
+      (st.testBit j = true ∨ ∃ m, m < cnt ∧
+        outHits c lo start Wm1 len j ((slot.shiftRight (m.mul 13)).land 8191) = true) := by
+  induction cnt with
+  | zero =>
+    have h : stripeOutSlotK c lo start Wm1 len slot 0 st = st := rfl
+    rw [h]
+    constructor
+    · exact fun hj => Or.inl hj
+    · rintro (hj | ⟨m, hm, _⟩)
+      · exact hj
+      · exact absurd hm (by lia)
+  | succ n ih =>
+    rw [stripeOutSlotK_succ, testBit_stripeOutK, Bool.or_eq_true, ih]
+    constructor
+    · rintro ((hj | ⟨m, hm, he⟩) | hn)
+      · exact Or.inl hj
+      · exact Or.inr ⟨m, by lia, he⟩
+      · exact Or.inr ⟨n, by lia, hn⟩
+    · rintro (hj | ⟨m, hm, he⟩)
+      · exact Or.inl (Or.inl hj)
+      · rcases Nat.lt_or_ge m n with hmn | hmn
+        · exact Or.inl (Or.inr ⟨m, hmn, he⟩)
+        · have : m = n := by lia
+          rw [this] at he
+          exact Or.inr he
 
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
