@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "allraw12"
-            rounds: 3
-            cases: "Ht12 Taylor2Ht12 TaylorHt12"
-          - n: "allraw13"
-            rounds: 2
-            cases: "Ht13 Ht13_M0"
+          - n: "gate"
+            rounds: 4
+            cases: "ShareGate"
     steps:
       - uses: actions/checkout@v7
 
