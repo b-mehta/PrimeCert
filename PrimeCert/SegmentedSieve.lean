@@ -3602,6 +3602,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let cE := mkRawNatLit cVal
       let sorted := wm1 < 2 * value start
         || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start)
+        || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start)
       let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
       let sliceE := mkApp2 (mkConst ``Nat.land)
         (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
@@ -3625,6 +3626,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
         addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
           (mkAppN (mkConst ``stripeStepBand)
+            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
+              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
+      else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then
+        let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
+        addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next))
+          (mkAppN (mkConst ``stripeStepBand8)
             #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
               mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
               mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
