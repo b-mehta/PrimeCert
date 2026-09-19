@@ -14,8 +14,6 @@ The comparison arm for `H1_Sorted`. -/
 
 namespace PrimeCert.SegTune.H1_Marked
 
-run_sieve 1000000
-
-run_segment_variant 20 100000000001 262144 105410 1536 1000000
+run_segment_variant 20 100000000001 262144 105410 1536
 
 end PrimeCert.SegTune.H1_Marked

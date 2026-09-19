@@ -20,8 +20,6 @@ than to x. `H0_Marked` is the same segment marked the way the sieve does today. 
 
 namespace PrimeCert.SegTune.H0_Sorted
 
-run_sieve 1000000
-
-run_segment_variant 28 10000000001 262144 33334 1536 1000000
+run_segment_variant 28 10000000001 262144 33334 1536
 
 end PrimeCert.SegTune.H0_Sorted

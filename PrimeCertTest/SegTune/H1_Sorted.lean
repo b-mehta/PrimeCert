@@ -17,8 +17,6 @@ only a few times here than at ten billion. `H1_Marked` is the comparison arm. -/
 
 namespace PrimeCert.SegTune.H1_Sorted
 
-run_sieve 1000000
-
-run_segment_variant 28 100000000001 262144 105410 1536 1000000
+run_segment_variant 28 100000000001 262144 105410 1536
 
 end PrimeCert.SegTune.H1_Sorted

@@ -15,8 +15,6 @@ segment once. -/
 
 namespace PrimeCert.SegTune.H0_Marked
 
-run_sieve 1000000
-
-run_segment_variant 20 10000000001 262144 33334 1536 1000000
+run_segment_variant 20 10000000001 262144 33334 1536
 
 end PrimeCert.SegTune.H0_Marked
