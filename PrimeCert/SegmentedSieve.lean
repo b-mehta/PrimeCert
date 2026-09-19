@@ -646,6 +646,34 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
     rw [← entryOf_eq, hc, hk16', hbeq]
     simp
 
+/-- A batch's slice of the base sieve holds `len` bits, so it says nothing at a position outside
+the batch, which is what stops an entry naming such a position from forging a tally bit. -/
+public theorem testBitK_of_lt {c len i : Nat} (hc : c < 2 ^ len) (hi : len ≤ i) :
+    testBitK c i = false := by
+  rw [testBitK_eq_testBit]
+  exact Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le hc (Nat.pow_le_pow_right (by lia) hi))
+
+/-- A tally bit names one position of the batch and one of the two progressions. -/
+public theorem entryTallyK_inj {len e i w : Nat} (hi : (e.shiftRight 1) < len) (hw : e.land 1 < 2)
+    (hi' : i < len) (hw' : w < 2)
+    (h : entryTallyK len e = Nat.add 65536 (Nat.add i (Nat.mul w len))) :
+    e.shiftRight 1 = i ∧ e.land 1 = w := by
+  unfold entryTallyK at h
+  have hadd : e.shiftRight 1 + (e.land 1) * len = i + w * len := by lia
+  rcases Nat.lt_or_ge (e.land 1) w with hlt | hge
+  · have h0 : e.land 1 = 0 := by lia
+    have h1 : w = 1 := by lia
+    rw [h0, h1] at hadd
+    lia
+  · rcases Nat.lt_or_ge w (e.land 1) with hlt' | hge'
+    · have h0 : w = 0 := by lia
+      have h1 : e.land 1 = 1 := by lia
+      rw [h0, h1] at hadd
+      lia
+    · have hweq : e.land 1 = w := by lia
+      rw [hweq] at hadd
+      exact ⟨by lia, hweq⟩
+
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
 @[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
