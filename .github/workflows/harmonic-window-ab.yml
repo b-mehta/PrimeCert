@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "len12"
-            rounds: 2
-            cases: "Wid1Ht12 Wid2Ht12 Wid4Ht12 Wid8Ht12"
+          - n: "raw12"
+            rounds: 3
+            cases: "Ht12 TaylorHt12 TaylorRHt12"
     steps:
       - uses: actions/checkout@v7
 
