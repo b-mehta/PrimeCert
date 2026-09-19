@@ -8,12 +8,12 @@ module
 public meta import PrimeCert.Meta.Sieve
 public meta import PrimeCert.SegmentedSieve
 
-/-! # The divisors past half the segment, with four records apiece
+/-! # The divisors past half the segment, under the wider record layout
 
-`Q9_Cleared` gives each of those divisors two records, one per progression, which is all their
-strikes. This file gives them four, the extra pair stepping on by a further double and so always
-landing past the end of the segment. That is what one family of definitions covering both bands
-would cost, against `Q9_Cleared` as the two-record arm. -/
+`Q9_Cleared` gives each of those divisors two records, one per progression, in a layout whose
+record spends one bit saying which progression. This file writes the same two records in the layout
+the three-and-four-strike band needs, whose record spends two bits there. So the pair says what one
+family of definitions covering both bands would cost. -/
 
 namespace PrimeCert.SegTune.Q9_Four
 

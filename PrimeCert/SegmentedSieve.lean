@@ -2193,10 +2193,11 @@ meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := I
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
-/-- `stripeSort` for the band whose divisors strike three or four times, so each gets four records
-rather than two. The extra pair steps the two progressions on by a further double, and lands past
-the end of the segment often enough that the out-of-segment list carries it. -/
-meta def stripeSort4 (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
+/-- `stripeSort` with a two-bit field for the progression, so a divisor can have up to four
+records: the first two are its two progressions, the next two step each on by a further double.
+`nrec` says how many a divisor gets, two for a divisor whose double already passes the end of the
+segment and four for one whose double fits but whose quadruple does not. -/
+meta def stripeSort4 (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let mut slots : Array (Array Nat) := Array.replicate 65 #[]
   let mut seen := 0
   let mut asm := 0
@@ -2204,7 +2205,7 @@ meta def stripeSort4 (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := 
   for i in [0:len] do
     if (c >>> i) &&& 1 = 1 then
       let p := value (start + i)
-      for w in [0, 1, 2, 3] do
+      for w in [0:nrec] do
         let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
           else firstLoc (index (p * 7)) lo (p * 2)
         let X := base + (w >>> 1) * (p * 2)
@@ -2515,8 +2516,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     return
   if mode == 31 then
     -- Measurement only: the divisors whose double already passes the end of the segment, sorted
-    -- with four records apiece rather than two. The extra pair always lands past the end, so this
-    -- against `Q9_Cleared` says what one family of definitions for both bands would cost.
+    -- with two records apiece under the two-bit record layout the other band needs. Against
+    -- `Q9_Cleared`, which uses a one-bit layout, this says what one family of definitions for both
+    -- bands would cost, the records themselves being the same two either way.
     let mut first := 1
     while 2 * value first ≤ wm1 do
       first := first + 1
@@ -2527,7 +2529,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let stepN := Nat.min step0 (count - i * step0)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
-      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W
+      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W 2
       let batchE := mkAppN (mkConst ``stripeBatch4K)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
@@ -2535,7 +2537,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
       let mut wantV := 0
-      for w in [0, 1, 2, 3] do
+      for w in [0:2] do
         wantV := wantV ||| (cVal <<< (w * stepN))
       addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
       let next := bitsL - (expect &&& bitsL)
@@ -2571,7 +2573,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
         continue
-      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W
+      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W 4
       let batchE := mkAppN (mkConst ``stripeBatch4K)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
