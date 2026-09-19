@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "numerals"
-            rounds: 1
-            cases: "Raw1e7_Plain Raw1e7_Raw Raw1e7_Step"
-          - n: "fold"
+          - n: "record09"
             rounds: 2
-            cases: "Fold1e8_F1 Fold1e8_F2"
+            cases: "SegOnlyHt09 CountHt09 Ht09 Ht09_F7W2"
     steps:
       - uses: actions/checkout@v7
 
@@ -32,11 +29,13 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
 
-      - name: Build what the cases depend on, the sieve to 1e8 included
+      - name: Build what the cases depend on
         run: |
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
-          lake build PrimeCertTest.HarmonicBench.SplitSieve1e8
+          lake build PrimeCert.SegmentedSieve
+          lake build PrimeCertTest.HarmonicBench.SieveHt12
+          lake build PrimeCertTest.HarmonicBench.SieveHt13
 
       - name: Record the runner
         run: |
@@ -80,6 +79,10 @@ jobs:
               | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}')
             entries=$(grep -c '\[Kernel\] \[' "out-$tag.txt")
             echo "RESULT ${{ matrix.n }} | $tag | exit $code | kernel ${total}s over ${entries} entries | wall $(( $(date +%s) - start ))s | peak ${hwm} KB | swap ${swap} KB"
+            grep -oE '\[[A-Za-z_.]+\] \[[0-9.]+\]' "out-$tag.txt" \
+              | awk -v tag="$tag" '{c=$1; t=$2; gsub(/[][]/,"",c); gsub(/[][]/,"",t); s[c]+=t; n[c]++}
+                  END {for (c in s) printf "CATEGORY %s | %s | %.2f s over %d entries\n", tag, c, s[c], n[c]}' \
+              | sort -t'|' -k3 -gr
             if [ "$code" -ne 0 ]; then
               echo "RUN FAILED $tag" | tee -a bench-failures.txt
               grep -E "error|memory" "out-$tag.txt" | tail -5
@@ -109,65 +112,3 @@ jobs:
           name: window-ab-${{ matrix.n }}
           path: out-*.txt
 
-  split:
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install elan
-        run: |
-          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          ./elan-init -y --default-toolchain none
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch the mathlib build cache
-        run: lake exe cache get
-
-      - name: Build what the parts depend on, the sieves included
-        run: |
-          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
-          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
-          lake build PrimeCertTest.HarmonicBench.SplitSieve5e7
-          lake build PrimeCertTest.HarmonicBench.SplitSieve1e8
-
-      - name: Record the runner
-        run: |
-          free -m
-          nproc
-          swapon --show || true
-
-      - name: Build the four parts at once and merge them, at both sizes
-        run: |
-          set +e +o pipefail
-          fail=0
-          run_split() {
-            tag=$1
-            start=$(date +%s)
-            lake build "PrimeCertTest.HarmonicBench.Split${tag}_M" > "out-split-$tag.txt" 2>&1 &
-            pid=$!
-            peak=0
-            while kill -0 "$pid" 2>/dev/null; do
-              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
-              if [ "$r" -gt "$peak" ]; then peak=$r; fi
-              t=$(( $(date +%s) - start ))
-              if [ $(( t % 60 )) -eq 0 ]; then
-                echo "$tag t=${t}s lean processes $(pgrep -c -x lean || echo 0) rss $(( r / 1024 )) MB"
-              fi
-              sleep 1
-            done
-            wait "$pid"
-            code=$?
-            echo "RESULT split | $tag | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
-            tail -20 "out-split-$tag.txt"
-            if [ "$code" -ne 0 ]; then fail=1; fi
-          }
-          run_split 1e8
-          exit "$fail"
-
-      - name: Keep the logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: window-split
-          path: out-split-*.txt

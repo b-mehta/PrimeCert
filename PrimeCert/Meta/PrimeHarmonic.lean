@@ -386,9 +386,18 @@ structure WindowBatch where
   w : Nat
   recip : Nat
   count : Nat
+  /-- The batch total of the numbers at the set bits, for the offset expansion. -/
+  val : Nat := 0
+  /-- The batch total of their squares, for the offset expansion. -/
+  sq : Nat := 0
+  /-- The batch total of the offsets from the window's first number. -/
+  off : Nat := 0
+  /-- The batch total of the squared offsets. -/
+  osq : Nat := 0
 
 /-- The empty batch, so that the elaborator can index arrays of batches with `!`. -/
-meta instance : Inhabited WindowBatch := ⟨⟨0, 0, 0, 0, 0⟩⟩
+meta instance : Inhabited WindowBatch :=
+  ⟨{ lo := 0, len := 0, w := 0, recip := 0, count := 0 }⟩
 
 /-- The window literal for the positions `lo … lo + n - 1`: bit `i` is the twin's mark at
 `lo + i`. -/
@@ -482,6 +491,13 @@ ordinary numerals, `1` those whose numerals are raw literals, matching the terms
 and `2` those whose batch fold also drops the step to multiply by and the start to add. -/
 meta def statementForm : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 1)
 
+/-- Which loop the sieving of each window is stated over, passed on to `Sieve.runSegment`, so that
+the loops can be timed against each other in one job. `0` walks every base index and builds a full
+mask for each prime; `3` and `11` drop the primes whose starting positions miss the window, stop
+the doubling at the window's width, skip the masks that meet nothing, and read each batch's own
+slice of the base sieve. -/
+meta def segmentMode : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 11)
+
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
 in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
 and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and `n` the
@@ -509,8 +525,8 @@ meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
     let eqLemma := match form with
       | 0 => ``sumB_windowEq
-      | 1 => ``sumB_windowEqR
-      | _ => ``sumB_windowEq1
+      | 2 => ``sumB_windowEq1
+      | _ => ``sumB_windowEqR
     addHarmonicThm eqName
       (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
         (mkRawNatLit t))
@@ -987,21 +1003,33 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   let loE := mkRawNatLit lo
   -- the batches of the segment, with their windows and totals read off the segment literal
   let mut wins : Array WindowBatch := #[]
+  -- each batch takes its slice off the low end of `rest`, so the whole literal is shifted once per
+  -- batch rather than twice per position
+  let mut rest := g
   for i in [0:(W + batch - 1) / batch] do
     let k := i * batch
     let m := Nat.min batch (W - k)
-    let mut w := 0
+    let w := rest &&& ((1 <<< m) - 1)
+    rest := rest >>> m
     let mut tot := 0
     let mut cnt := 0
+    let mut vsum := 0
+    let mut qsum := 0
+    let mut dsum := 0
+    let mut esum := 0
     for j in [0:m] do
-      if g.testBit (k + m - 1 - j) then
-        w := 2 * w + 1
-      else
-        w := 2 * w
-      if g.testBit (k + j) then
-        tot := tot + S / twinValue (lo + k + j)
+      if w.testBit j then
+        let v := twinValue (lo + k + j)
+        let d := v - a
+        tot := tot + S / v
         cnt := cnt + 1
-    wins := wins.push { lo := k, len := m, w, recip := tot, count := cnt }
+        vsum := vsum + v
+        qsum := qsum + v * v
+        dsum := dsum + d
+        esum := esum + d * d
+    wins := wins.push
+      { lo := k, len := m, w, recip := tot, count := cnt, val := vsum, sq := qsum,
+        off := dsum, osq := esum }
   let base := `PrimeCert ++ Name.mkSimple s!"harmonicSegment_{a}_{W}_{B}_{scaleExp}_{batch}"
   let mut winNames : Array Name := #[]
   for k in [0:wins.size] do
@@ -1009,36 +1037,192 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
     let nm := mkPrivateName env (base ++ Name.mkSimple s!"w_{k}")
     addHarmonicThm nm (mkWindowEq gE wb.lo wb.len wb.w) Lean.reflBoolTrue
     winNames := winNames.push nm
-  let fRecip := mkApp3 (mkConst ``recipAtW) gE loE SE
+  let form ← statementForm.get
+  -- form 8 replaces the reciprocal fold by the expansion of `1 / p` in the offset from `a`: the
+  -- folds are the count, the total of the numbers and the total of their squares, and the two
+  -- divisions that rescale the resulting interval to the denominator `S` happen here, once for the
+  -- whole window, rather than once per prime inside the kernel
+  if form == 8 || form == 9 || form == 10 || form == 11 || form == 12 || form == 13 then
+    let aE := mkRawNatLit a
+    let topE := mkRawNatLit top
+    let sieveArg := mkAppN (mkConst ``Sieve.IsSieve.monoB)
+      #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
+        mkConst cache.isSieveName, Lean.reflBoolTrue]
+    -- the ten side conditions every one of these forms shares
+    let sides := #[sieveArg, mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue,
+      Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+      Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]
+    let fCount := mkApp (mkConst ``bitAtW) gE
+    let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount
+      (fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w))
+      (fun k n w nm ↦ mkAppN (mkConst ``bitW_windowR)
+        #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm])
+      (fun wb : WindowBatch ↦ wb.count) wins winNames
+    -- a fold whose summand carries the window's first position, for `valAtW` and `sqAtW`
+    let atLo (nm : String) (cf br : Name) (pick : WindowBatch → Nat) : MetaM (Nat × Name) :=
+      emitWindowedFoldOver (base ++ Name.mkSimple nm) (mkApp2 (mkConst cf) gE loE)
+        (fun w k ↦ mkApp2 (mkConst cf) (mkRawNatLit w) (mkRawNatLit (lo + k)))
+        (fun k n w wn ↦ mkAppN (mkConst br)
+          #[gE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
+            Lean.reflBoolTrue, mkConst wn])
+        pick wins winNames
+    -- the same with the window's first number carried too, for `offAtW` and `osqAtW`
+    let atLoA (nm : String) (cf br : Name) (pick : WindowBatch → Nat) : MetaM (Nat × Name) :=
+      emitWindowedFoldOver (base ++ Name.mkSimple nm) (mkApp3 (mkConst cf) gE loE aE)
+        (fun w k ↦ mkApp3 (mkConst cf) (mkRawNatLit w) (mkRawNatLit (lo + k)) aE)
+        (fun k n w wn ↦ mkAppN (mkConst br)
+          #[gE, loE, aE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
+            Lean.reflBoolTrue, mkConst wn])
+        pick wins winNames
+    let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+    -- the count alone bounds every prime of the window between its two ends
+    if form == 11 then
+      let A := C * S / top
+      let U := C * S / a + 1
+      let Cw := U - A
+      addHarmonicThm iccName
+        (mkAppN (mkConst ``PrimeRecipRange)
+          #[aE, mkRawNatLit next, mkRawNatLit A, mkRawNatLit Cw, SE])
+        (mkAppN (mkConst ``primeRecipRange_of_segRun_count)
+          (#[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+              mkRawNatLit C, mkRawNatLit A, mkRawNatLit Cw, loE, mkRawNatLit next, topE]
+            ++ sides ++ #[Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+              mkConst cName, Lean.reflBoolTrue, Lean.reflBoolTrue]))
+      logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
+{batch}, divisors to {B}, count alone; A = {A}, Cw = {Cw}"
+      return
+    -- the other three forms all reach the same pair `V = ∑ p`, `Q = ∑ p ^ 2`
+    let (V, Q, extra) ←
+      if form == 10 then do
+        let (D, dName) ← atLoA "off" ``offAtW ``offW_windowR (fun wb : WindowBatch ↦ wb.off)
+        let (E, eName) ← atLoA "osq" ``osqAtW ``osqW_windowR (fun wb : WindowBatch ↦ wb.osq)
+        pure (a * C + D, a ^ 2 * C + 2 * a * D + E,
+          #[mkRawNatLit D, mkRawNatLit E, mkConst dName, mkConst eName])
+      else do
+        -- form 12 folds the twins whose numerals are raw literals, then converts back
+        let raw := form == 12 || form == 13
+        let (V, vName) ← if raw then
+            atLo "val" ``valAtWR ``valWR_windowR (fun wb : WindowBatch ↦ wb.val)
+          else atLo "val" ``valAtW ``valW_windowR (fun wb : WindowBatch ↦ wb.val)
+        let vProof := if raw then
+            mkAppN (mkConst ``valWR_conv)
+              #[gE, loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit V,
+                mkConst vName]
+          else mkConst vName
+        if form == 9 || form == 13 then
+          pure (V, top * V, #[vProof])
+        else do
+          let (Q, qName) ← if raw then
+              atLo "sq" ``sqAtWR ``sqWR_windowR (fun wb : WindowBatch ↦ wb.sq)
+            else atLo "sq" ``sqAtW ``sqW_windowR (fun wb : WindowBatch ↦ wb.sq)
+          let qEq := if raw then
+              mkAppN (mkConst ``sqWR_conv)
+                #[gE, loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit Q,
+                  mkConst qName]
+            else mkConst qName
+          let qLe := mkAppN (mkConst ``sumB_le_of_eq)
+            #[mkApp2 (mkConst ``sqAtW) gE loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1,
+              mkRawNatLit Q, qEq]
+          pure (V, Q, #[mkRawNatLit Q, vProof, qLe])
+    let twoAC := 2 * a * C
+    if V > twoAC then
+      throwError "run_harmonic_segment: the window reaches past twice its start, \
+so the lower end of the expansion is negative"
+    let A := (twoAC - V) * S / a ^ 2
+    let upNum := 3 * a ^ 2 * C + Q
+    let downNum := 3 * a * V
+    if downNum > upNum then
+      throwError "run_harmonic_segment: the upper end of the expansion is negative"
+    let U := (upNum - downNum) * S / a ^ 3 + 1
+    if U < A then
+      throwError "run_harmonic_segment: the rescaled interval is empty"
+    let Cw := U - A
+    let two := form == 9 || form == 13
+    let thm := if two then ``primeRecipRange_of_segRun_taylor2
+      else if form == 10 then ``primeRecipRange_of_segRun_taylorOff
+      else ``primeRecipRange_of_segRun_taylor
+    let implicits := if two then
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+          mkRawNatLit C, mkRawNatLit V, mkRawNatLit Q, mkRawNatLit A, mkRawNatLit Cw,
+          loE, mkRawNatLit next, topE]
+      else if form == 10 then
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+          mkRawNatLit C, extra[0]!, extra[1]!, mkRawNatLit V, mkRawNatLit Q,
+          mkRawNatLit A, mkRawNatLit Cw, loE, mkRawNatLit next]
+      else
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+          mkRawNatLit C, mkRawNatLit V, extra[0]!, mkRawNatLit A, mkRawNatLit Cw,
+          loE, mkRawNatLit next]
+    let folds := if two then
+        #[Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI, mkConst cName, extra[0]!,
+          Lean.reflBoolTrue]
+      else if form == 10 then
+        #[mkConst segEqI, mkConst cName, extra[2]!, extra[3]!,
+          Lean.reflBoolTrue, Lean.reflBoolTrue]
+      else #[mkConst segEqI, mkConst cName, extra[1]!, extra[2]!]
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipRange)
+        #[aE, mkRawNatLit next, mkRawNatLit A, mkRawNatLit Cw, SE])
+      (mkAppN (mkConst thm)
+        (implicits ++ sides ++ folds ++ #[Lean.reflBoolTrue, Lean.reflBoolTrue]))
+    logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
+{batch}, divisors to {B}, expansion form {form}; A = {A}, Cw = {Cw}"
+    return
+  -- forms 3, 4 and 5 sum over a variant of the bit test, carried back by a conversion theorem
+  let (recipF, bitF, recipWin, bitWin, conv) := match form with
+    | 2 => (``recipAtW, ``bitAtW, ``recipW_window1, ``bitW_window1, none)
+    | 3 => (``recipAtWS, ``bitAtWS, ``recipWS_windowR, ``bitWS_windowR,
+              some (``recipWS_conv, ``bitWS_conv))
+    | 4 => (``recipAtWB, ``bitAtWB, ``recipWB_windowR, ``bitWB_windowR,
+              some (``recipWB_conv, ``bitWB_conv))
+    | 5 => (``recipAtWR, ``bitAtWR, ``recipWR_windowR, ``bitWR_windowR,
+              some (``recipWR_conv, ``bitWR_conv))
+    | 6 => (``recipAtWH, ``bitAtWH, ``recipWH_windowR, ``bitWH_windowR,
+              some (``recipWH_conv, ``bitWH_conv))
+    | _ => (``recipAtW, ``bitAtW, ``recipW_windowR, ``bitW_windowR, none)
+  let fRecip := mkApp3 (mkConst recipF) gE loE SE
   let gRecip : Nat → Nat → Expr := fun w k ↦
-    mkApp3 (mkConst ``recipAtW) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
+    mkApp3 (mkConst recipF) (mkRawNatLit w) (mkRawNatLit (lo + k)) SE
   let bRecip : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``recipW_windowR)
+    mkAppN (mkConst recipWin)
       #[gE, SE, loE, mkRawNatLit k, mkRawNatLit (lo + k), mkRawNatLit n, mkRawNatLit w,
         Lean.reflBoolTrue, mkConst nm]
-  let fCount := mkApp (mkConst ``bitAtW) gE
-  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst ``bitAtW) (mkRawNatLit w)
+  let fCount := mkApp (mkConst bitF) gE
+  let gCount : Nat → Nat → Expr := fun w _ ↦ mkApp (mkConst bitF) (mkRawNatLit w)
   let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
-    mkAppN (mkConst ``bitW_windowR)
+    mkAppN (mkConst bitWin)
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
     gRecip bRecip (·.recip) wins winNames
-  let (C, cName) ← emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount
-    gCount bCount (·.count) wins winNames
+  -- form 7 skips the count fold and takes the window's width as the count instead
+  let single := form == 7
+  let (C, cName) ← if single then pure (W, Name.anonymous) else
+    emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
+      (fun wb : WindowBatch ↦ wb.count) wins winNames
+  let aProof := match conv with
+    | none => mkConst aName
+    | some (cr, _) => mkAppN (mkConst cr)
+        #[gE, loE, SE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit A, mkConst aName]
+  let cProof := match conv with
+    | some (_, cb) => if single then mkConst cName else mkAppN (mkConst cb)
+        #[gE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit C, mkConst cName]
+    | none => mkConst cName
   let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
       #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit C, SE])
-    (mkAppN (mkConst ``primeRecipRange_of_segRun)
-      #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
-        mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit next,
+    (let head := #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+        mkRawNatLit A]
+      let tail := #[loE, mkRawNatLit next,
         mkAppN (mkConst ``Sieve.IsSieve.monoB)
           #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
             mkConst cache.isSieveName, Lean.reflBoolTrue],
         mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
         Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
-        mkConst aName, mkConst cName])
+        Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI, aProof]
+      if single then mkAppN (mkConst ``primeRecipRange_of_segRun_single) (head ++ tail)
+      else mkAppN (mkConst ``primeRecipRange_of_segRun)
+        (head ++ #[mkRawNatLit C] ++ tail ++ #[cProof]))
   logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of {batch}, \
 divisors to {B}; A = {A}, C = {C}"
 
@@ -1140,7 +1324,7 @@ meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
   let ns ← getCurrNamespace
   let mut start := a
   for _ in [0:n] do
-    Sieve.runSegment ns cache.litName start W fuel len
+    Sieve.runSegment ns cache.litName start W fuel len (← segmentMode.get)
     runHarmonicSegment start W B scaleExp batch len
     start := nextSegmentStart start W
   runHarmonicJoin a W B scaleExp n
@@ -1149,12 +1333,14 @@ meta def runHarmonicSeries (a W B scaleExp batch len n : Nat) : MetaM Unit := do
 `W` positions from `a` (see `runHarmonicSeries`). As for `run_harmonic_window`, a trailing numeral
 picks the form of the batch statements and defaults to `1`. -/
 elab "run_harmonic_series" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num nStx:num
-    rStx:(num)? : command =>
+    rStx:(num)? mStx:(num)? : command =>
   liftTermElabM <| do
     statementForm.set (match rStx with | none => 1 | some r => r.getNat)
+    segmentMode.set (match mStx with | none => 11 | some m => m.getNat)
     runHarmonicSeries aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat
       lStx.getNat nStx.getNat
     statementForm.set 1
+    segmentMode.set 11
 
 /-- `run_harmonic_join a W B e n` joins the `n` windows of `W` positions from `a` (see
 `runHarmonicJoin`). -/

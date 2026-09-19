@@ -43,7 +43,20 @@ short of rigorous proof" (section 9). The ordinary terms need analysis beyond ra
 
 Equation (8.2): over a window starting at o, with c primes and s the sum of their offsets from o,
 ∑ 1/p ≈ c/o − s/o², with the error bounded rigorously by the next term of an alternating series.
-This could replace the per-prime division in a windowed computation.
+
+**Built and measured on 2026-09-18.** No alternating-series machinery is needed: `0 ≤ (o − p)²`
+gives the lower bound and `0 ≤ (p − o)³` the upper, so with C the count, V = ∑p and Q = ∑p²,
+
+    (2oC − V)/o² ≤ ∑ 1/p ≤ (3o²C − 3oV + Q)/o³.
+
+Folding the offsets d = p − o instead gives (Co − D)/o² and (Co² − oD + E)/o³ with D = ∑d,
+E = ∑d²; the two are the same enclosure. `PrimeHarmonic.lean` has both, plus a two-fold version
+bounding Q by top·V and a version using the count alone, as emitter forms 8 to 11.
+
+Result: at a window starting at 1e12 it is 6% slower than dividing 10²⁰ by each prime and gives an
+interval 2.2 million times narrower (10⁻²⁰ against 2.85e-16). Below about 1e10 it is both slower
+and wider. It is not a speed lever, because crossing off composites is 83% of a window's kernel
+time and all the summing is 17%. Numbers in the project memory.
 
 ## Why it is parked
 
