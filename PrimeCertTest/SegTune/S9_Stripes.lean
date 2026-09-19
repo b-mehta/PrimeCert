@@ -22,4 +22,10 @@ run_sieve 10000000
 
 run_segment_variant 28 100000000000001 4194304 3333332 16384 10000000
 
+/-- The run's own statement and the one its consumers use should rest on nothing beyond the three
+axioms of the ambient logic. -/
+#print axioms segEqV_100000000000001_4194304_3333332_16384_m28
+
+#print axioms segEqI_100000000000001_4194304_3333332_16384_m28
+
 end PrimeCert.SegTune.S9_Stripes

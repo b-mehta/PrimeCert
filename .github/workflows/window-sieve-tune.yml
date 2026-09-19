@@ -23,14 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Four consecutive segments at once
+      - name: Run a whole segment the new way and print what its theorems rest on
         run: |
-          chmod +x PrimeCertTest/SegTune/pair.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
-      - name: Five at once, on the same runner
-        run: |
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/pair.sh \
-            S9_Par1 S9_Par2 S9_Par3 S9_Par4 S9_Par5
+          chmod +x PrimeCertTest/SegTune/run.sh
+          PrimeCertTest/SegTune/run.sh 1 S9_Stripes
+          grep 'depends on axioms' out-S9_Stripes-1.txt
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
