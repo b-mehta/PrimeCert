@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "gate"
-            rounds: 4
-            cases: "ShareGate"
+          - n: "record09"
+            rounds: 2
+            cases: "SegOnlyHt09 CountHt09 Ht09 Ht09_F7W2"
     steps:
       - uses: actions/checkout@v7
 
