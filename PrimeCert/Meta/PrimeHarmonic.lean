@@ -7,6 +7,7 @@ module
 
 import Lean.Elab.Command
 public meta import PrimeCert.PrimeHarmonic
+public meta import PrimeCert.GapFold
 public meta import PrimeCert.Meta.SieveCache
 public meta import PrimeCert.SegmentedSieve
 
@@ -498,11 +499,98 @@ the doubling at the window's width, skip the masks that meet nothing, and read e
 slice of the base sieve. -/
 meta def segmentMode : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 20)
 
-/-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join them
-in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the total
-and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and `n` the
-number of positions covered. `gE w lo` is the windowed fold function of a batch and
-`bridge lo n w name` its bridge equation from the window theorem `name`. -/
+/-- The gaps of a window, packed eight bits apart, with the count and the value the gap walk
+reaches. Positions count from one, so the first gap is at least one and the rebuilt window sits
+one bit above the window itself. -/
+meta def gapData (w lo len S : Nat) : Nat × Nat × Nat := Id.run do
+  let P := 1 <<< (len + 1)
+  let Q := 1 <<< 32
+  let mut G := 0
+  let mut c := 0
+  let mut prev := 0
+  for j in [0:len] do
+    if w.testBit j then
+      G := G ||| ((j + 1 - prev) <<< (8 * c))
+      prev := j + 1
+      c := c + 1
+  let mut pos := 0
+  let mut bits := 0
+  let mut acc := 0
+  for i in [0:c] do
+    pos := pos + ((G >>> (8 * i)) &&& 255)
+    bits := bits ||| (1 <<< pos)
+    acc := acc + S / twinValue (lo - 1 + pos)
+  return (G, c, bits + P * (pos + Q * acc))
+
+/-- The largest gap of a window, so the caller can refuse a batch whose gaps overflow a field. -/
+meta def widestGap (w len : Nat) : Nat := Id.run do
+  let mut worst := 0
+  let mut prev := 0
+  for j in [0:len] do
+    if w.testBit j then
+      worst := Nat.max worst (j + 1 - prev)
+      prev := j + 1
+  return worst
+
+/-- Emit the batches of the reciprocal fold as gap walks, each batch one kernel check of the walk
+and one of the rebuilt window, and chain them exactly as `emitWindowRun` does. -/
+meta def emitGapRun (parent : Name) (fE : Expr) (loBase S : Nat)
+    (bridge : Nat → Nat → Nat → Name → Expr)
+    (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
+  let env ← getEnv
+  let oneE := mkRawNatLit 1
+  let zeroE := mkRawNatLit 0
+  let qE := mkRawNatLit (1 <<< 32)
+  let fE8 := mkRawNatLit 8
+  let mE := mkRawNatLit 255
+  let SE := mkRawNatLit S
+  let mut nodes : Array RunNode := #[]
+  for k in [a:b] do
+    let wb := wins[k]!
+    let lok := loBase + wb.lo
+    if widestGap wb.w wb.len ≥ 256 then
+      throwError "run_harmonic_segment: a gap of {widestGap wb.w wb.len} positions needs more \
+than the eight bits a gap field holds"
+    let (G, c, R) := gapData wb.w lok wb.len S
+    let t := R / ((1 <<< (wb.len + 1)) * (1 <<< 32))
+    let pE := mkRawNatLit (1 <<< (wb.len + 1))
+    let pqE := mkRawNatLit ((1 <<< (wb.len + 1)) * (1 <<< 32))
+    let pbE := mkRawNatLit (wb.len + 1)
+    let gE := mkRawNatLit G
+    let loBE := mkRawNatLit (lok - 1)
+    let cE := mkRawNatLit c
+    let rE := mkRawNatLit R
+    let rName := mkPrivateName env (parent ++ Name.mkSimple s!"walk_{k}")
+    addHarmonicThm rName
+      (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+        (mkAppN (mkConst ``gapFoldK) #[pE, qE, pqE, fE8, mE, gE, loBE, SE, cE]) rE))
+      Lean.reflBoolTrue
+    let gw := mkApp3 (mkConst ``recipAtW) (mkRawNatLit wb.w) (mkRawNatLit lok) SE
+    let batchName := mkPrivateName env (parent ++ Name.mkSimple s!"batch_{k}")
+    addHarmonicThm batchName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t))
+      (mkAppN (mkConst ``gapFoldK_div_lit)
+        #[pE, qE, pqE, pbE, fE8, mE, gE, loBE, mkRawNatLit lok, SE, cE, mkRawNatLit wb.w,
+          mkRawNatLit wb.len, rE, mkRawNatLit t,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst rName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue])
+    let hb := bridge wb.lo wb.len wb.w winNames[k]!
+    let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
+    addHarmonicThm eqName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
+        (mkRawNatLit t))
+      (mkAppN (mkConst ``sumB_windowEqG)
+        #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst batchName])
+    nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
+  let root ← joinNodes parent fE nodes
+  return (root.tot, mkConst root.name)
+
+/-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join
+them in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the
+total and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and
+`n` the number of positions covered. `gE w lo` is the windowed fold function of a batch and
+`bridge lo n w name` its equation from the window theorem `name`. -/
 meta def emitWindowRun (parent : Name) (fE : Expr) (gE : Nat → Nat → Expr)
     (bridge : Nat → Nat → Nat → Name → Expr) (pick : WindowBatch → Nat)
     (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
@@ -859,6 +947,16 @@ meta def emitWindowedFoldOver (parent : Name) (fE : Expr) (gE : Nat → Nat → 
   addHarmonicThm parent (mkNatEq (mkSumB fE lo n 1) (mkRawNatLit tot)) proof
   return (tot, parent)
 
+/-- `emitWindowedFoldOver` with every batch of the reciprocal fold walked by its gaps. -/
+meta def emitGapFoldOver (parent : Name) (fE : Expr) (loBase S : Nat)
+    (bridge : Nat → Nat → Nat → Name → Expr)
+    (batches : Array WindowBatch) (winNames : Array Name) : MetaM (Nat × Name) := do
+  let (tot, proof) ← emitGapRun parent fE loBase S bridge batches winNames 0 batches.size
+  let lo := batches[0]!.lo
+  let n := windowSpan batches 0 batches.size
+  addHarmonicThm parent (mkNatEq (mkSumB fE lo n 1) (mkRawNatLit tot)) proof
+  return (tot, parent)
+
 /-- Enclose `∑ p ≤ bound, 1/p` at scale `10 ^ scaleExp`, summing the positions below `split` one at
 a time and the positions from `split` up in runs that share a quotient, each such run costing one
 count of set bits. `B` is the number of positions a window covers. -/
@@ -1195,10 +1293,14 @@ so the lower end of the expansion is negative"
   let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
     mkAppN (mkConst bitWin)
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
-  let (A, aName) ← emitWindowedFoldOver (base ++ Name.mkSimple "recip") fRecip
-    gRecip bRecip (·.recip) wins winNames
-  -- form 7 skips the count fold and takes the window's width as the count instead
-  let single := form == 7
+  -- form 15 walks the gaps between the primes of a batch rather than all of its positions
+  let recipName := base ++ Name.mkSimple "recip"
+  let (A, aName) ← if form == 15 then
+      emitGapFoldOver recipName fRecip lo S bRecip wins winNames
+    else
+      emitWindowedFoldOver recipName fRecip gRecip bRecip (·.recip) wins winNames
+  -- forms 7 and 15 skip the count fold and take the window's width as the count instead
+  let single := form == 7 || form == 15
   let (C, cName) ← if single then pure (W, Name.anonymous) else
     emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
       (fun wb : WindowBatch ↦ wb.count) wins winNames
