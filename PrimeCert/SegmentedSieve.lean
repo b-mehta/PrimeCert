@@ -181,29 +181,30 @@ positions it accounted for. -/
 the batch. The entry is used only if the batch's slice says that position holds a prime and the
 seed really lands in slice `k`; otherwise the state is left alone, and the missing bit in the two
 tallies is what a completed batch notices. -/
+@[expose] public noncomputable def entrySeedK (lo start e : Nat) : Nat :=
+  (Nat.beq (e.land 1) 0).rec
+    (firstLocK (indexK ((valueK (start.add (e.shiftRight 1))).mul 7)) lo
+      ((valueK (start.add (e.shiftRight 1))).mul 2))
+    (firstLocK (indexK ((valueK (start.add (e.shiftRight 1))).mul 5)) lo
+      ((valueK (start.add (e.shiftRight 1))).mul 2))
+
+/-- The bit an entry adds to the tally: one per position of the batch for each progression. -/
+@[expose] public noncomputable def entryTallyK (len e : Nat) : Nat :=
+  Nat.add 65536 (Nat.add (e.shiftRight 1) (Nat.mul (e.land 1) len))
+
 @[expose] public noncomputable def stripeEntryK (st c lo start k len e : Nat) : Nat :=
-  let i : Nat := e.shiftRight 1
-  let p : Nat := valueK (start.add i)
-  let X : Nat := (Nat.beq (e.land 1) 0).rec
-    (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
-    (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-  (testBitK c i).rec st
-    ((Nat.beq (X.shiftRight 16) k).rec st
-      (st.lor ((Nat.shiftLeft 1 (X.land 65535)).lor
-        (Nat.shiftLeft 1 (Nat.add 65536 (Nat.add i (Nat.mul (e.land 1) len)))))))
+  (testBitK c (e.shiftRight 1)).rec st
+    ((Nat.beq ((entrySeedK lo start e).shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedK lo start e).land 65535)).lor
+        (Nat.shiftLeft 1 (entryTallyK len e)))))
 
 /-- An entry of the list of seeds that fall past the end of the window: the kernel checks that it
 does fall past the end, and records it in the tally so that a completed batch accounts for every
 seed of every prime it holds. -/
 @[expose] public noncomputable def stripeOutK (st c lo start Wm1 len e : Nat) : Nat :=
-  let i : Nat := e.shiftRight 1
-  let p : Nat := valueK (start.add i)
-  let X : Nat := (Nat.beq (e.land 1) 0).rec
-    (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
-    (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-  (testBitK c i).rec st
-    ((Nat.blt Wm1 X).rec st
-      (st.lor (Nat.shiftLeft 1 (Nat.add 65536 (Nat.add i (Nat.mul (e.land 1) len))))))
+  (testBitK c (e.shiftRight 1)).rec st
+    ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
 
 /-- The entries of one slice's list, packed 13 bits each. -/
 @[expose] public noncomputable def stripeSlotK (c lo start k len slot cnt st : Nat) : Nat :=
@@ -226,6 +227,55 @@ place in the mask, with the two tallies carried above the mask. -/
       (stripeOutSlotK c lo start Wm1 len slot cnt 0)
     (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
       ((st.shiftRight 65536).shiftLeft W)
+
+/-! ### What one entry does
+
+Each step of either fold leaves the state alone or joins two single bits into it, so a bit of the
+result is a bit of the state unless it is one of those two. These two lemmas are the base of the
+induction over a slice's list. -/
+
+/-- A step of a slice's list, one bit at a time. -/
+public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
+    (stripeEntryK st c lo start k len e).testBit j
+      = (st.testBit j || (testBitK c (e.shiftRight 1) &&
+          Nat.beq ((entrySeedK lo start e).shiftRight 16) k &&
+          (Nat.beq j ((entrySeedK lo start e).land 65535) || Nat.beq j (entryTallyK len e)))) := by
+  have hbit : ∀ a b : Nat, (Nat.shiftLeft 1 a).testBit b = Nat.beq b a := by
+    intro a b
+    have h : Nat.shiftLeft 1 a = 2 ^ a := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+    rw [h, Nat.testBit_two_pow]
+    grind
+  unfold stripeEntryK
+  cases hc : testBitK c (e.shiftRight 1) with
+  | false => simp
+  | true =>
+    cases hk : Nat.beq ((entrySeedK lo start e).shiftRight 16) k with
+    | false => simp
+    | true =>
+      have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+      rw [hlor, hlor, Nat.testBit_or, Nat.testBit_or, hbit, hbit]
+      simp
+
+/-- A step of the out-of-window list, one bit at a time. -/
+public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
+    (stripeOutK st c lo start Wm1 len e).testBit j
+      = (st.testBit j || (testBitK c (e.shiftRight 1) &&
+          Nat.blt Wm1 (entrySeedK lo start e) && Nat.beq j (entryTallyK len e))) := by
+  have hbit : ∀ a b : Nat, (Nat.shiftLeft 1 a).testBit b = Nat.beq b a := by
+    intro a b
+    have h : Nat.shiftLeft 1 a = 2 ^ a := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+    rw [h, Nat.testBit_two_pow]
+    grind
+  unfold stripeOutK
+  cases hc : testBitK c (e.shiftRight 1) with
+  | false => simp
+  | true =>
+    cases hw : Nat.blt Wm1 (entrySeedK lo start e) with
+    | false => simp
+    | true =>
+      have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+      rw [hlor, Nat.testBit_or, hbit]
+      simp
 
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
