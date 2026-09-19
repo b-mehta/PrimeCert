@@ -221,24 +221,27 @@ seed of every prime it holds. -/
     stripeOutK s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
 
 /-- Every slice of the window in turn, each filled from its own list and then written into its
-place in the mask, with the two tallies carried above the mask. -/
-@[expose] public noncomputable def stripeUpToK (c lo start len W Wm1 slotW Ls Cs n : Nat) : Nat :=
+place in the mask, with the tallies carried above the mask. `np` is how many slices the window
+holds, so slice `np` is the list of seeds that fall past the window's end. -/
+@[expose] public noncomputable def stripeUpToK
+    (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
   n.rec 0 fun k asm =>
     let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
     let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
-    let st : Nat := (Nat.beq k 64).rec
+    let st : Nat := (Nat.beq k np).rec
       (stripeSlotK c lo start k len slot cnt 0)
       (stripeOutSlotK c lo start Wm1 len slot cnt 0)
     (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
       ((st.shiftRight 65536).shiftLeft W)
 
-/-- Every slice of the window, which is `stripeUpToK` run to the end. -/
-@[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
-  stripeUpToK c lo start len W Wm1 slotW Ls Cs 65
+/-- Every slice of the window, which is `stripeUpToK` run to the end: the `np` slices of the window
+and then the list of seeds past its end. -/
+@[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
 /-- The state a slice's list is walked from, and what it contributes to the assembled number. -/
-@[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs k : Nat) : Nat :=
-  (Nat.beq k 64).rec
+@[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs np k : Nat) : Nat :=
+  (Nat.beq k np).rec
     (stripeSlotK c lo start k len
       ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
       ((Cs.shiftRight (k.mul 16)).land 65535) 0)
@@ -247,12 +250,12 @@ place in the mask, with the two tallies carried above the mask. -/
       ((Cs.shiftRight (k.mul 16)).land 65535) 0)
 
 /-- One more slice. -/
-public theorem stripeUpToK_succ {c lo start len W Wm1 slotW Ls Cs n : Nat} :
-    stripeUpToK c lo start len W Wm1 slotW Ls Cs (n + 1)
-      = ((stripeUpToK c lo start len W Wm1 slotW Ls Cs n).lor
-          (((stripeStateK c lo start len Wm1 slotW Ls Cs n).land
+public theorem stripeUpToK_succ {c lo start len W Wm1 slotW Ls Cs np n : Nat} :
+    stripeUpToK c lo start len W Wm1 slotW Ls Cs np (n + 1)
+      = ((stripeUpToK c lo start len W Wm1 slotW Ls Cs np n).lor
+          (((stripeStateK c lo start len Wm1 slotW Ls Cs np n).land
             (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (n.mul 65536))).lor
-        (((stripeStateK c lo start len Wm1 slotW Ls Cs n).shiftRight 65536).shiftLeft W) := rfl
+        (((stripeStateK c lo start len Wm1 slotW Ls Cs np n).shiftRight 65536).shiftLeft W) := rfl
 
 /-! ### What one entry does
 
@@ -424,14 +427,14 @@ public theorem stripeOutSlotK_low {c lo start Wm1 len slot cnt b : Nat} (hb : b 
 
 /-- Below the window's width, a bit of the assembled number comes from exactly one slice: the one
 its position falls in. -/
-public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W)
+public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs np j : Nat} (hj : j < W)
     (n : Nat) :
-    (stripeUpToK c lo start len W Wm1 slotW Ls Cs n).testBit j = true ↔
+    (stripeUpToK c lo start len W Wm1 slotW Ls Cs np n).testBit j = true ↔
       ∃ k, k < n ∧ k * 65536 ≤ j ∧ j - k * 65536 < 65536 ∧
-        (stripeStateK c lo start len Wm1 slotW Ls Cs k).testBit (j - k * 65536) = true := by
+        (stripeStateK c lo start len Wm1 slotW Ls Cs np k).testBit (j - k * 65536) = true := by
   induction n with
   | zero =>
-    have h : stripeUpToK c lo start len W Wm1 slotW Ls Cs 0 = 0 := rfl
+    have h : stripeUpToK c lo start len W Wm1 slotW Ls Cs np 0 = 0 := rfl
     rw [h]
     constructor
     · intro hb
@@ -442,15 +445,15 @@ public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat
     have hlor : ∀ u v : Nat, u.lor v = u ||| v := fun _ _ => rfl
     rw [stripeUpToK_succ, hlor, hlor, Nat.testBit_or, Nat.testBit_or, Bool.or_eq_true,
       Bool.or_eq_true, ih]
-    have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).shiftRight 65536).shiftLeft
+    have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs np m).shiftRight 65536).shiftLeft
         W).testBit j = false := by
       rw [testBit_shiftUp]
       have : ¬ W ≤ j := by lia
       simp [this]
-    have hmid : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).land
+    have hmid : (((stripeStateK c lo start len Wm1 slotW Ls Cs np m).land
         (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (m.mul 65536)).testBit j
         = (decide (m * 65536 ≤ j) &&
-            ((stripeStateK c lo start len Wm1 slotW Ls Cs m).testBit (j - m * 65536) &&
+            ((stripeStateK c lo start len Wm1 slotW Ls Cs np m).testBit (j - m * 65536) &&
               decide (j - m * 65536 < 65536))) := by
       have hm : m.mul 65536 = m * 65536 := rfl
       rw [testBit_shiftUp, hm, testBit_maskLow]
@@ -472,14 +475,14 @@ public theorem testBit_stripeUpToK_low {c lo start len W Wm1 slotW Ls Cs j : Nat
 
 /-- At or above the window's width, a bit of the assembled number is one of the tally bits, and any
 slice can have contributed it. -/
-public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : W ≤ j)
-    (hW : 64 * 65536 ≤ W) (n : Nat) (hn : n ≤ 65) :
-    (stripeUpToK c lo start len W Wm1 slotW Ls Cs n).testBit j = true ↔
+public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs np j : Nat} (hj : W ≤ j)
+    (hW : np * 65536 ≤ W) (n : Nat) (hn : n ≤ np + 1) :
+    (stripeUpToK c lo start len W Wm1 slotW Ls Cs np n).testBit j = true ↔
       ∃ k, k < n ∧
-        (stripeStateK c lo start len Wm1 slotW Ls Cs k).testBit (65536 + (j - W)) = true := by
+        (stripeStateK c lo start len Wm1 slotW Ls Cs np k).testBit (65536 + (j - W)) = true := by
   induction n with
   | zero =>
-    have h : stripeUpToK c lo start len W Wm1 slotW Ls Cs 0 = 0 := rfl
+    have h : stripeUpToK c lo start len W Wm1 slotW Ls Cs np 0 = 0 := rfl
     rw [h]
     constructor
     · intro hb
@@ -490,31 +493,34 @@ public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Na
     have hlor : ∀ u v : Nat, u.lor v = u ||| v := fun _ _ => rfl
     rw [stripeUpToK_succ, hlor, hlor, Nat.testBit_or, Nat.testBit_or, Bool.or_eq_true,
       Bool.or_eq_true, ih (by lia)]
-    have hmid : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).land
+    have hmid : (((stripeStateK c lo start len Wm1 slotW Ls Cs np m).land
         (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (m.mul 65536)).testBit j = false := by
       have hm : m.mul 65536 = m * 65536 := rfl
       rw [testBit_shiftUp, hm, testBit_maskLow]
-      rcases Nat.lt_or_ge m 64 with hlt | hge
+      rcases Nat.lt_or_ge m np with hlt | hge
       · have : ¬ (j - m * 65536 < 65536) := by
-          have h1 : (m + 1) * 65536 ≤ 64 * 65536 := Nat.mul_le_mul_right 65536 (by lia)
+          have h1 : (m + 1) * 65536 ≤ np * 65536 := Nat.mul_le_mul_right 65536 (by lia)
           lia
         simp [this]
-      · have hm64 : m = 64 := by lia
+      · have hm64 : m = np := by lia
         rw [hm64]
-        rcases Nat.lt_or_ge (j - 64 * 65536) 65536 with hb | hb
-        · have hst : (stripeStateK c lo start len Wm1 slotW Ls Cs 64).testBit
-              (j - 64 * 65536) = false := by
-            have hdef : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+        rcases Nat.lt_or_ge (j - np * 65536) 65536 with hb | hb
+        · have hst : (stripeStateK c lo start len Wm1 slotW Ls Cs np np).testBit
+              (j - np * 65536) = false := by
+            have hdef : stripeStateK c lo start len Wm1 slotW Ls Cs np np
                 = stripeOutSlotK c lo start Wm1 len
-                  ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
-                  ((Cs.shiftRight ((64 : Nat).mul 16)).land 65535) 0 := rfl
+                  ((Ls.shiftRight (slotW.mul np)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+                  ((Cs.shiftRight (np.mul 16)).land 65535) 0 := by
+              have hbeq : Nat.beq np np = true := Nat.beq_eq.mpr rfl
+              unfold stripeStateK
+              rw [hbeq]
             rw [hdef]
             exact stripeOutSlotK_low hb
           simp [hst]
         · simp [Nat.not_lt_of_ge hb]
-    have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs m).shiftRight 65536).shiftLeft
+    have hhigh : (((stripeStateK c lo start len Wm1 slotW Ls Cs np m).shiftRight 65536).shiftLeft
         W).testBit j
-        = (stripeStateK c lo start len Wm1 slotW Ls Cs m).testBit (65536 + (j - W)) := by
+        = (stripeStateK c lo start len Wm1 slotW Ls Cs np m).testBit (65536 + (j - W)) := by
       have hsr : ∀ u v b : Nat, (u.shiftRight v).testBit b = u.testBit (v + b) := by
         intro u v b
         have h : u.shiftRight v = u >>> v := rfl
@@ -572,30 +578,30 @@ public theorem beq_of_ne {x y : Nat} (h : x ≠ y) : Nat.beq x y = false := by
 
 /-- An entry that writes into its slice writes its own bit into the tally as well, which is how a
 finished batch says which strikes it accounted for. -/
-public theorem testBit_stripeBatchK_tally {c lo start len W Wm1 slotW Ls Cs k m : Nat}
-    (hW : 64 * 65536 ≤ W) (hk : k < 64) (hm : m < cntOf Cs k)
+public theorem testBit_stripeBatchK_tally {c lo start len W Wm1 slotW Ls Cs np k m : Nat}
+    (hW : np * 65536 ≤ W) (hk : k < np) (hm : m < cntOf Cs k)
     (hc : testBitK c ((entryOf Ls slotW k m).shiftRight 2) = true)
     (hk16 : (entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16 = k) :
-    (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit
+    (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit
       (W + ((entryOf Ls slotW k m).shiftRight 2
         + (entryOf Ls slotW k m).land 3 * len)) = true := by
-  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs
-      = stripeUpToK c lo start len W Wm1 slotW Ls Cs 65 := rfl
+  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs np
+      = stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1) := rfl
   rw [hbatch]
   refine (testBit_stripeUpToK_high (by lia :
     W ≤ W + ((entryOf Ls slotW k m).shiftRight 2
-      + (entryOf Ls slotW k m).land 3 * len)) hW 65 (by lia)).mpr ⟨k, by lia, ?_⟩
+      + (entryOf Ls slotW k m).land 3 * len)) hW (np + 1) (by lia)).mpr ⟨k, by lia, ?_⟩
   have hJ : 65536 + (W + ((entryOf Ls slotW k m).shiftRight 2
       + (entryOf Ls slotW k m).land 3 * len) - W)
       = 65536 + ((entryOf Ls slotW k m).shiftRight 2
         + (entryOf Ls slotW k m).land 3 * len) := by lia
   rw [hJ]
-  have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+  have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np k
       = stripeSlotK c lo start k len
         ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
         (cntOf Cs k) 0 := by
     unfold stripeStateK cntOf
-    rw [beq_of_ne (by lia : k ≠ 64)]
+    rw [beq_of_ne (by lia : k ≠ np)]
   rw [hstate]
   refine (testBit_stripeSlotK (cntOf Cs k)).mpr (Or.inr ⟨m, hm, ?_⟩)
   unfold entryHits
@@ -604,24 +610,24 @@ public theorem testBit_stripeBatchK_tally {c lo start len W Wm1 slotW Ls Cs k m 
 
 /-- A position of the window is set in the assembled number exactly when some entry, recorded in
 the slice that position falls in, names a prime of the batch whose seed is that position. -/
-public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W) :
-    (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true ↔
-      ∃ k m, k < 64 ∧ m < cntOf Cs k ∧
+public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs np j : Nat} (hj : j < W) :
+    (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j = true ↔
+      ∃ k m, k < np ∧ m < cntOf Cs k ∧
         testBitK c ((entryOf Ls slotW k m).shiftRight 2) = true ∧
         (entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16 = k ∧
         entrySeedK lo start (entryOf Ls slotW k m) = j := by
-  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs
-      = stripeUpToK c lo start len W Wm1 slotW Ls Cs 65 := rfl
-  rw [hbatch, testBit_stripeUpToK_low hj 65]
+  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs np
+      = stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1) := rfl
+  rw [hbatch, testBit_stripeUpToK_low hj (np + 1)]
   constructor
   · rintro ⟨k, hk65, hkle, hklt, hst⟩
-    rcases Nat.lt_or_ge k 64 with hk | hk
-    · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+    rcases Nat.lt_or_ge k np with hk | hk
+    · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np k
           = stripeSlotK c lo start k len
             ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
             (cntOf Cs k) 0 := by
         unfold stripeStateK cntOf
-        rw [beq_of_ne (by lia : k ≠ 64)]
+        rw [beq_of_ne (by lia : k ≠ np)]
       rw [hstate] at hst
       rcases (testBit_stripeSlotK (cntOf Cs k)).mp hst with hz | ⟨m, hm, he⟩
       · simp at hz
@@ -645,12 +651,15 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
             unfold entryTallyK
             lia
           exact absurd hte (by lia)
-    · have hk64 : k = 64 := by lia
+    · have hk64 : k = np := by lia
       rw [hk64] at hst
-      have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+      have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np np
           = stripeOutSlotK c lo start Wm1 len
-            ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
-            (cntOf Cs 64) 0 := rfl
+            ((Ls.shiftRight (slotW.mul np)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+            (cntOf Cs np) 0 := by
+        have hbeq : Nat.beq np np = true := Nat.beq_eq.mpr rfl
+        unfold stripeStateK cntOf
+        rw [hbeq]
       rw [hstate] at hst
       rw [stripeOutSlotK_low (by lia)] at hst
       simp at hst
@@ -660,12 +669,12 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
     have hmod : entrySeedK lo start (entryOf Ls slotW k m) % 65536 < 65536 :=
       Nat.mod_lt _ (by lia)
     refine ⟨k, by lia, by lia, by lia, ?_⟩
-    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np k
         = stripeSlotK c lo start k len
           ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
           (cntOf Cs k) 0 := by
       unfold stripeStateK cntOf
-      rw [beq_of_ne (by lia : k ≠ 64)]
+      rw [beq_of_ne (by lia : k ≠ np)]
     rw [hstate]
     refine (testBit_stripeSlotK (cntOf Cs k)).mpr (Or.inr ⟨m, hm, ?_⟩)
     unfold entryHits
@@ -738,17 +747,17 @@ public theorem land1_pair {i w : Nat} (hw : w < 4) : (4 * i + w).land 3 = w := b
 
 /-- Every seed of every prime the batch holds lands in the assembled number, given that the tally
 accounts for it. -/
-public theorem stripeBatchK_complete {c lo start len W Wm1 slotW Ls Cs i w : Nat}
-    (hc2 : c < 2 ^ len) (hi : i < len) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
-    (htally : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true)
+public theorem stripeBatchK_complete {c lo start len W Wm1 slotW Ls Cs np i w : Nat}
+    (hc2 : c < 2 ^ len) (hi : i < len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (htally : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true)
     (hX : entrySeedK lo start (4 * i + w) ≤ Wm1) :
-    (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit
+    (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit
       (entrySeedK lo start (4 * i + w)) = true := by
-  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs
-      = stripeUpToK c lo start len W Wm1 slotW Ls Cs 65 := rfl
+  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs np
+      = stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1) := rfl
   rw [hbatch] at htally
   obtain ⟨k, hk65, hst⟩ :=
-    (testBit_stripeUpToK_high (by lia : W ≤ W + (i + w * len)) hW 65 (by lia)).mp htally
+    (testBit_stripeUpToK_high (by lia : W ≤ W + (i + w * len)) hW (np + 1) (by lia)).mp htally
   have hJ : 65536 + (W + (i + w * len) - W) = 65536 + (i + w * len) := by lia
   rw [hJ] at hst
   -- an entry whose tally bit this is names position `i` and progression `w`
@@ -762,13 +771,13 @@ public theorem stripeBatchK_complete {c lo start len W Wm1 slotW Ls Cs i w : Nat
     obtain ⟨h1, h2⟩ := entryTallyK_inj hlt hi hte
     have := entry_split (e := e)
     lia
-  rcases Nat.lt_or_ge k 64 with hk | hk64
-  · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+  rcases Nat.lt_or_ge k np with hk | hk64
+  · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np k
         = stripeSlotK c lo start k len
           ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
           (cntOf Cs k) 0 := by
       unfold stripeStateK cntOf
-      rw [beq_of_ne (by lia : k ≠ 64)]
+      rw [beq_of_ne (by lia : k ≠ np)]
     rw [hstate] at hst
     rcases (testBit_stripeSlotK (cntOf Cs k)).mp hst with hz | ⟨m, hm, he⟩
     · simp at hz
@@ -791,23 +800,26 @@ public theorem stripeBatchK_complete {c lo start len W Wm1 slotW Ls Cs i w : Nat
         have heq : entryOf Ls slotW k m = 4 * i + w := hentry _ hbit hte
         exact (testBit_stripeBatchK_eq (by lia : entrySeedK lo start (4 * i + w) < W)).mpr
           ⟨k, m, hk, hm, hbit, hk16, by rw [heq]⟩
-  · have hk64' : k = 64 := by lia
+  · have hk64' : k = np := by lia
     rw [hk64'] at hst
-    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs np np
         = stripeOutSlotK c lo start Wm1 len
-          ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
-          (cntOf Cs 64) 0 := rfl
+          ((Ls.shiftRight (slotW.mul np)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+          (cntOf Cs np) 0 := by
+      have hbeq : Nat.beq np np = true := Nat.beq_eq.mpr rfl
+      unfold stripeStateK cntOf
+      rw [hbeq]
     rw [hstate] at hst
-    rcases (testBit_stripeOutSlotK (cntOf Cs 64)).mp hst with hz | ⟨m, hm, he⟩
+    rcases (testBit_stripeOutSlotK (cntOf Cs np)).mp hst with hz | ⟨m, hm, he⟩
     · simp at hz
     · unfold outHits at he
       have h1 := (Bool.and_eq_true ..).mp he
       have h2 := (Bool.and_eq_true ..).mp h1.1
-      have hte : entryTallyK len (entryOf Ls slotW 64 m)
+      have hte : entryTallyK len (entryOf Ls slotW np m)
           = Nat.add 65536 (Nat.add i (Nat.mul w len)) := (Nat.eq_of_beq_eq_true h1.2).symm
-      have hbit : testBitK c ((entryOf Ls slotW 64 m).shiftRight 2) = true := h2.1
-      have heq : entryOf Ls slotW 64 m = 4 * i + w := hentry _ hbit hte
-      have hblt : Nat.blt Wm1 (entrySeedK lo start (entryOf Ls slotW 64 m)) = true := h2.2
+      have hbit : testBitK c ((entryOf Ls slotW np m).shiftRight 2) = true := h2.1
+      have heq : entryOf Ls slotW np m = 4 * i + w := hentry _ hbit hte
+      have hblt : Nat.blt Wm1 (entrySeedK lo start (entryOf Ls slotW np m)) = true := h2.2
       rw [heq] at hblt
       have hble : Nat.ble (Wm1 + 1) (entrySeedK lo start (4 * i + w)) = true := hblt
       have := Nat.le_of_ble_eq_true hble
@@ -1628,16 +1640,16 @@ public theorem testBit_segAccLoopSK_band {c lo Wm1 n start len j : Nat} (hj : j 
 
 /-- The tally a completed batch carries is the batch's own slice, once per progression, so one
 equation above the window settles every position at once. -/
-public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
-    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W = c ||| c <<< len) :
+public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W = c ||| c <<< len) :
     ∀ i, i < len → ∀ w, w < 2 → testBitK c i = true →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true := by
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true := by
   intro i hi w hw hc
   have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
-  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W).testBit (i + w * len)
-      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) := by
-    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
-        = stripeBatchK c lo start len W Wm1 slotW Ls Cs >>> W := rfl
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs np >>> W := rfl
     rw [hx, Nat.testBit_shiftRight]
   rw [← hsr, h, Nat.testBit_or]
   rcases (by lia : w = 0 ∨ w = 1) with hw0 | hw1
@@ -1648,16 +1660,16 @@ public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
 
 /-- The same equation says the tally is silent about the two strikes a further double along, which
 is what tells a reader of a finished batch that no record claimed one. -/
-public theorem tally_clear_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
+public theorem tally_clear_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
     (hc2 : c < 2 ^ len)
-    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W = c ||| c <<< len) :
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W = c ||| c <<< len) :
     ∀ i, ∀ w, 2 ≤ w → w < 4 →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = false := by
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = false := by
   intro i w hw2 hw4
-  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W).testBit (i + w * len)
-      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) := by
-    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
-        = stripeBatchK c lo start len W Wm1 slotW Ls Cs >>> W := rfl
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs np >>> W := rfl
     rw [hx, Nat.testBit_shiftRight]
   rw [← hsr, h, Nat.testBit_or, Nat.testBit_shiftLeft]
   have hmul : 2 * len ≤ w * len := Nat.mul_le_mul_right len hw2
@@ -1670,15 +1682,15 @@ public theorem tally_clear_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat
 /-- Over a batch of primes each wider than the window, and given tallies that account for both
 progressions of every position the batch's slice names, the fold over sorted slices removes from
 the window exactly what the batch's run removes. -/
-public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Nat}
-    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
+public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs np seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
     (hwide : ∀ i, i < len → Wm1 < valueK (start + i) * 2)
     (htal : ∀ i, i < len → ∀ w, w < 2 → testBitK c i = true →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true)
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true)
     (hnot : ∀ i, ∀ w, 2 ≤ w → w < 4 →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = false) :
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = false) :
     segLoopSCK c lo Wm1 n seg start len
-      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs) := by
+      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) := by
   have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
     intro x
     refine Nat.eq_of_testBit_eq fun i => ?_
@@ -1700,7 +1712,7 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Na
         (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
       simp at hs
     have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
-        (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true := by
+        (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j = true := by
       constructor
       · intro h
         obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_wide hj hwide).mp h
@@ -1729,7 +1741,7 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Na
           exact hsd
     cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
     | false =>
-      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j with
+      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j with
       | false => rfl
       | true =>
         rw [h1, h2] at hiff
@@ -1739,17 +1751,17 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Na
 
 /-- Where a divisor has four strikes, the tally a finished batch carries is its own slice once per
 strike, so again one equation above the window settles every position. -/
-public theorem tally4_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
-    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+public theorem tally4_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
       = ((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) :
     ∀ i, i < len → ∀ w, w < 4 → testBitK c i = true →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true := by
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true := by
   intro i hi w hw hc
   have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
-  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W).testBit (i + w * len)
-      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) := by
-    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
-        = stripeBatchK c lo start len W Wm1 slotW Ls Cs >>> W := rfl
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs np >>> W := rfl
     rw [hx, Nat.testBit_shiftRight]
   rw [← hsr, h, Nat.testBit_or, Nat.testBit_or, Nat.testBit_or]
   rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3) with hw0 | hw1 | hw2 | hw3
@@ -1764,14 +1776,14 @@ public theorem tally4_of_shiftRight {c lo start len W Wm1 slotW Ls Cs : Nat}
 
 /-- The same for a batch of divisors whose doubles fit the window and whose quadruples pass its
 end, where each has four strikes rather than two and the tally accounts for all four. -/
-public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs seg : Nat}
-    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
+public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs np seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
     (hn : 1 ≤ n)
     (hband : ∀ i, i < len → valueK (start + i) * 2 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 4)
     (htal : ∀ i, i < len → ∀ w, w < 4 → testBitK c i = true →
-      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true) :
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true) :
     segLoopSCK c lo Wm1 n seg start len
-      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs) := by
+      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) := by
   have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
     intro x
     refine Nat.eq_of_testBit_eq fun i => ?_
@@ -1793,7 +1805,7 @@ public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs seg
         (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
       simp at hs
     have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
-        (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true := by
+        (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j = true := by
       constructor
       · intro h
         obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_band hj hn hband).mp h
@@ -1815,7 +1827,7 @@ public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs seg
           exact hsd
     cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
     | false =>
-      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j with
+      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j with
       | false => rfl
       | true =>
         rw [h1, h2] at hiff
@@ -1879,22 +1891,22 @@ public theorem sub_lt_two_pow {seg m next Wm1 : Nat} (hseg : seg < 2 ^ (Wm1 + 1)
 /-- One batch of the sieve run, carried out by sorting its primes into slices of the window. The
 window's own width appears twice over: as the place the tally starts, and as the bound the window
 sits under, which is why `Wm1 + 1 = W` is one of the tests. -/
-public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat}
+public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs np seg lit next : Nat}
     (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
-    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (64 * 65536) W = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (Nat.mul np 65536) W = true)
     (hwide : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true)
-    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs) lit = true)
+    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) lit = true)
     (htally : Nat.beq (lit.shiftRight W) (c ||| c <<< len) = true)
     (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
     (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
   have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
-  have hW' : 64 * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hW' : np * 65536 ≤ W := Nat.le_of_ble_eq_true hW
   have hWm1' : Wm1 < W := by lia
   have hseg : seg < 2 ^ (Wm1 + 1) := by
     rw [hWe]
     exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
   have hb := Nat.eq_of_beq_eq_true hbatch
-  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W = c ||| c <<< len := by
+  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W = c ||| c <<< len := by
     rw [hb]
     exact Nat.eq_of_beq_eq_true htally
   have hc2 := lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hc0)
@@ -1908,25 +1920,25 @@ public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat
 
 /-- One batch of the band whose divisors strike three or four times, carried out by sorting those
 strikes into slices, with everything the kernel owes as a Boolean test or an equation. -/
-public theorem stripeStepBand {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat}
+public theorem stripeStepBand {c lo Wm1 n W start len slotW Ls Cs np seg lit next : Nat}
     (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
-    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (64 * 65536) W = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (Nat.mul np 65536) W = true)
     (hn : Nat.ble 1 n = true)
     (hlast : Nat.ble (Nat.mul (valueK (start + len)) 2) Wm1 = true)
     (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 4) = true)
-    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs) lit = true)
+    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) lit = true)
     (htally : Nat.beq (lit.shiftRight W)
       (((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) = true)
     (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
     (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
   have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
-  have hW' : 64 * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hW' : np * 65536 ≤ W := Nat.le_of_ble_eq_true hW
   have hWm1' : Wm1 < W := by lia
   have hseg : seg < 2 ^ (Wm1 + 1) := by
     rw [hWe]
     exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
   have hb := Nat.eq_of_beq_eq_true hbatch
-  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).shiftRight W
+  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
       = ((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len) := by
     rw [hb]
     exact Nat.eq_of_beq_eq_true htally
@@ -2474,7 +2486,8 @@ progression and the next steps it on by a further double. `nrec` says how many r
 gets, two where its double already passes the end of the segment and four where its double fits and
 its quadruple does not. -/
 meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
-  let mut slots : Array (Array Nat) := Array.replicate 65 #[]
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
   let mut seen := 0
   let mut asm := 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
@@ -2485,17 +2498,17 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
         let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
           else firstLoc (index (p * 7)) lo (p * 2)
         let X := base + (w >>> 1) * (p * 2)
-        let k := if X ≤ Wm1 then X >>> 16 else 64
+        let k := if X ≤ Wm1 then X >>> 16 else np
         slots := slots.set! k ((slots[k]!).push (4 * i + w))
         seen := seen ||| (1 <<< (i + w * len))
         if X ≤ Wm1 then
           asm := asm ||| (1 <<< X)
   let mut slotW := 16
-  for k in [0:65] do
+  for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
   let mut ls := 0
   let mut cs := 0
-  for k in [0:65] do
+  for k in [0:np + 1] do
     let mut packed := 0
     for j in [0:(slots[k]!).size] do
       packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
@@ -2772,7 +2785,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
       let batchE := mkAppN (mkConst ``stripeBatchK)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
-          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       if mode == 27 then
         -- The two equations a run owes besides the batch itself: the record of which positions the
@@ -2808,7 +2821,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
       let batchE := mkAppN (mkConst ``stripeBatchK)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
-          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
@@ -2852,7 +2865,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
       let batchE := mkAppN (mkConst ``stripeBatchK)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
-          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
@@ -3033,10 +3046,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next))
           (mkAppN (mkConst ``stripeStep)
             #[cE, loE, wE, nE, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, bitsE, mkRawNatLit expect,
-              mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
+              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue])
+              Lean.reflBoolTrue, Lean.reflBoolTrue])
       else if stripes && 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
         -- Every divisor of this batch has its double inside the segment and its quadruple past the
         -- end, so each strikes at most four times and gets four records.
@@ -3044,10 +3057,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next))
           (mkAppN (mkConst ``stripeStepBand)
             #[cE, loE, wE, nE, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, bitsE, mkRawNatLit expect,
-              mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
+              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
               Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
+              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
       else
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
     else
