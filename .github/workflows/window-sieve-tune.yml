@@ -23,17 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Sorted against marked at four widths, ten billion, divisors fixed
+      - name: Does the wider segment now win, sorted, at a hundred trillion
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 2 T0_262_S T0_262_M
-          PrimeCertTest/SegTune/run.sh 2 T0_524_S T0_524_M
-          PrimeCertTest/SegTune/run.sh 2 T0_1M_S T0_1M_M
-          PrimeCertTest/SegTune/run.sh 2 T0_2M_S T0_2M_M
-      - name: The same at a billion, where the summing session's record runs
-        run: |
-          PrimeCertTest/SegTune/run.sh 2 N9_262_S N9_262_M
-          PrimeCertTest/SegTune/run.sh 2 N9_1M_S N9_1M_M
+          PrimeCertTest/SegTune/run.sh 2 S9_Stripes S9_Wide8
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
