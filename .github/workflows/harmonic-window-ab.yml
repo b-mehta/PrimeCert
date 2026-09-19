@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "raw12"
+          - n: "four12"
             rounds: 3
-            cases: "Ht12 TaylorHt12 TaylorRHt12"
+            cases: "Ht12 Taylor2Ht12 Taylor2RHt12 TaylorRHt12"
     steps:
       - uses: actions/checkout@v7
 

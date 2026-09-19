@@ -1042,7 +1042,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
   -- folds are the count, the total of the numbers and the total of their squares, and the two
   -- divisions that rescale the resulting interval to the denominator `S` happen here, once for the
   -- whole window, rather than once per prime inside the kernel
-  if form == 8 || form == 9 || form == 10 || form == 11 || form == 12 then
+  if form == 8 || form == 9 || form == 10 || form == 11 || form == 12 || form == 13 then
     let aE := mkRawNatLit a
     let topE := mkRawNatLit top
     let sieveArg := mkAppN (mkConst ``Sieve.IsSieve.monoB)
@@ -1100,7 +1100,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
           #[mkRawNatLit D, mkRawNatLit E, mkConst dName, mkConst eName])
       else do
         -- form 12 folds the twins whose numerals are raw literals, then converts back
-        let raw := form == 12
+        let raw := form == 12 || form == 13
         let (V, vName) ← if raw then
             atLo "val" ``valAtWR ``valWR_windowR (fun wb : WindowBatch ↦ wb.val)
           else atLo "val" ``valAtW ``valW_windowR (fun wb : WindowBatch ↦ wb.val)
@@ -1109,7 +1109,7 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
               #[gE, loE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit V,
                 mkConst vName]
           else mkConst vName
-        if form == 9 then
+        if form == 9 || form == 13 then
           pure (V, top * V, #[vProof])
         else do
           let (Q, qName) ← if raw then
@@ -1137,26 +1137,29 @@ so the lower end of the expansion is negative"
     if U < A then
       throwError "run_harmonic_segment: the rescaled interval is empty"
     let Cw := U - A
-    let thm := match form with
-      | 9 => ``primeRecipRange_of_segRun_taylor2
-      | 10 => ``primeRecipRange_of_segRun_taylorOff
-      | _ => ``primeRecipRange_of_segRun_taylor
-    let implicits := match form with
-      | 9 => #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+    let two := form == 9 || form == 13
+    let thm := if two then ``primeRecipRange_of_segRun_taylor2
+      else if form == 10 then ``primeRecipRange_of_segRun_taylorOff
+      else ``primeRecipRange_of_segRun_taylor
+    let implicits := if two then
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
           mkRawNatLit C, mkRawNatLit V, mkRawNatLit Q, mkRawNatLit A, mkRawNatLit Cw,
           loE, mkRawNatLit next, topE]
-      | 10 => #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+      else if form == 10 then
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
           mkRawNatLit C, extra[0]!, extra[1]!, mkRawNatLit V, mkRawNatLit Q,
           mkRawNatLit A, mkRawNatLit Cw, loE, mkRawNatLit next]
-      | _ => #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
+      else
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE,
           mkRawNatLit C, mkRawNatLit V, extra[0]!, mkRawNatLit A, mkRawNatLit Cw,
           loE, mkRawNatLit next]
-    let folds := match form with
-      | 9 => #[Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI, mkConst cName, extra[0]!,
+    let folds := if two then
+        #[Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI, mkConst cName, extra[0]!,
           Lean.reflBoolTrue]
-      | 10 => #[mkConst segEqI, mkConst cName, extra[2]!, extra[3]!,
+      else if form == 10 then
+        #[mkConst segEqI, mkConst cName, extra[2]!, extra[3]!,
           Lean.reflBoolTrue, Lean.reflBoolTrue]
-      | _ => #[mkConst segEqI, mkConst cName, extra[1]!, extra[2]!]
+      else #[mkConst segEqI, mkConst cName, extra[1]!, extra[2]!]
     addHarmonicThm iccName
       (mkAppN (mkConst ``PrimeRecipRange)
         #[aE, mkRawNatLit next, mkRawNatLit A, mkRawNatLit Cw, SE])
