@@ -2699,9 +2699,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
   if mode > 31 then throwError "run_segment_variant: mode {mode} is not 0 to 31"
-  if mode == 28 && len > 32768 then
-    throwError "run_segment_variant: mode 28 packs an entry in 16 bits, so its batches hold at \
-      most 32768 positions, not {len}"
+  if mode == 28 && len > 16384 then
+    throwError "run_segment_variant: mode 28 packs a record in 16 bits, of which two name which \
+      strike, so its batches hold at most 16384 positions, not {len}"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -2998,7 +2998,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   while start ≤ fuel do
     let owed := fuel + 1 - start
     let stepN := Nat.min
-      (if stripes then (if start < 700000 then batchLen start else step0)
+      (if stripes then (if start < 300000 then batchLen start else step0)
         else if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
