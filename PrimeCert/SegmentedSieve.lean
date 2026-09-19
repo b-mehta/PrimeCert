@@ -1424,6 +1424,67 @@ public theorem testBit_segAccLoopSK_wide {c lo Wm1 n start len j : Nat} (hj : j 
             exact (Bool.or_eq_true ..).mpr (Or.inl ((Bool.or_eq_true ..).mpr
               (Or.inr (hB.mpr hs))))
 
+/-- Over a batch of primes each wider than the window, and given tallies that account for both
+progressions of every position the batch's slice names, the fold over sorted slices removes from
+the window exactly what the batch's run removes. -/
+public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : 64 * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (hwide : ∀ i, i < len → Wm1 < valueK (start + i) * 2)
+    (htal : ∀ i, i < len → ∀ w, w < 2 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit (W + (i + w * len)) = true) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true := by
+      constructor
+      · intro h
+        obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_wide hj hwide).mp h
+        have hX : entrySeedK lo start (2 * i + w) ≤ Wm1 := by rw [hsd]; exact hj
+        have := stripeBatchK_complete (c := c) (lo := lo) (start := start) (len := len) (W := W)
+          (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hc2 hi hw hW hWm1
+          (htal i hi w hw hc) hX
+        rwa [hsd] at this
+      · intro h
+        obtain ⟨k, m, hk, hm, hcbit, hk16, hsd⟩ :=
+          (testBit_stripeBatchK_eq (by lia : j < W)).mp h
+        refine (testBit_segAccLoopSK_wide hj hwide).mpr
+          ⟨(entryOf Ls slotW k m).shiftRight 1, ?_, (entryOf Ls slotW k m).land 1,
+            land_one_lt, hcbit, ?_⟩
+        · by_contra hge
+          rw [testBitK_of_lt hc2 (by lia)] at hcbit
+          simp at hcbit
+        · rw [entry_split]
+          exact hsd
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
 conditions as Boolean tests the kernel settles. -/
 public theorem segEq_of_clamped {s lo W Wm1 n fuel b : Nat} (hW : (Wm1 + 1).beq W)
