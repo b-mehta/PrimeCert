@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "merged09"
+          - n: "fields"
             rounds: 3
-            cases: "Ht09_F7W2 Ht09_M28"
+            cases: "FieldProbe"
     steps:
       - uses: actions/checkout@v7
 
