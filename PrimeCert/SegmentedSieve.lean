@@ -1066,6 +1066,33 @@ public theorem buildMaskCK_one {p M A B : Nat} (h2 : p * 2 ≤ M) :
   have hp : (2 : Nat) ^ (0 + 1) = 2 := rfl
   rw [buildMaskCK_succ, hp, if_pos h2, buildMaskCK_zero]
 
+/-- A divisor whose quadruple fits the window and whose octuple does not gets exactly two rounds,
+whatever `n` says beyond the second. -/
+public theorem buildMaskCK_octave {p M A B n : Nat} (h8 : M < p * 8) (hn : 2 ≤ n) :
+    buildMaskCK p M A B n = buildMaskCK p M A B 2 := by
+  induction n with
+  | zero => exact absurd hn (by lia)
+  | succ n ih =>
+    rcases Nat.eq_or_lt_of_le hn with h | h
+    · rw [← h]
+    · have hn' : 2 ≤ n := by lia
+      rw [buildMaskCK_succ, ih hn']
+      have h2 : (8 : Nat) ≤ 2 ^ (n + 1) := by
+        have hx : (2 : Nat) ^ 3 ≤ 2 ^ (n + 1) := Nat.pow_le_pow_right (by lia) (by lia)
+        have hy : (2 : Nat) ^ 3 = 8 := rfl
+        rw [hy] at hx
+        exact hx
+      have hle : p * 8 ≤ p * 2 ^ (n + 1) := Nat.mul_le_mul_left p h2
+      rw [if_neg (by lia)]
+
+/-- Those two rounds are the one-round mask joined with the same mask a quadruple along. -/
+public theorem buildMaskCK_two {p M A B : Nat} (h2 : p * 2 ≤ M) (h4 : p * 4 ≤ M) :
+    buildMaskCK p M A B 2
+      = ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2))
+        ||| ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2)) <<< (p * 4) := by
+  have hp : (2 : Nat) ^ (1 + 1) = 4 := rfl
+  rw [buildMaskCK_succ, hp, if_pos h4, buildMaskCK_one h2]
+
 /-- Below `M`, the clamped mask is the mask. -/
 public theorem buildMaskCK_testBit {p M A B n : Nat} :
     ∀ i ≤ M, (buildMaskCK p M A B n).testBit i = (buildMaskK p M A B n).testBit i := by
@@ -1526,6 +1553,52 @@ public theorem entrySeedK_seven' {lo start i : Nat} :
   rw [h1, mulK_one_left]
   rfl
 
+/-- The third strike of the first progression, two further doubles along. -/
+public theorem entrySeedK_five4 {lo start i : Nat} :
+    entrySeedK lo start (8 * i + 4)
+      = firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)
+        + (valueK (start + i)).mul 4 := by
+  rw [entrySeedK_pair (by lia : (4 : Nat) < 8)]
+  have h1 : Nat.shiftRight 4 1 = 2 := rfl
+  have h2 : Nat.mul 2 ((valueK (start + i)).mul 2) = (valueK (start + i)).mul 4 := by lia
+  rw [h1, h2]
+  rfl
+
+/-- The third strike of the second progression, two further doubles along. -/
+public theorem entrySeedK_seven4 {lo start i : Nat} :
+    entrySeedK lo start (8 * i + 5)
+      = firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2)
+        + (valueK (start + i)).mul 4 := by
+  rw [entrySeedK_pair (by lia : (5 : Nat) < 8)]
+  have h1 : Nat.shiftRight 5 1 = 2 := rfl
+  have h2 : Nat.mul 2 ((valueK (start + i)).mul 2) = (valueK (start + i)).mul 4 := by lia
+  rw [h1, h2]
+  rfl
+
+/-- The fourth strike of the first progression, three further doubles along. -/
+public theorem entrySeedK_five6 {lo start i : Nat} :
+    entrySeedK lo start (8 * i + 6)
+      = firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)
+        + ((valueK (start + i)).mul 2 + (valueK (start + i)).mul 4) := by
+  rw [entrySeedK_pair (by lia : (6 : Nat) < 8)]
+  have h1 : Nat.shiftRight 6 1 = 3 := rfl
+  have h2 : Nat.mul 3 ((valueK (start + i)).mul 2)
+      = (valueK (start + i)).mul 2 + (valueK (start + i)).mul 4 := by lia
+  rw [h1, h2]
+  rfl
+
+/-- The fourth strike of the second progression, three further doubles along. -/
+public theorem entrySeedK_seven6 {lo start i : Nat} :
+    entrySeedK lo start (8 * i + 7)
+      = firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2)
+        + ((valueK (start + i)).mul 2 + (valueK (start + i)).mul 4) := by
+  rw [entrySeedK_pair (by lia : (7 : Nat) < 8)]
+  have h1 : Nat.shiftRight 7 1 = 3 := rfl
+  have h2 : Nat.mul 3 ((valueK (start + i)).mul 2)
+      = (valueK (start + i)).mul 2 + (valueK (start + i)).mul 4 := by lia
+  rw [h1, h2]
+  rfl
+
 /-- A position the slice passes over leaves the joined mask alone. -/
 public theorem segAccLoopSK_skip {c lo Wm1 n start len : Nat} (h : testBitK c len = false) :
     segAccLoopSK c lo Wm1 n 0 start (len + 1) = segAccLoopSK c lo Wm1 n 0 start len := by
@@ -1721,6 +1794,150 @@ public theorem testBit_segAccLoopSK_band {c lo Wm1 n start len j : Nat} (hj : j 
           · rw [hw3] at hs
             exact (Bool.or_eq_true ..).mpr (Or.inr ((Bool.or_eq_true ..).mpr (Or.inr (hB2.mpr hs))))
 
+/-- A single set bit is set exactly at its own place. -/
+theorem oneShift_testBit {A x : Nat} : ((1 : Nat) <<< A).testBit x = true ↔ A = x := by
+  have hs : (1 : Nat) <<< A = Nat.shiftLeft 1 A := rfl
+  rw [hs, testBit_oneShift]
+  exact ⟨fun h => (Nat.eq_of_beq_eq_true h).symm, fun h => by rw [h]; exact Nat.beq_eq.mpr rfl⟩
+
+/-- Two clamped seeds hold exactly their own two places, below the window's top. -/
+theorem testBit_seedPair {A B M j : Nat} (hj : j ≤ M) :
+    (seedK A M ||| seedK B M).testBit j = true ↔ (A = j ∨ B = j) := by
+  rw [Nat.testBit_or, seedK_testBit hj, seedK_testBit hj, Bool.or_eq_true]
+  exact or_congr oneShift_testBit oneShift_testBit
+
+/-- A seed pair joined with itself a stride along holds four places. -/
+theorem testBit_seedQuad {A B M j d : Nat} (hj : j ≤ M) :
+    ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d).testBit j = true ↔
+      (A = j ∨ B = j ∨ A + d = j ∨ B + d = j) := by
+  rw [Nat.testBit_or, Nat.testBit_shiftLeft, Bool.or_eq_true, Bool.and_eq_true,
+    testBit_seedPair hj]
+  constructor
+  · rintro (h | ⟨hd, h2⟩)
+    · exact h.imp id Or.inl
+    · have hge : d ≤ j := of_decide_eq_true hd
+      rcases (testBit_seedPair (M := M) (A := A) (B := B) (j := j - d) (by lia)).mp h2 with h | h
+      · exact Or.inr (Or.inr (Or.inl (by lia)))
+      · exact Or.inr (Or.inr (Or.inr (by lia)))
+  · rintro (h | h | h | h)
+    · exact Or.inl (Or.inl h)
+    · exact Or.inl (Or.inr h)
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedPair (M := M) (A := A) (B := B) (j := j - d) (by lia)).mpr (Or.inl (by lia))⟩
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedPair (M := M) (A := A) (B := B) (j := j - d) (by lia)).mpr (Or.inr (by lia))⟩
+
+/-- That four-place mask joined with itself a second stride along holds eight places. -/
+theorem testBit_seedOct {A B M j d e : Nat} (hj : j ≤ M) :
+    (((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d)
+        ||| ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d) <<< e).testBit j
+          = true ↔
+      (A = j ∨ B = j ∨ A + d = j ∨ B + d = j
+        ∨ A + e = j ∨ B + e = j ∨ A + d + e = j ∨ B + d + e = j) := by
+  rw [Nat.testBit_or, Nat.testBit_shiftLeft, Bool.or_eq_true, Bool.and_eq_true,
+    testBit_seedQuad hj]
+  constructor
+  · rintro (h | ⟨hd, h2⟩)
+    · exact h.imp id (Or.imp id (Or.imp id Or.inl))
+    · have hge : e ≤ j := of_decide_eq_true hd
+      rcases (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mp h2
+        with h | h | h | h
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))
+  · rintro (h | h | h | h | h | h | h | h)
+    · exact Or.inl (Or.inl h)
+    · exact Or.inl (Or.inr (Or.inl h))
+    · exact Or.inl (Or.inr (Or.inr (Or.inl h)))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr h)))
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mpr
+          (Or.inl (by lia))⟩
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mpr
+          (Or.inr (Or.inl (by lia)))⟩
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mpr
+          (Or.inr (Or.inr (Or.inl (by lia))))⟩
+    · exact Or.inr ⟨decide_eq_true (by lia),
+        (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mpr
+          (Or.inr (Or.inr (Or.inr (by lia))))⟩
+
+/-- Where every divisor of the batch has its quadruple inside the window and its octuple past the
+end, the batch's joined mask holds exactly the in-window strikes of the divisors the slice names,
+and each has eight of them. -/
+public theorem testBit_segAccLoopSK_band8 {c lo Wm1 n start len j : Nat} (hj : j ≤ Wm1)
+    (hn : 2 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 4 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 8) :
+    (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 8 ∧ testBitK c i = true
+        ∧ entrySeedK lo start (8 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : segAccLoopSK c lo Wm1 n 0 start 0 = 0 := rfl
+    rw [hz]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have ih' := ih fun i hi => hband i (by lia)
+    cases hb : testBitK c len with
+    | false =>
+      rw [segAccLoopSK_skip hb, ih']
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      obtain ⟨hp4, hp8⟩ := hband len (by lia)
+      have hm2 : valueK (start + len) * 2 ≤ Wm1 := by lia
+      rw [segAccLoopSK_take hb, segAccK_eq, buildMaskCK_octave hp8 hn, buildMaskCK_two hm2 hp4,
+        Nat.testBit_or, Bool.or_eq_true, testBit_seedOct hj, ih']
+      constructor
+      · rintro ((h | h | h | h | h | h | h | h) | h)
+        · exact ⟨len, by lia, 0, by lia, hb, by rw [entrySeedK_five]; lia⟩
+        · exact ⟨len, by lia, 1, by lia, hb, by rw [entrySeedK_seven]; lia⟩
+        · exact ⟨len, by lia, 2, by lia, hb, by rw [entrySeedK_five']; lia⟩
+        · exact ⟨len, by lia, 3, by lia, hb, by rw [entrySeedK_seven']; lia⟩
+        · exact ⟨len, by lia, 4, by lia, hb, by rw [entrySeedK_five4]; lia⟩
+        · exact ⟨len, by lia, 5, by lia, hb, by rw [entrySeedK_seven4]; lia⟩
+        · exact ⟨len, by lia, 6, by lia, hb, by rw [entrySeedK_five6]; lia⟩
+        · exact ⟨len, by lia, 7, by lia, hb, by rw [entrySeedK_seven6]; lia⟩
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := h
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact Or.inr ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          refine Or.inl ?_
+          rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7)
+            with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7
+          · rw [h0, entrySeedK_five] at hs
+            exact Or.inl (by lia)
+          · rw [h1, entrySeedK_seven] at hs
+            exact Or.inr (Or.inl (by lia))
+          · rw [h2, entrySeedK_five'] at hs
+            exact Or.inr (Or.inr (Or.inl (by lia)))
+          · rw [h3, entrySeedK_seven'] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inl (by lia))))
+          · rw [h4, entrySeedK_five4] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))
+          · rw [h5, entrySeedK_seven4] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))
+          · rw [h6, entrySeedK_five6] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
+          · rw [h7, entrySeedK_seven6] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))
+
 /-- The tally a completed batch carries is the batch's own slice, once per progression, so one
 equation above the window settles every position at once. -/
 public theorem tally_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
@@ -1883,6 +2100,42 @@ public theorem tally4_clear_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np :
     Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le hc2 (Nat.pow_le_pow_right (by lia) (by lia)))
   simp [h0, h1, h2, h3]
 
+/-- Where a divisor has eight strikes, the tally a finished batch carries is its own slice once per
+strike, so again one equation above the window settles every position. -/
+public theorem tally8_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
+    (h : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+      = ((((((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) ||| c <<< (4 * len))
+        ||| c <<< (5 * len)) ||| c <<< (6 * len)) ||| c <<< (7 * len)) :
+    ∀ i, i < len → ∀ w, w < 8 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true := by
+  intro i hi w hw hc
+  have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
+  have hsr : ((stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W).testBit (i + w * len)
+      = (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) := by
+    have hx : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+        = stripeBatchK c lo start len W Wm1 slotW Ls Cs np >>> W := rfl
+    rw [hx, Nat.testBit_shiftRight]
+  rw [← hsr, h, Nat.testBit_or, Nat.testBit_or, Nat.testBit_or, Nat.testBit_or, Nat.testBit_or,
+    Nat.testBit_or, Nat.testBit_or]
+  rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7)
+    with hw0 | hw1 | hw2 | hw3 | hw4 | hw5 | hw6 | hw7
+  · rw [hw0]
+    simp [hcb]
+  · rw [hw1, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw2, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw3, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw4, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw5, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw6, Nat.testBit_shiftLeft]
+    simp [hcb]
+  · rw [hw7, Nat.testBit_shiftLeft]
+    simp [hcb]
+
 /-- The same for a batch of divisors whose doubles fit the window and whose quadruples pass its
 end, where each has four strikes rather than two and the tally accounts for all four. -/
 public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs np seg : Nat}
@@ -1953,6 +2206,68 @@ public theorem segLoopSCK_eq_stripe_band {c lo start len n W Wm1 slotW Ls Cs np 
     | true =>
       rw [hiff.mp h1]
 
+/-- The same for a batch of divisors whose quadruples fit the window and whose octuples pass its
+end, where each has eight strikes. Every record a batch carries names one of the eight, so unlike
+the four-strike band there is nothing for the tally to be silent about. -/
+public theorem segLoopSCK_eq_stripe_band8 {c lo start len n W Wm1 slotW Ls Cs np seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (hn : 2 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 4 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 8)
+    (htal : ∀ i, i < len → ∀ w, w < 8 → testBitK c i = true →
+      (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit (W + (i + w * len)) = true) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j = true := by
+      constructor
+      · intro h
+        obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_band8 hj hn hband).mp h
+        have hX : entrySeedK lo start (8 * i + w) ≤ Wm1 := by rw [hsd]; exact hj
+        have := stripeBatchK_complete (c := c) (lo := lo) (start := start) (len := len) (W := W)
+          (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hc2 hi hW hWm1
+          (htal i hi w hw hc) hX
+        rwa [hsd] at this
+      · intro h
+        obtain ⟨k, m, hk, hm, hcbit, hk16, hsd⟩ :=
+          (testBit_stripeBatchK_eq (by lia : j < W)).mp h
+        refine (testBit_segAccLoopSK_band8 hj hn hband).mpr
+          ⟨(entryOf Ls slotW k m).shiftRight 3, ?_, (entryOf Ls slotW k m).land 7,
+            land_one_lt, hcbit, ?_⟩
+        · by_contra hge
+          rw [testBitK_of_lt hc2 (by lia)] at hcbit
+          simp at hcbit
+        · rw [entry_split]
+          exact hsd
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
 /-- Nothing above the batch's positions means below the batch's width. -/
 public theorem lt_two_pow_of_shiftRight {c len : Nat} (h : c.shiftRight len = 0) : c < 2 ^ len := by
   have h1 : c.shiftRight len = c / 2 ^ len := by
@@ -1982,6 +2297,20 @@ public theorem band_of_tests {Wm1 start len : Nat}
   have h1 : valueK (start + len) * 2 ≤ Wm1 := Nat.le_of_ble_eq_true hlast
   have hb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) 4) = true := hfirst
   have h2 : Wm1 + 1 ≤ valueK start * 4 := Nat.le_of_ble_eq_true hb
+  have h3 : valueK (start + i) ≤ valueK (start + len) := valueK_le (by lia)
+  have h4 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
+  exact ⟨by lia, by lia⟩
+
+/-- Two tests settle the octave below: the last divisor's quadruple still fits the window, and the
+first divisor's octuple already passes its end. -/
+public theorem octave_of_tests {Wm1 start len : Nat}
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 4) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 8) = true) :
+    ∀ i, i < len → valueK (start + i) * 4 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 8 := by
+  intro i hi
+  have h1 : valueK (start + len) * 4 ≤ Wm1 := Nat.le_of_ble_eq_true hlast
+  have hb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) 8) = true := hfirst
+  have h2 : Wm1 + 1 ≤ valueK start * 8 := Nat.le_of_ble_eq_true hb
   have h3 : valueK (start + i) ≤ valueK (start + len) := valueK_le (by lia)
   have h4 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
   exact ⟨by lia, by lia⟩
@@ -2056,6 +2385,40 @@ public theorem stripeStepBand {c lo Wm1 n W start len slotW Ls Cs np seg lit nex
   refine Nat.beq_eq.mpr ?_
   rw [segLoopSCK_eq_stripe_band hseg hc2 hW' hWm1' (Nat.le_of_ble_eq_true hn)
     (band_of_tests hlast hfirst) htal hnot, hb, ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
+
+/-- One batch of the octave below, where a divisor strikes up to eight times, carried out by
+sorting those strikes into slices. -/
+public theorem stripeStepBand8 {c lo Wm1 n W start len slotW Ls Cs np seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (Nat.mul np 65536) W = true)
+    (hn : Nat.ble 2 n = true)
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 4) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 8) = true)
+    (hbatch : Nat.beq (stripeBatchK c lo start len W Wm1 slotW Ls Cs np) lit = true)
+    (htally : Nat.beq (lit.shiftRight W)
+      (((((((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) ||| c <<< (4 * len))
+        ||| c <<< (5 * len)) ||| c <<< (6 * len)) ||| c <<< (7 * len)) = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hW' : np * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hWm1' : Wm1 < W := by lia
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hb := Nat.eq_of_beq_eq_true hbatch
+  have hsr : (stripeBatchK c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+      = ((((((c ||| c <<< len) ||| c <<< (2 * len)) ||| c <<< (3 * len)) ||| c <<< (4 * len))
+        ||| c <<< (5 * len)) ||| c <<< (6 * len)) ||| c <<< (7 * len) := by
+    rw [hb]
+    exact Nat.eq_of_beq_eq_true htally
+  have hc2 := lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hc0)
+  have htal := tally8_of_shiftRight (c := c) (lo := lo) (start := start) (len := len) (W := W)
+    (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hsr
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_stripe_band8 hseg hc2 hW' hWm1' (Nat.le_of_ble_eq_true hn)
+    (octave_of_tests hlast hfirst) htal, hb, ldiff_eq_sub]
   exact Nat.eq_of_beq_eq_true hclear
 
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
