@@ -26,7 +26,7 @@ jobs:
       - name: Sweep the batch length over the large primes, now that they are sorted
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 2 S9_Tail2048 S9_Stripes S9_Tail4096
+          PrimeCertTest/SegTune/run.sh 2 S9_Tail4096 S9_Tail8192 S9_Tail16384
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

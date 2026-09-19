@@ -206,15 +206,15 @@ seed of every prime it holds. -/
     ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
       (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
 
-/-- The entries of one slice's list, packed 13 bits each. -/
+/-- The entries of one slice's list, packed 16 bits each. -/
 @[expose] public noncomputable def stripeSlotK (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
-    stripeEntryK s c lo start k len ((slot.shiftRight (j.mul 13)).land 8191)
+    stripeEntryK s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
 
 /-- The entries of the out-of-window list. -/
 @[expose] public noncomputable def stripeOutSlotK (c lo start Wm1 len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
-    stripeOutK s c lo start Wm1 len ((slot.shiftRight (j.mul 13)).land 8191)
+    stripeOutK s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
 
 /-- Every slice of the window in turn, each filled from its own list and then written into its
 place in the mask, with the two tallies carried above the mask. -/
@@ -318,20 +318,20 @@ public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
 public theorem stripeSlotK_succ {c lo start k len slot cnt st : Nat} :
     stripeSlotK c lo start k len slot (cnt + 1) st
       = stripeEntryK (stripeSlotK c lo start k len slot cnt st) c lo start k len
-          ((slot.shiftRight (cnt.mul 13)).land 8191) := rfl
+          ((slot.shiftRight (cnt.mul 16)).land 65535) := rfl
 
 /-- Walking one more entry of the out-of-window list. -/
 public theorem stripeOutSlotK_succ {c lo start Wm1 len slot cnt st : Nat} :
     stripeOutSlotK c lo start Wm1 len slot (cnt + 1) st
       = stripeOutK (stripeOutSlotK c lo start Wm1 len slot cnt st) c lo start Wm1 len
-          ((slot.shiftRight (cnt.mul 13)).land 8191) := rfl
+          ((slot.shiftRight (cnt.mul 16)).land 65535) := rfl
 
 /-- A bit of a finished list is a bit of what the walk started from, or one that some entry of the
 list set. -/
 public theorem testBit_stripeSlotK {c lo start k len slot st j : Nat} (cnt : Nat) :
     (stripeSlotK c lo start k len slot cnt st).testBit j = true ↔
       (st.testBit j = true ∨ ∃ m, m < cnt ∧
-        entryHits c lo start k len j ((slot.shiftRight (m.mul 13)).land 8191) = true) := by
+        entryHits c lo start k len j ((slot.shiftRight (m.mul 16)).land 65535) = true) := by
   induction cnt with
   | zero =>
     have h : stripeSlotK c lo start k len slot 0 st = st := rfl
@@ -360,7 +360,7 @@ public theorem testBit_stripeSlotK {c lo start k len slot st j : Nat} (cnt : Nat
 public theorem testBit_stripeOutSlotK {c lo start Wm1 len slot st j : Nat} (cnt : Nat) :
     (stripeOutSlotK c lo start Wm1 len slot cnt st).testBit j = true ↔
       (st.testBit j = true ∨ ∃ m, m < cnt ∧
-        outHits c lo start Wm1 len j ((slot.shiftRight (m.mul 13)).land 8191) = true) := by
+        outHits c lo start Wm1 len j ((slot.shiftRight (m.mul 16)).land 65535) = true) := by
   induction cnt with
   | zero =>
     have h : stripeOutSlotK c lo start Wm1 len slot 0 st = st := rfl
@@ -410,9 +410,9 @@ public theorem stripeOutSlotK_low {c lo start Wm1 len slot cnt b : Nat} (hb : b 
     · simp at hz
     · unfold outHits at he
       have hj := (Bool.and_eq_true ..).mp he
-      have hbeq : b = entryTallyK len ((slot.shiftRight (m.mul 13)).land 8191) :=
+      have hbeq : b = entryTallyK len ((slot.shiftRight (m.mul 16)).land 65535) :=
         Nat.eq_of_beq_eq_true hj.2
-      have hge : 65536 ≤ entryTallyK len ((slot.shiftRight (m.mul 13)).land 8191) := by
+      have hge : 65536 ≤ entryTallyK len ((slot.shiftRight (m.mul 16)).land 65535) := by
         unfold entryTallyK
         lia
       exact absurd hbeq (by lia)
@@ -533,7 +533,7 @@ public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Na
 /-- Entry `m` of slice `k`'s list. -/
 @[expose] public noncomputable def entryOf (Ls slotW k m : Nat) : Nat :=
   ((((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)).shiftRight
-    (m.mul 13)).land 8191)
+    (m.mul 16)).land 65535)
 
 /-- How many entries slice `k`'s list holds. -/
 @[expose] public noncomputable def cntOf (Cs k : Nat) : Nat :=
@@ -555,7 +555,7 @@ public theorem land65535_eq {x : Nat} : x.land 65535 = x % 65536 := by
 public theorem entryOf_eq {Ls slotW k m : Nat} :
     entryOf Ls slotW k m
       = ((((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)).shiftRight
-          (m.mul 13)).land 8191) := rfl
+          (m.mul 16)).land 65535) := rfl
 
 /-- A number is equal to itself. -/
 public theorem beq_self {x : Nat} : Nat.beq x x = true := Nat.beq_eq.mpr rfl
@@ -2118,15 +2118,15 @@ meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := I
         seen := seen ||| (1 <<< (i + w * len))
         if X ≤ Wm1 then
           asm := asm ||| (1 <<< X)
-  let mut slotW := 13
+  let mut slotW := 16
   for k in [0:65] do
-    slotW := Nat.max slotW (13 * (slots[k]!).size)
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
   let mut ls := 0
   let mut cs := 0
   for k in [0:65] do
     let mut packed := 0
     for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (13 * j))
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
     ls := ls ||| (packed <<< (slotW * k))
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
@@ -2327,9 +2327,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
   if mode > 28 then throwError "run_segment_variant: mode {mode} is not 0 to 28"
-  if mode == 28 && len > 4096 then
-    throwError "run_segment_variant: mode 28 packs an entry in 13 bits, so its batches hold at \
-      most 4096 positions, not {len}"
+  if mode == 28 && len > 32768 then
+    throwError "run_segment_variant: mode 28 packs an entry in 16 bits, so its batches hold at \
+      most 32768 positions, not {len}"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
