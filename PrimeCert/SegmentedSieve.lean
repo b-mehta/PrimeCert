@@ -2421,7 +2421,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 30 then throwError "run_segment_variant: mode {mode} is not 0 to 30"
+  if mode > 31 then throwError "run_segment_variant: mode {mode} is not 0 to 31"
   if mode == 28 && len > 32768 then
     throwError "run_segment_variant: mode 28 packs an entry in 16 bits, so its batches hold at \
       most 32768 positions, not {len}"
@@ -2512,6 +2512,38 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
         addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+    return
+  if mode == 31 then
+    -- Measurement only: the divisors whose double already passes the end of the segment, sorted
+    -- with four records apiece rather than two. The extra pair always lands past the end, so this
+    -- against `Q9_Cleared` says what one family of definitions for both bands would cost.
+    let mut first := 1
+    while 2 * value first ≤ wm1 do
+      first := first + 1
+    let count := fuel + 1 - first
+    let mut bitsL := initSeg W
+    for i in [0:(count + step0 - 1) / step0] do
+      let start := first + i * step0
+      let stepN := Nat.min step0 (count - i * step0)
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let (ls, cs, slotW, expect) := stripeSort4 sVal lo wm1 start stepN W
+      let batchE := mkAppN (mkConst ``stripeBatch4K)
+        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
+      let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
+      let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
+      let mut wantV := 0
+      for w in [0, 1, 2, 3] do
+        wantV := wantV ||| (cVal <<< (w * stepN))
+      addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
+      let next := bitsL - (expect &&& bitsL)
+      let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+      let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+        (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
+      addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsL := next
     return
   if mode == 29 || mode == 30 then
     -- Measurement only, over the band whose divisors have their double inside the segment and
