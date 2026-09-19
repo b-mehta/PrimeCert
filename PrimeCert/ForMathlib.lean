@@ -7,6 +7,7 @@ module
 
 public import Mathlib.Algebra.BigOperators.ModEq
 public import Mathlib.RingTheory.Multiplicity
+public import PrimeCert.ForMathlibBitwise
 
 import Mathlib.Data.Nat.Bitwise
 import Mathlib.Data.Nat.ChineseRemainder
@@ -105,24 +106,6 @@ public theorem Nat.add_sq_eq_dist_sq_add_four_mul (c d : ℕ) :
   obtain ⟨d, rfl⟩ := le_iff_exists_add.mp h
   rw [max_eq_right h, min_eq_left h, Nat.add_sub_cancel_left]
   ring
-
-@[simp] public lemma Nat.ldiff_zero_left {b : ℕ} : Nat.ldiff 0 b = 0 :=
-  Nat.eq_of_testBit_eq (by simp)
-
-@[simp] public lemma Nat.ldiff_zero_right {b : ℕ} : Nat.ldiff b 0 = b :=
-  Nat.eq_of_testBit_eq (by simp)
-
-/-- Disjoint OR equals ADD, for `Nat`; hence subtracting a submask acts as bitwise `ldiff`. -/
-public theorem Nat.and_add_ldiff {a b : ℕ} : (a &&& b) + a.ldiff b = a := by
-  induction a using Nat.binaryRec generalizing b with
-  | zero => simp
-  | bit ba a' ih =>
-    induction b using Nat.binaryRec with
-    | zero => simp
-    | bit bb b' _ => grind [Nat.land_bit, Nat.ldiff_bit, Nat.bit_val, cases Bool]
-
-public theorem Nat.sub_and_eq_ldiff {a b : ℕ} : a - (a &&& b) = a.ldiff b := by
-  grind [Nat.and_add_ldiff]
 
 /-- A prime other than `2` and `3` is coprime to 6. -/
 public theorem Nat.Prime.mod_six_eq_one_or_five {p : ℕ} (hp : p.Prime) (hp₂ : p ≠ 2) (hp₃ : p ≠ 3) :

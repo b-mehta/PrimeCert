@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "record09"
-            rounds: 2
-            cases: "SegOnlyHt09 CountHt09 Ht09 Ht09_F7W2"
+          - n: "merged09"
+            rounds: 3
+            cases: "Ht09_F7W2 Ht09_M28"
     steps:
       - uses: actions/checkout@v7
 
