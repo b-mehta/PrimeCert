@@ -8,12 +8,12 @@ module
 public meta import PrimeCert.Meta.PrimeHarmonic
 public meta import PrimeCert.SegmentedSieve
 
-/-! # The primes from `2213929217` to `2364924160` -/
+/-! # The primes from `4025868545`, part nine of twelve (see `Higher.Part00`) -/
 
 namespace PrimeCert.Higher.P08
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_series 2213929217 262144 53087 20 2048 1536 192 1
+run_harmonic_series 4025868545 524288 100003 20 2048 1536 240 7
 
 end PrimeCert.Higher.P08

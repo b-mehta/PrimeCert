@@ -19,14 +19,14 @@ public import PrimeCertTest.Higher.Part09
 public import PrimeCertTest.Higher.Part10
 public import PrimeCertTest.Higher.Part11
 
-/-! # The primes from `1005969665` to `2817908992`, in one enclosure
+/-! # The primes from `1005969665` to `5535817984`, in one enclosure
 
-The twelve parts each sum 192 windows of 262144 wheel positions; this joins all 2304 of them into
-one enclosure of the sum of the reciprocals of the primes above `1005969664` and below `2817908993`.
+The twelve parts each sum 240 segments of 524288 wheel positions; this joins all 2880 of them into
+one enclosure of the sum of the reciprocals of the primes above `1005969664` and below `5535817985`.
 Adding it to the enclosure `Billion.All` gives the range from `10 ^ 8` up, and adding the base sieve
-on top of that gives the sum past `2.8 * 10 ^ 9`.
+on top of that gives the sum past `5.5 * 10 ^ 9`.
 -/
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_join 1005969665 262144 53087 20 2304
+run_harmonic_join 1005969665 524288 100003 20 2880
