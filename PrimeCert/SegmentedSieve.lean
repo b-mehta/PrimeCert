@@ -1505,6 +1505,63 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs seg : Na
     | true =>
       rw [hiff.mp h1]
 
+/-- Nothing above the batch's positions means below the batch's width. -/
+public theorem lt_two_pow_of_shiftRight {c len : Nat} (h : c.shiftRight len = 0) : c < 2 ^ len := by
+  have h1 : c.shiftRight len = c / 2 ^ len := by
+    have hx : c.shiftRight len = c >>> len := rfl
+    rw [hx, Nat.shiftRight_eq_div_pow]
+  rw [h1] at h
+  exact Nat.lt_of_div_eq_zero (Nat.two_pow_pos len) h
+
+/-- The value of a base index in ordinary notation. -/
+public theorem valueK_eq_add {k : Nat} : valueK k = k * 3 + 1 + k % 2 := rfl
+
+/-- Later base indices name larger numbers. -/
+public theorem valueK_le {i j : Nat} (h : i ≤ j) : valueK i ≤ valueK j := by
+  rw [valueK_eq_add, valueK_eq_add]
+  have hi : i % 2 < 2 := Nat.mod_lt _ (by lia)
+  have hj : j % 2 < 2 := Nat.mod_lt _ (by lia)
+  rcases Nat.eq_or_lt_of_le h with rfl | hlt
+  · lia
+  · lia
+
+/-- One test settles the whole batch: if the batch's first prime is wider than the window, so is
+every later one. -/
+public theorem wide_of_blt {Wm1 start len : Nat}
+    (h : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true) :
+    ∀ i, i < len → Wm1 < valueK (start + i) * 2 := by
+  intro i _
+  have hb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) 2) = true := h
+  have h1 : Wm1 + 1 ≤ valueK start * 2 := Nat.le_of_ble_eq_true hb
+  have h2 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
+  lia
+
+/-- A clear only takes bits away, so the window stays within its width. -/
+public theorem sub_lt_two_pow {seg m next Wm1 : Nat} (hseg : seg < 2 ^ (Wm1 + 1))
+    (h : Nat.sub seg m = next) : next < 2 ^ (Wm1 + 1) := by
+  have hle : next ≤ seg := by
+    rw [← h]
+    exact Nat.sub_le _ _
+  lia
+
+/-- One batch of the sieve run, carried out by sorting its primes into slices of the window: the
+three equations are what the kernel checks, and the three Boolean tests are settled once each. -/
+public theorem stripeStep {c lo Wm1 n W start len slotW Ls Cs seg lit next : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc0 : c.shiftRight len = 0)
+    (hW : Nat.ble (64 * 65536) W = true) (hWm1 : Nat.blt Wm1 W = true)
+    (hwide : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true)
+    (hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs = lit)
+    (htally : lit.shiftRight W = c ||| c <<< len)
+    (hclear : Nat.sub seg (Nat.land lit seg) = next) :
+    segLoopSCK c lo Wm1 n seg start len = next := by
+  have hW' : 64 * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hWm1b : Nat.ble (Wm1 + 1) W = true := hWm1
+  have hWm1' : Wm1 < W := Nat.le_of_ble_eq_true hWm1b
+  have htal := tally_of_shiftRight (c := c) (lo := lo) (start := start) (len := len) (W := W)
+    (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) (by rw [hbatch]; exact htally)
+  rw [segLoopSCK_eq_stripe hseg (lt_two_pow_of_shiftRight hc0) hW' hWm1' (wide_of_blt hwide) htal,
+    hbatch, ldiff_eq_sub, hclear]
+
 /-- A clamped run of a whole window gives the value the plain run gives, with the three side
 conditions as Boolean tests the kernel settles. -/
 public theorem segEq_of_clamped {s lo W Wm1 n fuel b : Nat} (hW : (Wm1 + 1).beq W)
