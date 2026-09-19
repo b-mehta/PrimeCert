@@ -1560,6 +1560,55 @@ explicit so that the emitter can build the application. -/
 public theorem sumB_le_of_eq (f : ℕ → ℕ) (start len step t : ℕ)
     (h : sumB f start len step = t) : sumB f start len step ≤ t := h.le
 
+/-! ### The same two summands with every numeral raw
+
+`valAtW` and `sqAtW` each write three numerals the elaborator turns into `OfNat.ofNat`
+applications: the two inside the bit test and the `0` of the `Bool.rec`, and two more inside
+`Sieve.valueK`. `sqAtW` also writes `Sieve.valueK (Nat.add lo i)` twice in one body. These twins
+write every numeral as a raw literal and name the number once. -/
+
+/-- `valAtW` with every numeral a raw literal. -/
+@[expose] public def valAtWR (w lo i : ℕ) : ℕ :=
+  (Sieve.testBitR w i).rec (nat_lit 0) (Sieve.valueR (Nat.add lo i))
+
+/-- `sqAtW` with every numeral a raw literal and the number named once. -/
+@[expose] public def sqAtWR (w lo i : ℕ) : ℕ :=
+  (Sieve.testBitR w i).rec (nat_lit 0) (Sieve.sqK (Sieve.valueR (Nat.add lo i)))
+
+theorem valAtWR_eq (w lo : ℕ) : valAtWR w lo = valAtW w lo := rfl
+
+theorem sqAtWR_eq (w lo : ℕ) : sqAtWR w lo = sqAtW w lo := rfl
+
+/-- Carry a fold over `valAtWR` back to one over `valAtW`. -/
+public theorem valWR_conv (g lo start len step t : ℕ)
+    (h : sumB (valAtWR g lo) start len step = t) :
+    sumB (valAtW g lo) start len step = t := by
+  rwa [← valAtWR_eq]
+
+/-- Carry a fold over `sqAtWR` back to one over `sqAtW`. -/
+public theorem sqWR_conv (g lo start len step t : ℕ)
+    (h : sumB (sqAtWR g lo) start len step = t) :
+    sumB (sqAtW g lo) start len step = t := by
+  rwa [← sqAtWR_eq]
+
+/-- A batch of the fold over `valAtWR`, read through a window of the segment. -/
+public theorem valWR_windowR (g lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (valAtWR g lo) k B (nat_lit 1) = sumB (valAtWR w lok) (nat_lit 0) B (nat_lit 1) := by
+  rw [valAtWR_eq, valAtWR_eq]
+  exact valW_windowR g lo k lok B w hlok hw
+
+/-- A batch of the fold over `sqAtWR`, read through a window of the segment. -/
+public theorem sqWR_windowR (g lo k lok B w : ℕ)
+    (hlok : Nat.beq (Nat.add lo k) lok = true)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight g k)
+      (Nat.sub (Nat.shiftLeft (nat_lit 1) B) (nat_lit 1))) w = true) :
+    sumB (sqAtWR g lo) k B (nat_lit 1) = sumB (sqAtWR w lok) (nat_lit 0) B (nat_lit 1) := by
+  rw [sqAtWR_eq, sqAtWR_eq]
+  exact sqW_windowR g lo k lok B w hlok hw
+
 /-! ### Two folds instead of three
 
 `∑ p ^ 2` over the window is at most `top * ∑ p`, where `top` is the last number the window covers,

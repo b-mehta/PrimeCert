@@ -46,6 +46,15 @@ public theorem testBitR_eq (b i : Nat) : testBitR b i = testBitK b i := rfl
 /-- `value` in the raw `Nat` operations the kernel-side defs use. -/
 @[expose] public def valueK (k : Nat) : Nat := (k.mul 3).succ.add (k.mod 2)
 
+/-- `valueK` with its two numerals written as raw literals. -/
+@[expose] public def valueR (k : Nat) : Nat :=
+  (k.mul (nat_lit 3)).succ.add (k.mod (nat_lit 2))
+
+public theorem valueR_eq (k : Nat) : valueR k = valueK k := rfl
+
+/-- The square of a number, as one multiplication of a single occurrence of its argument. -/
+@[expose] public def sqK (v : Nat) : Nat := v.mul v
+
 /-- The coprime-to-6 index holding the number `q`, inverse to `value` on `1, 5, 7, 11, 13, …`
 (`value_index` and `index_value` in `SieveCorrect`). -/
 @[expose] public def index (q : Nat) : Nat := (q - 1) / 3
