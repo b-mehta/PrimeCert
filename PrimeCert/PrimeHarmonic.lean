@@ -1609,6 +1609,59 @@ public theorem sqWR_windowR (g lo k lok B w : ℕ)
   rw [sqAtWR_eq, sqAtWR_eq]
   exact sqW_windowR g lo k lok B w hlok hw
 
+/-! ### All three totals from one fold
+
+With `K` a power of two above every number the range covers, `(K + p) ^ 2 = K ^ 2 + 2 * K * p +
+p ^ 2`, so the square of `K + p` at each set bit carries the count in the `K ^ 2` place, the sum
+of the primes in the `2 * K` place and the sum of their squares below it. The three come back by
+division once the two carries are ruled out, which `Q < 2 * K` and `2 * K * V + Q < K ^ 2` do. -/
+
+/-- The three totals packed into one summand: the square of `K + p` at a set bit. -/
+@[expose] public def packAtWR (w lo K i : ℕ) : ℕ :=
+  (Sieve.testBitR w i).rec (nat_lit 0)
+    (Sieve.sqK (Nat.add K (Sieve.valueR (Nat.add lo i))))
+
+theorem packAtWR_eq (w lo K i : ℕ) :
+    packAtWR w lo K i
+      = K * K * bitAtW w i + 2 * K * valAtW w lo i + sqAtW w lo i := by
+  rw [packAtWR, bitAtW, valAtW, sqAtW, Sieve.testBitR_eq]
+  cases Sieve.testBitK w i with
+  | false => simp
+  | true =>
+    simp only [Sieve.sqK, Sieve.valueR, Sieve.valueK, Nat.add_eq, Nat.mul_eq]
+    ring
+
+/-- The packed fold in terms of the three it replaces. -/
+public theorem sumB_packAtWR_eq (g lo K len : ℕ) :
+    sumB (packAtWR g lo K) 0 len 1
+      = K * K * sumB (bitAtW g) 0 len 1 + 2 * K * sumB (valAtW g lo) 0 len 1
+        + sumB (sqAtW g lo) 0 len 1 := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, sumB_succ, sumB_succ, sumB_succ, ih, packAtWR_eq]
+    ring
+
+theorem valAtW_le {g lo top i : ℕ} (h : Sieve.value (lo + i) ≤ top) : valAtW g lo i ≤ top := by
+  rw [valAtW, Sieve.valueK_eq_value, Nat.add_eq]
+  cases Sieve.testBitK g i with
+  | false => simp
+  | true => exact h
+
+/-- Each number the range covers is at most `top`, so the fold of them is at most `len * top`. -/
+public theorem sumB_valAtW_le {g lo top len : ℕ} (h : ∀ i < len, Sieve.value (lo + i) ≤ top) :
+    sumB (valAtW g lo) 0 len 1 ≤ len * top := by
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [sumB_succ, Nat.succ_mul]
+    have h1 := ih fun i hi ↦ h i (Nat.lt_succ_of_lt hi)
+    have h2 : valAtW g lo ((n.mul 1).add 0) ≤ top := by
+      refine valAtW_le ?_
+      have := h n (Nat.lt_succ_self n)
+      simpa using this
+    omega
+
 /-! ### Two folds instead of three
 
 `∑ p ^ 2` over the window is at most `top * ∑ p`, where `top` is the last number the window covers,
