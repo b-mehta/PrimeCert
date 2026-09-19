@@ -23,11 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Run a whole segment the new way and print what its theorems rest on
+      - name: Price the divisors that strike the segment three or four times
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 1 S9_Stripes
-          grep -A2 'depends on axioms' out-S9_Stripes-1.txt
+          PrimeCertTest/SegTune/run.sh 2 N7_M18b N7_M18
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
