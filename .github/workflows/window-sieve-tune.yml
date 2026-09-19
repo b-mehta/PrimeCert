@@ -23,12 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Measure the sorted slices against today's marking over the large primes
+      - name: Sweep the batch length over the large primes, now that they are sorted
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 2 Q9_Cleared Q8_Plain
-      - name: Measure a whole run with and without the sorted slices
-        run: PrimeCertTest/SegTune/run.sh 2 S9_Stripes S7_Sched
+          PrimeCertTest/SegTune/run.sh 2 S9_Tail2048 S9_Stripes S9_Tail4096
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

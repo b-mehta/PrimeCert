@@ -19,6 +19,6 @@ namespace PrimeCert.SegTune.S9_Stripes
 
 run_sieve 10000000
 
-run_segment_variant 28 100000000000001 4194304 3333332 1536 10000000
+run_segment_variant 28 100000000000001 4194304 3333332 3072 10000000
 
 end PrimeCert.SegTune.S9_Stripes
