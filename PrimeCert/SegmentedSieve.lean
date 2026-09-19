@@ -530,6 +530,115 @@ public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Na
         rw [hkeq] at h3
         exact Or.inr h3
 
+/-- Entry `m` of slice `k`'s list. -/
+@[expose] public noncomputable def entryOf (Ls slotW k m : Nat) : Nat :=
+  ((((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)).shiftRight
+    (m.mul 13)).land 8191)
+
+/-- How many entries slice `k`'s list holds. -/
+@[expose] public noncomputable def cntOf (Cs k : Nat) : Nat :=
+  (Cs.shiftRight (k.mul 16)).land 65535
+
+/-- Dividing by the slice width, two ways. -/
+public theorem shiftRight16_eq {x : Nat} : x.shiftRight 16 = x / 65536 := by
+  have h : x.shiftRight 16 = x >>> 16 := rfl
+  rw [h, Nat.shiftRight_eq_div_pow]
+  norm_num
+
+/-- The offset within a slice, two ways. -/
+public theorem land65535_eq {x : Nat} : x.land 65535 = x % 65536 := by
+  have h : x.land 65535 = x &&& 65535 := rfl
+  have h2 : (65535 : Nat) = 2 ^ 16 - 1 := by norm_num
+  rw [h, h2, Nat.and_two_pow_sub_one_eq_mod]
+  norm_num
+
+/-- A position of the window is set in the assembled number exactly when some entry, recorded in
+the slice that position falls in, names a prime of the batch whose seed is that position. -/
+public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W)
+    (hW : 64 * 65536 ≤ W) :
+    (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true ↔
+      ∃ k m, k < 64 ∧ m < cntOf Cs k ∧
+        testBitK c ((entryOf Ls slotW k m).shiftRight 1) = true ∧
+        (entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16 = k ∧
+        entrySeedK lo start (entryOf Ls slotW k m) = j := by
+  have hbatch : stripeBatchK c lo start len W Wm1 slotW Ls Cs
+      = stripeUpToK c lo start len W Wm1 slotW Ls Cs 65 := rfl
+  rw [hbatch, testBit_stripeUpToK_low hj 65]
+  constructor
+  · rintro ⟨k, hk65, hkle, hklt, hst⟩
+    rcases Nat.lt_or_ge k 64 with hk | hk
+    · have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+          = stripeSlotK c lo start k len
+            ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+            (cntOf Cs k) 0 := by
+        unfold stripeStateK cntOf
+        have : Nat.beq k 64 = false := by
+          have : k ≠ 64 := by lia
+          simp [Nat.beq_eq_false_iff_ne, this]
+        rw [this]
+      rw [hstate] at hst
+      rcases (testBit_stripeSlotK (cntOf Cs k)).mp hst with hz | ⟨m, hm, he⟩
+      · simp at hz
+      · unfold entryHits at he
+        have h1 := (Bool.and_eq_true ..).mp he
+        have h2 := (Bool.and_eq_true ..).mp h1.1
+        have hk16 : (entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16 = k :=
+          Nat.eq_of_beq_eq_true h2.2
+        refine ⟨k, m, hk, hm, h2.1, hk16, ?_⟩
+        rcases (Bool.or_eq_true ..).mp h1.2 with hseed | htally
+        · have hlow : j - k * 65536
+              = (entrySeedK lo start (entryOf Ls slotW k m)).land 65535 :=
+            Nat.eq_of_beq_eq_true hseed
+          rw [shiftRight16_eq] at hk16
+          rw [land65535_eq] at hlow
+          have := Nat.div_add_mod (entrySeedK lo start (entryOf Ls slotW k m)) 65536
+          lia
+        · have hte : j - k * 65536 = entryTallyK len (entryOf Ls slotW k m) :=
+            Nat.eq_of_beq_eq_true htally
+          have hge : 65536 ≤ entryTallyK len (entryOf Ls slotW k m) := by
+            unfold entryTallyK
+            lia
+          exact absurd hte (by lia)
+    · have hk64 : k = 64 := by lia
+      rw [hk64] at hst
+      have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs 64
+          = stripeOutSlotK c lo start Wm1 len
+            ((Ls.shiftRight (slotW.mul 64)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+            (cntOf Cs 64) 0 := rfl
+      rw [hstate] at hst
+      rw [stripeOutSlotK_low (by lia)] at hst
+      simp at hst
+  · rintro ⟨k, m, hk, hm, hc, hk16, hseed⟩
+    rw [shiftRight16_eq] at hk16
+    have hdm := Nat.div_add_mod (entrySeedK lo start (entryOf Ls slotW k m)) 65536
+    have hmod : entrySeedK lo start (entryOf Ls slotW k m) % 65536 < 65536 :=
+      Nat.mod_lt _ (by lia)
+    refine ⟨k, by lia, by lia, by lia, ?_⟩
+    have hstate : stripeStateK c lo start len Wm1 slotW Ls Cs k
+        = stripeSlotK c lo start k len
+          ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+          (cntOf Cs k) 0 := by
+      unfold stripeStateK cntOf
+      have hne : Nat.beq k 64 = false := by
+        have : k ≠ 64 := by lia
+        simp [Nat.beq_eq_false_iff_ne, this]
+      rw [hne]
+    rw [hstate]
+    refine (testBit_stripeSlotK (cntOf Cs k)).mpr (Or.inr ⟨m, hm, ?_⟩)
+    unfold entryHits
+    have hlow : j - k * 65536 = (entrySeedK lo start (entryOf Ls slotW k m)).land 65535 := by
+      rw [land65535_eq]
+      lia
+    have hbeq : Nat.beq (j - k * 65536)
+        ((entrySeedK lo start (entryOf Ls slotW k m)).land 65535) = true := by
+      rw [hlow]
+      exact Nat.beq_self_eq_true _
+    have hk16' : Nat.beq ((entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16) k = true := by
+      rw [shiftRight16_eq, hk16]
+      exact Nat.beq_self_eq_true _
+    rw [hc, hk16', hbeq]
+    simp
+
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
 the seed lies outside that slice. -/
 @[expose] public noncomputable def seedStripeK (A base : Nat) : Nat :=
