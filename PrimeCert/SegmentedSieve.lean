@@ -1500,7 +1500,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 25 then throwError "run_segment_variant: mode {mode} is not 0 to 25"
+  if mode > 26 then throwError "run_segment_variant: mode {mode} is not 0 to 26"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_variant: no base sieve {baseLit}"
@@ -1541,12 +1541,28 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 25 then
-    -- Measurement only: the large primes of each batch sorted into slices of the window, one
-    -- theorem a batch, against mode 18's batches over the same positions.
-    for i in [0:(fuel + step0 - 1) / step0] do
-      let start := 1 + i * step0
-      let stepN := Nat.min step0 (fuel - i * step0)
+  if mode == 25 || mode == 26 then
+    -- Measurement only, over the positions whose primes are past half the window's width, where a
+    -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
+    -- marks the same batches as the sieve does today, so the pair isolates that change.
+    let mut first := 1
+    while 2 * value first ≤ wm1 do
+      first := first + 1
+    let count := fuel + 1 - first
+    let mut bitsL := initSeg W
+    for i in [0:(count + step0 - 1) / step0] do
+      let start := first + i * step0
+      let stepN := Nat.min step0 (count - i * step0)
+      if mode == 26 then
+        let next := segLoopC sVal lo wm1 rounds bitsL start stepN
+        let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+        let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+        let batchE := mkAppN (mkConst ``segLoopSCK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsL, mkRawNatLit start,
+            mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsL := next
+        continue
       let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
