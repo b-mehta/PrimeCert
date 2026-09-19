@@ -23,12 +23,12 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: One segment at ten billion, sorted against marked
+      - name: Which change earned the summing session's nine percent
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 2 H0_Sorted H0_Marked
-      - name: One segment at a hundred billion, sorted against marked
-        run: PrimeCertTest/SegTune/run.sh 2 H1_Sorted H1_Marked
+          PrimeCertTest/SegTune/run.sh 3 A1_M11 A1_M20 A1_M28
+      - name: The many-strike divisors, joined into one mask a batch against marked
+        run: PrimeCertTest/SegTune/run.sh 2 G9_Joined G8_Marked
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

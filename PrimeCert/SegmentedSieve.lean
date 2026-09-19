@@ -2711,7 +2711,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 31 then throwError "run_segment_variant: mode {mode} is not 0 to 31"
+  if mode > 33 then throwError "run_segment_variant: mode {mode} is not 0 to 33"
   if mode == 28 && len > 16384 then
     throwError "run_segment_variant: mode 28 packs a record in 16 bits, of which two name which \
       strike, so its batches hold at most 16384 positions, not {len}"
@@ -2833,6 +2833,41 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
       let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
         (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
+      addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsL := next
+    return
+  if mode == 32 || mode == 33 then
+    -- Measurement only, over the divisors small enough that four times one still fits inside the
+    -- segment, so each strikes it many times and the sorted route does not apply. Mode 32 joins a
+    -- batch's masks into one and clears the segment against that once; mode 33 marks the segment
+    -- once per divisor as the sieve does today. Joining lost by 2.6 times when it was tried over
+    -- every divisor, where it paid doubling rounds on the large ones that the marking skips
+    -- outright; over these divisors there are no such rounds to pay, which is what this asks.
+    let mut last := 1
+    while 4 * value (last + 1) ≤ wm1 do
+      last := last + 1
+    let mut bitsL := initSeg W
+    for i in [0:(last + step0) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (last + 1 - (1 + i * step0))
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      if mode == 33 then
+        let next := segLoopC sVal lo wm1 rounds bitsL start stepN
+        let batchE := mkAppN (mkConst ``segLoopSCK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsL, mkRawNatLit start,
+            mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsL := next
+        continue
+      let acc := segAccLoopC sVal lo wm1 rounds 0 start stepN
+      let batchE := mkAppN (mkConst ``segAccLoopSK)
+        #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit 0, mkRawNatLit start, mkRawNatLit stepN]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit acc)) Lean.reflBoolTrue
+      let next := bitsL - (acc &&& bitsL)
+      let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+      let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+        (mkApp2 (mkConst ``Nat.land) (mkRawNatLit acc) (mkRawNatLit bitsL))
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
