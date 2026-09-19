@@ -234,17 +234,26 @@ Each step of either fold leaves the state alone or joins two single bits into it
 result is a bit of the state unless it is one of those two. These two lemmas are the base of the
 induction over a slice's list. -/
 
+/-- A single bit, tested. -/
+public theorem testBit_oneShift {a b : Nat} : (Nat.shiftLeft 1 a).testBit b = Nat.beq b a := by
+  have hs : Nat.shiftLeft 1 a = 1 <<< a := rfl
+  have h : (1 : Nat) <<< a = 2 ^ a := by rw [Nat.shiftLeft_eq, Nat.one_mul]
+  rw [hs, h, Nat.testBit_two_pow]
+  cases hb : Nat.beq b a with
+  | true => simp [Nat.eq_of_beq_eq_true hb]
+  | false =>
+    have : b ≠ a := by
+      intro hba
+      rw [hba] at hb
+      simp at hb
+    simp [this]
+
 /-- A step of a slice's list, one bit at a time. -/
 public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
     (stripeEntryK st c lo start k len e).testBit j
       = (st.testBit j || (testBitK c (e.shiftRight 1) &&
           Nat.beq ((entrySeedK lo start e).shiftRight 16) k &&
           (Nat.beq j ((entrySeedK lo start e).land 65535) || Nat.beq j (entryTallyK len e)))) := by
-  have hbit : ∀ a b : Nat, (Nat.shiftLeft 1 a).testBit b = Nat.beq b a := by
-    intro a b
-    have h : Nat.shiftLeft 1 a = 2 ^ a := by rw [Nat.shiftLeft_eq, Nat.one_mul]
-    rw [h, Nat.testBit_two_pow]
-    grind
   unfold stripeEntryK
   cases hc : testBitK c (e.shiftRight 1) with
   | false => simp
@@ -253,7 +262,7 @@ public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
     | false => simp
     | true =>
       have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
-      rw [hlor, hlor, Nat.testBit_or, Nat.testBit_or, hbit, hbit]
+      rw [hlor, hlor, Nat.testBit_or, Nat.testBit_or, testBit_oneShift, testBit_oneShift]
       simp
 
 /-- A step of the out-of-window list, one bit at a time. -/
@@ -261,11 +270,6 @@ public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
     (stripeOutK st c lo start Wm1 len e).testBit j
       = (st.testBit j || (testBitK c (e.shiftRight 1) &&
           Nat.blt Wm1 (entrySeedK lo start e) && Nat.beq j (entryTallyK len e))) := by
-  have hbit : ∀ a b : Nat, (Nat.shiftLeft 1 a).testBit b = Nat.beq b a := by
-    intro a b
-    have h : Nat.shiftLeft 1 a = 2 ^ a := by rw [Nat.shiftLeft_eq, Nat.one_mul]
-    rw [h, Nat.testBit_two_pow]
-    grind
   unfold stripeOutK
   cases hc : testBitK c (e.shiftRight 1) with
   | false => simp
@@ -274,7 +278,7 @@ public theorem testBit_stripeOutK {st c lo start Wm1 len e j : Nat} :
     | false => simp
     | true =>
       have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
-      rw [hlor, Nat.testBit_or, hbit]
+      rw [hlor, Nat.testBit_or, testBit_oneShift]
       simp
 
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
