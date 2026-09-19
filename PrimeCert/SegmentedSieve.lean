@@ -218,8 +218,8 @@ seed of every prime it holds. -/
 
 /-- Every slice of the window in turn, each filled from its own list and then written into its
 place in the mask, with the two tallies carried above the mask. -/
-@[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
-  (65 : Nat).rec 0 fun k asm =>
+@[expose] public noncomputable def stripeUpToK (c lo start len W Wm1 slotW Ls Cs n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
     let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
     let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
     let st : Nat := (Nat.beq k 64).rec
@@ -227,6 +227,28 @@ place in the mask, with the two tallies carried above the mask. -/
       (stripeOutSlotK c lo start Wm1 len slot cnt 0)
     (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
       ((st.shiftRight 65536).shiftLeft W)
+
+/-- Every slice of the window, which is `stripeUpToK` run to the end. -/
+@[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
+  stripeUpToK c lo start len W Wm1 slotW Ls Cs 65
+
+/-- The state a slice's list is walked from, and what it contributes to the assembled number. -/
+@[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs k : Nat) : Nat :=
+  (Nat.beq k 64).rec
+    (stripeSlotK c lo start k len
+      ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+      ((Cs.shiftRight (k.mul 16)).land 65535) 0)
+    (stripeOutSlotK c lo start Wm1 len
+      ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
+      ((Cs.shiftRight (k.mul 16)).land 65535) 0)
+
+/-- One more slice. -/
+public theorem stripeUpToK_succ {c lo start len W Wm1 slotW Ls Cs n : Nat} :
+    stripeUpToK c lo start len W Wm1 slotW Ls Cs (n + 1)
+      = ((stripeUpToK c lo start len W Wm1 slotW Ls Cs n).lor
+          (((stripeStateK c lo start len Wm1 slotW Ls Cs n).land
+            (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (n.mul 65536))).lor
+        (((stripeStateK c lo start len Wm1 slotW Ls Cs n).shiftRight 65536).shiftLeft W) := rfl
 
 /-! ### What one entry does
 
