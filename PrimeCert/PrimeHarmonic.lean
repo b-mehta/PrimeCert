@@ -54,12 +54,12 @@ open Finset
 /-- The sum of `f` over the `len` elements `start, start + step, …`. The additive counterpart of
 `forallB`; `sumB_eq_sum` states it as an ordinary `Finset` sum. -/
 @[expose] public def sumB (f : ℕ → ℕ) (start len step : ℕ) : ℕ :=
-  len.rec 0 fun n b ↦ (f ((n.mul step).add start)).add b
+  len.rec (nat_lit 0) fun n b ↦ (f ((n.mul step).add start)).add b
 
 /-- The fold a windowed batch actually needs: `f` over `0 … len - 1`, with no step to multiply by
 and no start to add. `sumB1_eq` identifies it with `sumB f 0 len 1`. -/
 @[expose] public def sumB1 (f : ℕ → ℕ) (len : ℕ) : ℕ :=
-  len.rec 0 fun n b ↦ (f n).add b
+  len.rec (nat_lit 0) fun n b ↦ (f n).add b
 
 @[simp, grind =] public theorem sumB_zero (f : ℕ → ℕ) (start step : ℕ) :
     sumB f start 0 step = 0 :=
@@ -537,11 +537,11 @@ identify each windowed batch with the same batch read from the whole sieve. -/
 
 /-- The scaled reciprocal at position `lo + i`, reading bit `i` of the window `w`. -/
 @[expose] public def recipAtW (w lo S i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0 (S.div (Sieve.valueK (Nat.add lo i)))
+  (Sieve.testBitK w i).rec (nat_lit 0) (S.div (Sieve.valueK (Nat.add lo i)))
 
 /-- `1` where bit `i` of the window `w` is set, `0` where it is clear. -/
 @[expose] public def bitAtW (w i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0 1
+  (Sieve.testBitK w i).rec (nat_lit 0) (nat_lit 1)
 
 theorem window_testBit {s lo B w i : ℕ}
     (hw : Nat.beq (Nat.land (Nat.shiftRight s lo) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true)
@@ -1426,12 +1426,11 @@ public theorem primeRecipRange_of_taylor {s S lo len o A C V Q Cw : ℕ} (hlo : 
 
 /-- The number at position `lo + i` where bit `i` of the window `w` is set, `0` where clear. -/
 @[expose] public def valAtW (w lo i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0 (Sieve.valueK (Nat.add lo i))
+  (Sieve.testBitK w i).rec (nat_lit 0) (Sieve.valueK (Nat.add lo i))
 
 /-- The square of the number at position `lo + i` where bit `i` of `w` is set. -/
 @[expose] public def sqAtW (w lo i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0
-    (Nat.mul (Sieve.valueK (Nat.add lo i)) (Sieve.valueK (Nat.add lo i)))
+  (Sieve.testBitK w i).rec (nat_lit 0) (Sieve.sqK (Sieve.valueK (Nat.add lo i)))
 
 /-- The scan of the shifted segment is the windowed fold of the numbers. -/
 public theorem val_shift (g lo len : ℕ) :
@@ -1447,7 +1446,7 @@ public theorem sq_shift (g lo len : ℕ) :
   rw [sumB_eq_sum, sumB_eq_sum]
   refine Finset.sum_congr rfl fun i _ ↦ ?_
   rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, sqAtK_eq, sqAtW, Bool.rec_eq,
-    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.mul_eq, Nat.add_eq,
+    Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Sieve.sqK, Nat.mul_eq, Nat.add_eq,
     testBit_shiftLeft_add]
 
 /-- A batch of the fold of the numbers over a segment literal, read through a window of it. -/
@@ -1482,7 +1481,7 @@ public theorem sqW_window (g lo k B w : ℕ)
   have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
   have harg : lo + (i + k) = lo + k + i := by omega
   simp only [sqAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
-    Nat.mul_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
+    Nat.mul_one, Nat.add_zero, hbit, harg]
 
 /-- `sqW_window` with its numerals written as raw literals. -/
 public theorem sqW_windowR (g lo k lok B w : ℕ)
@@ -1670,7 +1669,7 @@ leaves is `∑ p * (top - p) / o ^ 3` wider than the one the three folds give. -
 
 theorem sqAtW_le_mul {g lo top i : ℕ} (h : Sieve.value (lo + i) ≤ top) :
     sqAtW g lo i ≤ top * valAtW g lo i := by
-  rw [sqAtW, valAtW, Sieve.valueK_eq_value, Nat.mul_eq, Nat.add_eq]
+  rw [sqAtW, valAtW, Sieve.valueK_eq_value, Sieve.sqK, Nat.mul_eq, Nat.add_eq]
   cases Sieve.testBitK g i with
   | false => simp
   | true => exact Nat.mul_le_mul_right _ h
@@ -1729,12 +1728,12 @@ enclosure is the same one; what changes is the size of the numbers the kernel ad
 
 /-- The offset of the number at position `lo + i` from `o`, where bit `i` of `w` is set. -/
 @[expose] public def offAtW (w lo o i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0 (Nat.sub (Sieve.valueK (Nat.add lo i)) o)
+  (Sieve.testBitK w i).rec (nat_lit 0) (Nat.sub (Sieve.valueK (Nat.add lo i)) o)
 
 /-- The square of that offset. -/
 @[expose] public def osqAtW (w lo o i : ℕ) : ℕ :=
-  (Sieve.testBitK w i).rec 0
-    (Nat.mul (Nat.sub (Sieve.valueK (Nat.add lo i)) o) (Nat.sub (Sieve.valueK (Nat.add lo i)) o))
+  (Sieve.testBitK w i).rec (nat_lit 0)
+    (Sieve.sqK (Nat.sub (Sieve.valueK (Nat.add lo i)) o))
 
 /-- A batch of the offset fold over a segment literal, read through a window of it. -/
 public theorem offW_window (g lo o k B w : ℕ)
@@ -1768,7 +1767,7 @@ public theorem osqW_window (g lo o k B w : ℕ)
   have hbit : g.testBit (i + k) = w.testBit i := by rw [Nat.add_comm i k, hb]
   have harg : lo + (i + k) = lo + k + i := by omega
   simp only [osqAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Sieve.valueK_eq_value, Nat.add_eq,
-    Nat.sub_eq, Nat.mul_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
+    Nat.sub_eq, Nat.mul_one, Nat.add_zero, hbit, harg]
 
 /-- `osqW_window` with its numerals written as raw literals. -/
 public theorem osqW_windowR (g lo o k lok B w : ℕ)
@@ -1789,13 +1788,14 @@ theorem valAtW_eq_add {g lo o i : ℕ} (h : o ≤ Sieve.value (lo + i)) :
 
 theorem sqAtW_eq_add {g lo o i : ℕ} (h : o ≤ Sieve.value (lo + i)) :
     sqAtW g lo i = o ^ 2 * bitAtW g i + 2 * o * offAtW g lo o i + osqAtW g lo o i := by
-  rw [sqAtW, bitAtW, offAtW, osqAtW, Sieve.valueK_eq_value, Nat.add_eq, Nat.sub_eq, Nat.mul_eq]
+  rw [sqAtW, bitAtW, offAtW, osqAtW, Sieve.valueK_eq_value, Sieve.sqK, Nat.add_eq, Nat.sub_eq,
+    Nat.mul_eq]
   cases Sieve.testBitK g i with
   | false => simp
   | true =>
     obtain ⟨d, hd⟩ := Nat.exists_eq_add_of_le h
     rw [hd]
-    simp only [Nat.add_sub_cancel_left, Nat.mul_eq]
+    simp only [Nat.add_sub_cancel_left, Sieve.sqK, Nat.mul_eq]
     ring
 
 /-- The fold of the numbers in terms of the count and the fold of the offsets. -/

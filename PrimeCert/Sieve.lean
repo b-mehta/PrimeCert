@@ -16,7 +16,8 @@ reduction. The state is one natural number used as a bitset, `M` is its top inde
 namespace PrimeCert.Sieve
 
 /-- Whether bit `i` of `b` is set (`testBitK_eq_testBit` in `SieveCorrect`). -/
-@[expose] public def testBitK (b i : Nat) : Bool := Nat.ble 1 (b.land (Nat.shiftLeft 1 i))
+@[expose] public def testBitK (b i : Nat) : Bool :=
+  Nat.ble (nat_lit 1) (b.land (Nat.shiftLeft (nat_lit 1) i))
 
 /-- `testBitK` with the two arguments of `Nat.land` the other way round, for timing against it. -/
 @[expose] public def testBitS (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftLeft 1 i).land b)
@@ -44,9 +45,10 @@ public theorem testBitR_eq (b i : Nat) : testBitR b i = testBitK b i := rfl
 @[expose] public def value (k : Nat) : Nat := (k * 3 + 1) + k % 2
 
 /-- `value` in the raw `Nat` operations the kernel-side defs use. -/
-@[expose] public def valueK (k : Nat) : Nat := (k.mul 3).succ.add (k.mod 2)
+@[expose] public def valueK (k : Nat) : Nat :=
+  (k.mul (nat_lit 3)).succ.add (k.mod (nat_lit 2))
 
-/-- `valueK` with its two numerals written as raw literals. -/
+/-- `valueK`, kept as a name while the emitter's forms are timed against one another. -/
 @[expose] public def valueR (k : Nat) : Nat :=
   (k.mul (nat_lit 3)).succ.add (k.mod (nat_lit 2))
 
@@ -60,13 +62,13 @@ public theorem valueR_eq (k : Nat) : valueR k = valueK k := rfl
 @[expose] public def index (q : Nat) : Nat := (q - 1) / 3
 
 /-- `index` in the raw `Nat` operations the kernel-side defs use. -/
-@[expose] public def indexK (q : Nat) : Nat := (q.sub 1).div 3
+@[expose] public def indexK (q : Nat) : Nat := (q.sub (nat_lit 1)).div (nat_lit 3)
 
 /-- The natural number whose binary digits below position `M` are set at the first `2^n` positions
 of each of `A, A + 2*p, A + 4*p, …` and `B, B + 2*p, B + 4*p, …`; `n` counts doubling rounds. -/
 @[expose] public noncomputable def buildMaskK (p M A B n : Nat) : Nat :=
   Nat.rec
-    ((Nat.shiftLeft 1 A).lor (Nat.shiftLeft 1 B))
+    ((Nat.shiftLeft (nat_lit 1) A).lor (Nat.shiftLeft (nat_lit 1) B))
     (fun i Mk =>
       ((p.shiftLeft i.succ).ble M).rec Mk
         (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
@@ -75,7 +77,8 @@ of each of `A, A + 2*p, A + 4*p, …` and `B, B + 2*p, B + 4*p, …`; `n` counts
 /-- One sieving step: clear from `bits` the bits at indices of coprime-to-6 multiples of `p`
 (the multiples `5*p, 7*p, 11*p, …`). -/
 @[expose] public noncomputable def markMaskK (bits p M : Nat) : Nat :=
-  bits.sub (bits.land (buildMaskK p M (indexK (p.mul 5)) (indexK (p.mul 7)) 32))
+  bits.sub (bits.land
+    (buildMaskK p M (indexK (p.mul (nat_lit 5))) (indexK (p.mul (nat_lit 7))) (nat_lit 32)))
 
 /-- Perform `fuel` sieving steps on the bitset `bits`, scanning indices `start, start+1, …`: at
 each index whose bit is still set, clear the bits of that number's coprime-to-6 multiples.
@@ -86,7 +89,8 @@ each index whose bit is still set, clear the bits of that number's coprime-to-6 
         (markMaskK b (valueK (start.add i)) M)
 
 /-- Coprime-to-6 candidates `0..M`, all set except bit 0 (number 1, not prime). `= 2^(M+1) - 2`. -/
-@[expose] public def initK (M : Nat) : Nat := Nat.sub (Nat.shiftLeft 1 (Nat.succ M)) 2
+@[expose] public def initK (M : Nat) : Nat :=
+  Nat.sub (Nat.shiftLeft (nat_lit 1) (Nat.succ M)) (nat_lit 2)
 
 /-- The full sieve bitset for numbers up to `n`: bit `t` is set iff `value t` is prime, given
 `n ≤ sqrtN * sqrtN` (`sieveK_testBit_iff` in `SieveCorrect`). -/

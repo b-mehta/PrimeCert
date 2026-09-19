@@ -38,7 +38,8 @@ open Nat
 /-! ## Kernel-side definitions -/
 
 /-- A window of `W` live candidates: the low `W` bits set, i.e. `2^W - 1`. -/
-@[expose] public def initSegK (W : Nat) : Nat := Nat.sub (Nat.shiftLeft 1 W) 1
+@[expose] public def initSegK (W : Nat) : Nat :=
+  Nat.sub (Nat.shiftLeft (nat_lit 1) W) (nat_lit 1)
 
 /-- The least offset `j` with `lo + j` in the residue class of `A` modulo `m`. -/
 @[expose] public def firstLocK (A lo m : Nat) : Nat :=
@@ -47,8 +48,8 @@ open Nat
 /-- Clear from the window `seg` every local offset holding a coprime-to-6 multiple of `p`. -/
 @[expose] public noncomputable def segMarkK (seg p lo Wm1 : Nat) : Nat :=
   seg.sub (seg.land
-    (buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32))
+    (buildMaskK p Wm1 (firstLocK (indexK (p.mul (nat_lit 5))) lo (p.mul (nat_lit 2)))
+      (firstLocK (indexK (p.mul (nat_lit 7))) lo (p.mul (nat_lit 2))) (nat_lit 32)))
 
 /-- Sieve the window `seg` by the base primes recorded in the bitset `s`, scanning the base
 indices `start, start+1, …` for `fuel` steps. -/
@@ -95,12 +96,12 @@ agreement is checked per batch against the same compiled twin, and is not proved
 
 /-- `2 ^ A` when `A ≤ M`, and `0` otherwise: a seed bit, dropped when it lies above the window. -/
 @[expose] public noncomputable def seedK (A M : Nat) : Nat :=
-  (Nat.ble A M).rec 0 (Nat.shiftLeft 1 A)
+  (Nat.ble A M).rec (nat_lit 0) (Nat.shiftLeft (nat_lit 1) A)
 
 /-- `seg` with the bits of `hit` cleared, where `hit` is a subset of `seg`; `seg` itself when
 `hit = 0`. -/
 @[expose] public noncomputable def clearHitK (seg hit : Nat) : Nat :=
-  (Nat.ble 1 hit).rec seg (seg.sub hit)
+  (Nat.ble (nat_lit 1) hit).rec seg (seg.sub hit)
 
 /-- `buildMaskK` with both seeds passed through `seedK`. -/
 @[expose] public noncomputable def buildMaskCK (p M A B n : Nat) : Nat :=
@@ -114,13 +115,13 @@ agreement is checked per batch against the same compiled twin, and is not proved
 /-- `segMarkK` with seeds dropped outside the window, `n` doubling rounds, no rounds at all when
 `2 * p > Wm1` (only the seeds can then land in the window), and no subtraction when nothing hits. -/
 @[expose] public noncomputable def segMarkCK (seg p lo Wm1 n : Nat) : Nat :=
-  ((p.mul 2).ble Wm1).rec
+  ((p.mul (nat_lit 2)).ble Wm1).rec
     (clearHitK seg
-      (((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
-        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)).land seg))
+      (((seedK (firstLocK (indexK (p.mul (nat_lit 5))) lo (p.mul (nat_lit 2))) Wm1).lor
+        (seedK (firstLocK (indexK (p.mul (nat_lit 7))) lo (p.mul (nat_lit 2))) Wm1)).land seg))
     (clearHitK seg
-      ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg))
+      ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul (nat_lit 5))) lo (p.mul (nat_lit 2)))
+        (firstLocK (indexK (p.mul (nat_lit 7))) lo (p.mul (nat_lit 2))) n).land seg))
 
 /-- `segLoopK` marking with `segMarkCK`. -/
 @[expose] public noncomputable def segLoopCK (s lo Wm1 n seg start fuel : Nat) : Nat :=
