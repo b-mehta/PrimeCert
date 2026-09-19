@@ -27,7 +27,7 @@ jobs:
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
           PrimeCertTest/SegTune/run.sh 1 S9_Stripes
-          grep 'depends on axioms' out-S9_Stripes-1.txt
+          grep -A2 'depends on axioms' out-S9_Stripes-1.txt
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
