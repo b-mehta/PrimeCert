@@ -568,8 +568,7 @@ public theorem beq_of_ne {x y : Nat} (h : x ≠ y) : Nat.beq x y = false := by
 
 /-- A position of the window is set in the assembled number exactly when some entry, recorded in
 the slice that position falls in, names a prime of the batch whose seed is that position. -/
-public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W)
-    (hW : 64 * 65536 ≤ W) :
+public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat} (hj : j < W) :
     (stripeBatchK c lo start len W Wm1 slotW Ls Cs).testBit j = true ↔
       ∃ k m, k < 64 ∧ m < cntOf Cs k ∧
         testBitK c ((entryOf Ls slotW k m).shiftRight 1) = true ∧
