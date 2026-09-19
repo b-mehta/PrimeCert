@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "fields"
-            rounds: 3
-            cases: "FieldProbe"
+          - n: "widthboth"
+            rounds: 2
+            cases: "Wid1Ht12 Wid1S Wid2Ht12 Wid2S Wid4Ht12 Wid4S Wid8Ht12 Wid8S"
     steps:
       - uses: actions/checkout@v7
 
