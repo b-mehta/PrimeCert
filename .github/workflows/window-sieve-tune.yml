@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Ask what the segment's width costs for the divisors below half of it
+      - name: Price the computation by running four consecutive segments at once
         run: |
-          chmod +x PrimeCertTest/SegTune/run.sh
-          PrimeCertTest/SegTune/run.sh 2 N7_M24 N7_M18
+          chmod +x PrimeCertTest/SegTune/pair.sh
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
