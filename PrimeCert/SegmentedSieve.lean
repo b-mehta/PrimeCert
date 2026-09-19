@@ -2302,10 +2302,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 25 || mode == 26 then
+  if mode == 25 || mode == 26 || mode == 27 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
-    -- marks the same batches as the sieve does today, so the pair isolates that change.
+    -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
+    -- mode 25 plus the clear a real run then owes, one `Nat.ldiff` of the window against the
+    -- batch's assembled mask, which mode 25 leaves out and mode 26 carries inside its fold.
     let mut first := 1
     while 2 * value first ≤ wm1 do
       first := first + 1
@@ -2331,6 +2333,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
+      if mode == 27 then
+        let next := Nat.ldiff bitsL expect
+        let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+        let clearE := mkApp2 (mkConst ``Nat.ldiff) (mkRawNatLit bitsL) (mkRawNatLit expect)
+        addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsL := next
     return
   if mode == 24 then
     -- Measurement only: the same walk over the same primes, writing each prime's hits into one
