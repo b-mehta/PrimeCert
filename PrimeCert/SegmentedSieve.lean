@@ -242,11 +242,11 @@ public theorem testBit_oneShift {a b : Nat} : (Nat.shiftLeft 1 a).testBit b = Na
   cases hb : Nat.beq b a with
   | true => simp [Nat.eq_of_beq_eq_true hb]
   | false =>
-    have : b ≠ a := by
+    have hne : a ≠ b := by
       intro hba
-      rw [hba] at hb
+      rw [← hba] at hb
       simp at hb
-    simp [this]
+    simp [hne]
 
 /-- A step of a slice's list, one bit at a time. -/
 public theorem testBit_stripeEntryK {st c lo start k len e j : Nat} :
