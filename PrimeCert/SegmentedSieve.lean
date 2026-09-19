@@ -192,18 +192,38 @@ tallies is what a completed batch notices. -/
       (st.lor ((Nat.shiftLeft 1 (X.land 65535)).lor
         (Nat.shiftLeft 1 (Nat.add 65536 (Nat.add i (Nat.mul (e.land 1) len)))))))
 
+/-- An entry of the list of seeds that fall past the end of the window: the kernel checks that it
+does fall past the end, and records it in the tally so that a completed batch accounts for every
+seed of every prime it holds. -/
+@[expose] public noncomputable def stripeOutK (st c lo start Wm1 len e : Nat) : Nat :=
+  let i : Nat := e.shiftRight 1
+  let p : Nat := valueK (start.add i)
+  let X : Nat := (Nat.beq (e.land 1) 0).rec
+    (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
+    (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+  (testBitK c i).rec st
+    ((Nat.blt Wm1 X).rec st
+      (st.lor (Nat.shiftLeft 1 (Nat.add 65536 (Nat.add i (Nat.mul (e.land 1) len))))))
+
 /-- The entries of one slice's list, packed 13 bits each. -/
 @[expose] public noncomputable def stripeSlotK (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
     stripeEntryK s c lo start k len ((slot.shiftRight (j.mul 13)).land 8191)
 
+/-- The entries of the out-of-window list. -/
+@[expose] public noncomputable def stripeOutSlotK (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutK s c lo start Wm1 len ((slot.shiftRight (j.mul 13)).land 8191)
+
 /-- Every slice of the window in turn, each filled from its own list and then written into its
 place in the mask, with the two tallies carried above the mask. -/
-@[expose] public noncomputable def stripeBatchK (c lo start len W slotW Ls Cs : Nat) : Nat :=
-  (64 : Nat).rec 0 fun k asm =>
+@[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs : Nat) : Nat :=
+  (65 : Nat).rec 0 fun k asm =>
     let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
     let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
-    let st : Nat := stripeSlotK c lo start k len slot cnt 0
+    let st : Nat := (Nat.beq k 64).rec
+      (stripeSlotK c lo start k len slot cnt 0)
+      (stripeOutSlotK c lo start Wm1 len slot cnt 0)
     (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
       ((st.shiftRight 65536).shiftLeft W)
 
@@ -1277,7 +1297,7 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
 /-- Sort a batch's large primes by the slice of the window each seed lands in. Returns the packed
 lists, the packed counts, the widest slot in bits, and the value `stripeBatchK` should give. -/
 meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
-  let mut slots : Array (Array Nat) := Array.replicate 64 #[]
+  let mut slots : Array (Array Nat) := Array.replicate 65 #[]
   let mut seen := 0
   let mut asm := 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
@@ -1287,17 +1307,17 @@ meta def stripeSort (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := I
       for w in [0, 1] do
         let X := if w = 0 then firstLoc (index (p * 5)) lo (p * 2)
           else firstLoc (index (p * 7)) lo (p * 2)
+        let k := if X ≤ Wm1 then X >>> 16 else 64
+        slots := slots.set! k ((slots[k]!).push (2 * i + w))
+        seen := seen ||| (1 <<< (i + w * len))
         if X ≤ Wm1 then
-          let k := X >>> 16
-          slots := slots.set! k ((slots[k]!).push (2 * i + w))
-          seen := seen ||| (1 <<< (i + w * len))
           asm := asm ||| (1 <<< X)
   let mut slotW := 13
-  for k in [0:64] do
+  for k in [0:65] do
     slotW := Nat.max slotW (13 * (slots[k]!).size)
   let mut ls := 0
   let mut cs := 0
-  for k in [0:64] do
+  for k in [0:65] do
     let mut packed := 0
     for j in [0:(slots[k]!).size] do
       packed := packed ||| ((slots[k]!)[j]! <<< (13 * j))
@@ -1567,7 +1587,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
       let batchE := mkAppN (mkConst ``stripeBatchK)
-        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W,
+        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
     return
