@@ -542,15 +542,29 @@ public theorem testBit_stripeUpToK_high {c lo start len W Wm1 slotW Ls Cs j : Na
 /-- Dividing by the slice width, two ways. -/
 public theorem shiftRight16_eq {x : Nat} : x.shiftRight 16 = x / 65536 := by
   have h : x.shiftRight 16 = x >>> 16 := rfl
-  rw [h, Nat.shiftRight_eq_div_pow]
-  norm_num
+  have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+  rw [h, Nat.shiftRight_eq_div_pow, h2]
 
 /-- The offset within a slice, two ways. -/
 public theorem land65535_eq {x : Nat} : x.land 65535 = x % 65536 := by
-  have h : x.land 65535 = x &&& 65535 := rfl
-  have h2 : (65535 : Nat) = 2 ^ 16 - 1 := by norm_num
-  rw [h, h2, Nat.and_two_pow_sub_one_eq_mod]
-  norm_num
+  have h : x.land 65535 = x &&& (2 ^ 16 - 1) := rfl
+  have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+  rw [h, Nat.and_two_pow_sub_one_eq_mod, h2]
+
+/-- The entry an index names, as the walk over a list sees it. -/
+public theorem entryOf_eq {Ls slotW k m : Nat} :
+    entryOf Ls slotW k m
+      = ((((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)).shiftRight
+          (m.mul 13)).land 8191) := rfl
+
+/-- A number is equal to itself. -/
+public theorem beq_self {x : Nat} : Nat.beq x x = true := Nat.beq_eq.mpr rfl
+
+/-- Two different numbers are not equal. -/
+public theorem beq_of_ne {x y : Nat} (h : x ≠ y) : Nat.beq x y = false := by
+  cases hb : Nat.beq x y with
+  | true => exact absurd (Nat.eq_of_beq_eq_true hb) h
+  | false => rfl
 
 /-- A position of the window is set in the assembled number exactly when some entry, recorded in
 the slice that position falls in, names a prime of the batch whose seed is that position. -/
@@ -572,10 +586,7 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
             ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
             (cntOf Cs k) 0 := by
         unfold stripeStateK cntOf
-        have : Nat.beq k 64 = false := by
-          have : k ≠ 64 := by lia
-          simp [Nat.beq_eq_false_iff_ne, this]
-        rw [this]
+        rw [beq_of_ne (by lia : k ≠ 64)]
       rw [hstate] at hst
       rcases (testBit_stripeSlotK (cntOf Cs k)).mp hst with hz | ⟨m, hm, he⟩
       · simp at hz
@@ -619,10 +630,7 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
           ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
           (cntOf Cs k) 0 := by
       unfold stripeStateK cntOf
-      have hne : Nat.beq k 64 = false := by
-        have : k ≠ 64 := by lia
-        simp [Nat.beq_eq_false_iff_ne, this]
-      rw [hne]
+      rw [beq_of_ne (by lia : k ≠ 64)]
     rw [hstate]
     refine (testBit_stripeSlotK (cntOf Cs k)).mpr (Or.inr ⟨m, hm, ?_⟩)
     unfold entryHits
@@ -632,11 +640,11 @@ public theorem testBit_stripeBatchK_eq {c lo start len W Wm1 slotW Ls Cs j : Nat
     have hbeq : Nat.beq (j - k * 65536)
         ((entrySeedK lo start (entryOf Ls slotW k m)).land 65535) = true := by
       rw [hlow]
-      exact Nat.beq_self_eq_true _
+      exact beq_self
     have hk16' : Nat.beq ((entrySeedK lo start (entryOf Ls slotW k m)).shiftRight 16) k = true := by
       rw [shiftRight16_eq, hk16]
-      exact Nat.beq_self_eq_true _
-    rw [hc, hk16', hbeq]
+      exact beq_self
+    rw [← entryOf_eq, hc, hk16', hbeq]
     simp
 
 /-- A seed bit written relative to a 65536-bit slice of the window starting at `base`, and `0` when
