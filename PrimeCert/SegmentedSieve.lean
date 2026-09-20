@@ -3037,8 +3037,9 @@ its quadruple does not. -/
 meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut seen := 0
-  let mut asm := 0
+  -- The assembled mask is built one slice at a time rather than one bit at a time: joining a bit
+  -- into a slice touches 65536 bits where joining it into the whole mask touches `W`.
+  let mut slotAsm : Array Nat := Array.replicate np 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in [0:len] do
     if (c >>> i) &&& 1 = 1 then
@@ -3048,10 +3049,17 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
           else firstLoc (index (p * 7)) lo (p * 2)
         let X := base + (w >>> 1) * (p * 2)
         let k := if X ≤ Wm1 then X >>> 16 else np
-        slots := slots.set! k ((slots[k]!).push (8 * i + w))
-        seen := seen ||| (1 <<< (i + w * len))
+        slots := slots.modify k (·.push (8 * i + w))
         if X ≤ Wm1 then
-          asm := asm ||| (1 <<< X)
+          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 65535)))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  -- A tally bit is set exactly when the slice names that position, once per strike, so the whole
+  -- tally is the slice itself shifted `nrec` times rather than a bit set per record.
+  let mut seen := 0
+  for w in [0:nrec] do
+    seen := seen ||| (c <<< (w * len))
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
