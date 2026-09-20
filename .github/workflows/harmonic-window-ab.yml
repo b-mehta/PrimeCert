@@ -183,33 +183,51 @@ jobs:
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCert.SegmentedSieve
 
-      - name: Build the four at once and sample what they hold together
+      - name: Time four gap-walk files against four position-walk files, alternating
         run: |
           set +e +o pipefail
-          start=$(date +%s)
-          lake build PrimeCertTest.HarmonicBench.ParAll > out-four.txt 2>&1 &
-          pid=$!
-          peak=0
-          while kill -0 "$pid" 2>/dev/null; do
-            r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
-            n=$(pgrep -c -x lean || echo 0)
-            if [ "$r" -gt "$peak" ]; then peak=$r; fi
-            t=$(( $(date +%s) - start ))
-            if [ $(( t % 30 )) -eq 0 ]; then
-              echo "t=${t}s processes ${n} resident $(( r / 1024 )) MB peak $(( peak / 1024 )) MB"
+          run_four() {
+            tgt=$1
+            tag=$2
+            start=$(date +%s)
+            lake build "PrimeCertTest.HarmonicBench.$tgt" > "out-four-$tag.txt" 2>&1 &
+            pid=$!
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+              n=$(pgrep -c -x lean || echo 0)
+              if [ "$r" -gt "$peak" ]; then peak=$r; fi
+              t=$(( $(date +%s) - start ))
+              if [ $(( t % 60 )) -eq 0 ]; then
+                echo "$tag t=${t}s processes ${n} resident $(( r / 1024 )) MB peak $(( peak / 1024 )) MB"
+              fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            echo "RESULT four | $tag | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
+            if [ "$code" -ne 0 ]; then
+              tail -12 "out-four-$tag.txt"
+              echo "RUN FAILED $tag" >> four-failures.txt
             fi
-            sleep 1
-          done
-          wait "$pid"
-          code=$?
-          echo "RESULT four | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
-          tail -12 out-four.txt
-          exit "$code"
+            rm -rf .lake/build/lib/lean/PrimeCertTest/HarmonicBench
+          }
+          run_four ParAll gap-round1
+          run_four ParAllW pos-round1
+          run_four ParAllW pos-round2
+          run_four ParAll gap-round2
 
-      - name: Keep the log
+      - name: Fail the job if either arm failed
+        run: |
+          if [ -s four-failures.txt ]; then
+            cat four-failures.txt
+            exit 1
+          fi
+
+      - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: window-ab-four
-          path: out-four.txt
+          path: out-four-*.txt
 
