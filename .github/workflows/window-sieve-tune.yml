@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: A third point for the per-divisor question, the bound moved at a fixed width
+      - name: A bound series at one width, three arms in one job
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 2 C7_B1e6 S7_Sched
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 2 C7_B1e5 C7_B1e6 S7_Sched
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
