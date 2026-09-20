@@ -14,7 +14,11 @@ Slices of half the width were measured and lost, 2.8 and 3.6 percent of kernel a
 this asks the other direction: 32 slices of 131072 bits rather than 64 of 65536. Same band, same
 divisors, same value, so the pair against `E9_Sorted` is the slice width on its own.
 
-I predicted the narrow arm would win and it did not, so I am making no prediction here. -/
+Measured and it loses on peak too, 1610 MB against 1550 in both rounds. Its kernel rounds disagree
+by 18 percent against a control varying 2, so the time comparison says nothing and must not be
+quoted either way. Both directions from 65536 cost memory and neither shows a time win, so 65536
+stands and this file exists to let someone re-ask rather than to be believed. Arms this short, 16
+to 25 seconds, cannot resolve a few percent in two rounds. -/
 
 namespace PrimeCert.SegTune.E6_Wide
 
