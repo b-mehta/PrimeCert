@@ -7,6 +7,7 @@ module
 
 public meta import PrimeCert.Meta.Sieve
 public meta import PrimeCert.SegmentedSieve
+public import PrimeCertTest.HarmonicBench.SieveHt12
 
 /-! # `S7_Sched` at the harmonic record's own parameters
 
@@ -19,6 +20,6 @@ beside `S7_Sched`, `S9_Stripes` and `GapW1048` in one job, since runner spread r
 
 namespace PrimeCert.SegTune.S7_Mine
 
-run_segment_variant 20 1005969665 1048576 36672 1536
+run_segment_variant 20 1005969665 1048576 36672 1536 2000000
 
 end PrimeCert.SegTune.S7_Mine

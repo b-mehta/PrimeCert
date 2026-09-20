@@ -7,6 +7,7 @@ module
 
 public meta import PrimeCert.Meta.Sieve
 public meta import PrimeCert.SegmentedSieve
+public import PrimeCertTest.HarmonicBench.SieveHt12
 
 /-! # `S7_Mine` with a third of the divisors, the width held
 
@@ -20,6 +21,6 @@ of `S7_Mine`, which is 3400, 78498 and 10452 divisors at 1048576 positions throu
 
 namespace PrimeCert.SegTune.S7_Low
 
-run_segment_variant 20 1005969665 1048576 10542 1536
+run_segment_variant 20 1005969665 1048576 10542 1536 2000000
 
 end PrimeCert.SegTune.S7_Low
