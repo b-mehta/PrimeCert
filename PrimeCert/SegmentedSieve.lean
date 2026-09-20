@@ -437,6 +437,29 @@ of the design rather than a constant. -/
 @[expose] public noncomputable def treeBatch2K (c lo Wm1 start len : Nat) : Nat :=
   flat7 (treeFold2K c lo Wm1 start len)
 
+/-! The four definitions below exist only so that the seed offset's two forms can be timed against
+each other inside one file, under a real batch. They carry no proofs: mode 46 settles both by
+`reflBoolTrue` and reports them apart. -/
+
+/-- The seed offset as it was written before, through the quotient. -/
+@[expose] public def firstLocOldK (A lo m : Nat) : Nat :=
+  Nat.mod (Nat.sub (Nat.add A (Nat.mul m (Nat.succ (Nat.div lo m)))) lo) m
+
+/-- `treeDiv2K` through the old seed offset. -/
+@[expose] public noncomputable def treeDiv2OldK (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
+  let d : Nat := p.mul 2
+  putK (putK t Wm1 (firstLocOldK (indexK (p.mul 5)) lo d)) Wm1
+    (firstLocOldK (indexK (p.mul 7)) lo d)
+
+/-- `treeFold2K` through the old seed offset. -/
+@[expose] public noncomputable def treeFold2OldK (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
+    (testBitK c i).rec t (treeDiv2OldK t lo Wm1 (valueK (start.add i)))
+
+/-- `treeBatch2K` through the old seed offset. -/
+@[expose] public noncomputable def treeBatch2OldK (c lo Wm1 start len : Nat) : Nat :=
+  flat7 (treeFold2OldK c lo Wm1 start len)
+
 /-- The four strikes of a divisor whose double fits the window and whose quadruple does not. -/
 @[expose] public noncomputable def treeDiv4K (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
   let d : Nat := p.mul 2
@@ -4102,7 +4125,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 45 then throwError "run_segment_variant: mode {mode} is not 0 to 45"
+  if mode > 46 then throwError "run_segment_variant: mode {mode} is not 0 to 46"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4163,7 +4186,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 then
+  if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -4186,6 +4209,30 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+        continue
+      if mode == 46 then
+        -- The seed offset's two forms over the same batch, the old one first and the new one
+        -- second, so that both arms meet the same runner and the same batches. `run.sh` reports
+        -- `step_` and `sstep_` apart, so the two land in separate columns.
+        let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+        let asm := treeAsm2 sVal lo wm1 start stepN W
+        let args := #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
+        let emitOld := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2OldK) args) (mkRawNatLit asm))
+            Lean.reflBoolTrue
+        let emitNew := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) args) (mkRawNatLit asm))
+            Lean.reflBoolTrue
+        -- Which form goes first alternates by batch, so neither arm always pays whatever the
+        -- first of a pair pays.
+        if i % 2 == 0 then
+          emitOld
+          emitNew
+        else
+          emitNew
+          emitOld
         continue
       if mode == 42 || mode == 43 then
         -- Mode 42 derives eight strikes a divisor and discards the six that pass the window's
