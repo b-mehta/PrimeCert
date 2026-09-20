@@ -186,6 +186,61 @@ jobs:
             out-*.txt
             time-*.txt
 
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the two files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Sieve and sum against sieve alone, over the same eight segments
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          run_case() {
+            f=$1
+            tag=$2
+            /usr/bin/time -f "TIME $tag user %U sys %S wall %e maxrss %M KB" \
+              -o "time-split-$tag.txt" \
+              lean -M 12000 -DElab.async=false \
+              -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
+              "PrimeCertTest/HarmonicBench/$f.lean" > "out-split-$tag.txt" 2>&1
+            code=$?
+            cat "time-split-$tag.txt"
+            grep -oE '\[Kernel\] \[[0-9.]+\]' "out-split-$tag.txt" \
+              | grep -oE '[0-9]+\.[0-9]+' \
+              | awk -v tag="$tag" '{s+=$1; n++} END {printf "KERNEL %s | %.3f s over %d entries\n", tag, s, n}'
+            echo "RESULT split | $tag | exit $code"
+            if [ "$code" -ne 0 ]; then tail -4 "out-split-$tag.txt"; fi
+          }
+          for r in 1 2 3; do
+            run_case Split8_Full "full-r$r"
+            run_case Split8_Sieve "sieve-r$r"
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-split
+          path: |
+            out-split-*.txt
+            time-split-*.txt
+
   wide:
     runs-on: ubuntu-latest
     timeout-minutes: 180
