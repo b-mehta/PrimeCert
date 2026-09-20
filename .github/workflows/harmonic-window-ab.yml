@@ -186,6 +186,54 @@ jobs:
             out-*.txt
             time-*.txt
 
+  cores:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: One file alone against four at once, same segments, one runner
+        run: |
+          set +e +o pipefail
+          run_arm() {
+            tgt=$1
+            tag=$2
+            segs=$3
+            start=$(date +%s)
+            lake build "PrimeCertTest.HarmonicBench.$tgt" > "out-cores-$tag.txt" 2>&1
+            code=$?
+            w=$(( $(date +%s) - start ))
+            echo "RESULT cores | $tag | exit $code | wall ${w}s over ${segs} segments"
+            if [ "$code" -ne 0 ]; then tail -4 "out-cores-$tag.txt"; fi
+            rm -rf .lake/build/lib/lean/PrimeCertTest/HarmonicBench
+          }
+          for r in 1 2; do
+            run_arm Q0 "one-r$r" 24
+            run_arm QAll "four-r$r" 96
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-cores
+          path: out-cores-*.txt
+
   split:
     runs-on: ubuntu-latest
     timeout-minutes: 60
