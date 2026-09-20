@@ -1,4 +1,4 @@
-name: The sum of 1/p past 2.8 billion
+name: The sum of 1/p past ten billion
 
 on:
   push:
@@ -10,6 +10,14 @@ jobs:
   higher:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - half: "lower"
+            target: "PrimeCertTest.Higher.All"
+          - half: "upper"
+            target: "PrimeCertTest.Higher2.All"
     steps:
       - uses: actions/checkout@v7
 
@@ -33,11 +41,11 @@ jobs:
           nproc
           swapon --show || true
 
-      - name: Sum the twelve parts at once and join them
+      - name: Sum this half's parts four at a time and join them
         run: |
           set +e +o pipefail
           start=$(date +%s)
-          lake build PrimeCertTest.Higher.All > out-higher.txt 2>&1 &
+          lake build ${{ matrix.target }} > out-higher.txt 2>&1 &
           pid=$!
           peak=0
           while kill -0 "$pid" 2>/dev/null; do
@@ -51,15 +59,14 @@ jobs:
           done
           wait "$pid"
           code=$?
-          echo "RESULT higher | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
+          echo "RESULT higher | ${{ matrix.half }} | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
           grep -E "run_harmonic_join|error" out-higher.txt | tail -40
-          du -sh .lake/build/lib/lean/PrimeCertTest/Higher || true
-          du -sh .lake/build/lib/lean/PrimeCertTest/Higher/Part00.olean || true
+          du -sh .lake/build/lib/lean/PrimeCertTest || true
           exit "$code"
 
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: higher
+          name: higher-${{ matrix.half }}
           path: out-higher.txt
