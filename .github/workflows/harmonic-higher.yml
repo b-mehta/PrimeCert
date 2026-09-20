@@ -52,7 +52,9 @@ jobs:
           wait "$pid"
           code=$?
           echo "RESULT higher | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
-          grep -E "run_harmonic_join|error" out-higher.txt | tail -20
+          grep -E "run_harmonic_join|error" out-higher.txt | tail -40
+          du -sh .lake/build/lib/lean/PrimeCertTest/Higher || true
+          du -sh .lake/build/lib/lean/PrimeCertTest/Higher/Part00.olean || true
           exit "$code"
 
       - name: Keep the logs

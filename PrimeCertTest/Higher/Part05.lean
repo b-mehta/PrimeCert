@@ -8,12 +8,18 @@ module
 public meta import PrimeCert.Meta.PrimeHarmonic
 public meta import PrimeCert.SegmentedSieve
 
-/-! # The primes from `2893406465`, part six of twelve (see `Higher.Part00`) -/
+/-! # The primes from `2515919105`, part 6 of 33
+
+96 segments of 1048576 wheel positions, sieved by the primes up to `110017` and summed at
+scale `10 ^ 20`, with the count of primes in a segment bounded by its width so that only the
+quotients are summed. `Higher.All` joins the 33 parts, which together carry the range from
+just past `10 ^ 9` to `10971635969`, and the enclosure below `1005969665` is added to that.
+-/
 
 namespace PrimeCert.Higher.P05
 
 set_option maxRecDepth 4000000 in
 set_option Elab.async false in
-run_harmonic_series 2893406465 524288 100003 20 2048 1536 240 7
+run_harmonic_series 2515919105 1048576 110017 20 2048 1536 96 15
 
 end PrimeCert.Higher.P05
