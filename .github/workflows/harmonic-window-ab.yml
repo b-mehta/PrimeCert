@@ -186,6 +186,19 @@ jobs:
             out-*.txt
             time-*.txt
 
+  hw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Say what the runner actually has
+        run: |
+          lscpu | grep -iE "^CPU\(s\)|Thread|Core|Socket|Model name|MHz|cache"
+          echo "---"
+          nproc
+          free -m
+          df -h /
+          cat /proc/cpuinfo | grep -c ^processor
+
   cores:
     runs-on: ubuntu-latest
     timeout-minutes: 90
