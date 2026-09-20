@@ -295,6 +295,61 @@ the repeated subterms on its own. -/
     (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToTK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
+/-! ### The same design at half the slice width
+
+Every entry of a batch joins two bits into the state of the slice it lands in, and there are tens
+of thousands of entries to a batch against sixty-five slices. Rewriting `stripeSort` taught that
+what such a loop costs follows the width of the number being joined into rather than the number of
+bits set in it, and the slice width is the one dimension of this design that has never been swept.
+These definitions are `entryTallyK` through `stripeBatchK` with 32768-bit slices in place of
+65536-bit ones, so a batch has 128 of them rather than 64. Timing only, and no proofs: if it wins
+the proofs are the same ones with a different constant. -/
+
+/-- `entryTallyK` with the tally starting above a 32768-bit slice. -/
+@[expose] public noncomputable def entryTallyS (len e : Nat) : Nat :=
+  Nat.add 32768 (Nat.add (e.shiftRight 3) (Nat.mul (e.land 7) len))
+
+/-- `stripeEntryK` over 32768-bit slices, so a seed's slice is its top bits above 15. -/
+@[expose] public noncomputable def stripeEntryS (st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    ((Nat.beq ((entrySeedK lo start e).shiftRight 15) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedK lo start e).land 32767)).lor
+        (Nat.shiftLeft 1 (entryTallyS len e)))))
+
+/-- `stripeOutK` over 32768-bit slices. -/
+@[expose] public noncomputable def stripeOutS (st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyS len e))))
+
+/-- The entries of one 32768-bit slice's list. -/
+@[expose] public noncomputable def stripeSlotS (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryS s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- The entries of the out-of-window list, over 32768-bit slices. -/
+@[expose] public noncomputable def stripeOutSlotS (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutS s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` over 32768-bit slices. -/
+@[expose] public noncomputable def stripeUpToS
+    (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k np).rec
+      (stripeSlotS c lo start k len slot cnt 0)
+      (stripeOutSlotS c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 32768) 1)).shiftLeft (k.mul 32768))).lor
+      ((st.shiftRight 32768).shiftLeft W)
+
+/-- The same assembled number as `stripeBatchK`, built from twice as many slices of half the
+width. -/
+@[expose] public noncomputable def stripeBatchS
+    (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToS c lo start len W Wm1 slotW Ls Cs np (np + 1)
+
 /-- The state a slice's list is walked from, and what it contributes to the assembled number. -/
 @[expose] public noncomputable def stripeStateK (c lo start len Wm1 slotW Ls Cs np k : Nat) : Nat :=
   (Nat.beq k np).rec
@@ -3028,6 +3083,43 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
   let m := p * 2
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
+/-- `stripeSort` for 32768-bit slices: a seed's slice is its top bits above 15, its place within
+the slice the low 15, and a window of `W` positions holds `W / 32768` of them. -/
+meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 32768
+  let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in [0:len] do
+    if (c >>> i) &&& 1 = 1 then
+      let p := value (start + i)
+      for w in [0:nrec] do
+        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+          else firstLoc (index (p * 7)) lo (p * 2)
+        let X := base + (w >>> 1) * (p * 2)
+        let k := if X ≤ Wm1 then X >>> 15 else np
+        slots := slots.modify k (·.push (8 * i + w))
+        if X ≤ Wm1 then
+          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 32767)))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 32768))
+  let mut seen := 0
+  for w in [0:nrec] do
+    seen := seen ||| (c <<< (w * len))
+  let mut slotW := 16
+  for k in [0:np + 1] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np + 1] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- Sort a batch's divisors by the slice of the segment each of their strikes lands in. Returns the
 packed lists, the packed counts, the widest slot in bits, and the value `stripeBatchK` should give.
 A record's low two bits name one of a divisor's four possible strikes: the low bit picks the
@@ -3268,8 +3360,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 39 then throwError "run_segment_variant: mode {mode} is not 0 to 39"
-  if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39) && len > 8192 then
+  if mode > 40 then throwError "run_segment_variant: mode {mode} is not 0 to 40"
+  if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40)
+      && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
   let env ← getEnv
@@ -3403,7 +3496,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 34 || mode == 35 || mode == 37 then
+  if mode == 34 || mode == 35 || mode == 37 || mode == 40 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -3433,10 +3526,13 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
         continue
-      let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
-      let batchE := mkAppN (mkConst (if mode == 37 then ``stripeBatchTK else ``stripeBatchK))
+      let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
+        else stripeSort sVal lo wm1 start stepN W 8
+      let batchE := mkAppN (mkConst (if mode == 37 then ``stripeBatchTK
+          else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
-          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
+          mkRawNatLit (if mode == 40 then W / 32768 else W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
