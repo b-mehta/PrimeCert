@@ -149,8 +149,8 @@ jobs:
                 lean -M 10000 $flag "PrimeCertTest/HarmonicBench/$f.lean" \
                   > "out-$f-$mode-$r.txt" 2>&1
                 code=$?
-                echo "RESULT elab | $f | kernel checking $mode | round $r | exit $code | \
-wall $(( $(date +%s) - start ))s"
+                w=$(( $(date +%s) - start ))
+                echo "RESULT elab | $f | checking $mode | round $r | exit $code | wall ${w}s"
               done
             done
           done
