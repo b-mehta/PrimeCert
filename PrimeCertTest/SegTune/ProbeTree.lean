@@ -391,4 +391,124 @@ theorem testBit_flat7_upd7 {t : Lvl7} {k b j : Nat} (hb : b < 65536) :
       cases (flat6 t.2).testBit (j - 4194304) <;>
       cases decide (j - 4194304 = (k.land 63) * 65536 + b) <;> rfl
 
+/-- A failed `blt` is the reverse inequality. -/
+theorem blt_false_le {a b : Nat} (h : Nat.blt a b = false) : b ≤ a := by
+  by_contra hc
+  have h1 : Nat.ble (a + 1) b = true := Nat.ble_eq_true_of_le (by lia)
+  have h2 : Nat.blt a b = true := h1
+  rw [h2] at h
+  exact Bool.noConfusion h
+
+/-- Putting one strike into the tree sets exactly that position, and nothing when the strike falls
+past the window's end. -/
+theorem testBit_putK {t : Lvl7} {Wm1 s j : Nat} (hW : Wm1 < 4194304) :
+    (flat7 (putK t Wm1 s)).testBit j
+      = ((flat7 t).testBit j || (decide (s ≤ Wm1) && decide (j = s))) := by
+  unfold putK
+  cases hblt : Nat.blt Wm1 s with
+  | true =>
+    have hgt : Wm1 < s := Nat.le_of_ble_eq_true hblt
+    have hno : ¬ (s ≤ Wm1) := by lia
+    rw [decide_eq_false hno, Bool.false_and, Bool.or_false]
+  | false =>
+    have hle : s ≤ Wm1 := blt_false_le hblt
+    have hb : s.land 65535 < 65536 := by
+      have h : s.land 65535 = s % 65536 := by
+        have hh : s.land 65535 = s.land (2 ^ 16 - 1) := rfl
+        have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+        rw [hh, land_mask_eq, h2]
+      rw [h]
+      exact Nat.mod_lt _ (by lia)
+    have hk : (s.shiftRight 16).land 127 = s.shiftRight 16 := by
+      have hsr : s.shiftRight 16 = s / 65536 := by
+        have h := shiftRightK_eq (k := s) (n := 16)
+        have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+        rw [h2] at h
+        exact h
+      have hlt : s / 65536 < 128 := by
+        have : s < 4194304 := by lia
+        lia
+      have hm : (s / 65536).land 127 = (s / 65536) % 128 := by
+        have hh : (s / 65536).land 127 = (s / 65536).land (2 ^ 7 - 1) := rfl
+        have h2 : (2 : Nat) ^ 7 = 128 := rfl
+        rw [hh, land_mask_eq, h2]
+      rw [hsr, hm]
+      exact Nat.mod_eq_of_lt hlt
+    have hpos : (s.shiftRight 16).land 127 * 65536 + s.land 65535 = s := by
+      rw [hk]
+      have hsr : s.shiftRight 16 = s / 65536 := by
+        have h := shiftRightK_eq (k := s) (n := 16)
+        have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+        rw [h2] at h
+        exact h
+      have hl : s.land 65535 = s % 65536 := by
+        have hh : s.land 65535 = s.land (2 ^ 16 - 1) := rfl
+        have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+        rw [hh, land_mask_eq, h2]
+      rw [hsr, hl]
+      have := Nat.div_add_mod s 65536
+      lia
+    rw [testBit_flat7_upd7 hb, hpos, decide_eq_true hle, Bool.true_and]
+
+/-- The two strikes of one divisor. -/
+theorem testBit_treeDiv2K {t : Lvl7} {lo Wm1 p j : Nat} (hW : Wm1 < 4194304) :
+    (flat7 (treeDiv2K t lo Wm1 p)).testBit j
+      = ((flat7 t).testBit j
+          || (decide (firstLocK (indexK (p.mul 5)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 5)) lo (p.mul 2)))
+          || (decide (firstLocK (indexK (p.mul 7)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 7)) lo (p.mul 2)))) := by
+  unfold treeDiv2K
+  rw [testBit_putK hW, testBit_putK hW]
+
+/-- Joining nothing to nothing gives nothing, at any width. -/
+theorem lor_shift_zero {w : Nat} : (0 : Nat).lor ((0 : Nat).shiftLeft w) = 0 := by
+  have h0 : (0 : Nat).shiftLeft w = 0 <<< w := rfl
+  have hl : ∀ n : Nat, (0 : Nat).lor n = n := by
+    intro n
+    have h : (0 : Nat).lor n = 0 ||| n := rfl
+    rw [h, Nat.zero_or]
+  rw [hl, h0, Nat.zero_shiftLeft]
+
+/-- An empty tree holds nothing, one level at a time. -/
+theorem flat1_zero : flat1 zero1 = 0 := by
+  unfold flat1 zero1
+  exact lor_shift_zero
+
+/-- Four slices. -/
+theorem flat2_zero : flat2 zero2 = 0 := by
+  unfold flat2 zero2
+  rw [flat1_zero]
+  exact lor_shift_zero
+
+/-- Eight. -/
+theorem flat3_zero : flat3 zero3 = 0 := by
+  unfold flat3 zero3
+  rw [flat2_zero]
+  exact lor_shift_zero
+
+/-- Sixteen. -/
+theorem flat4_zero : flat4 zero4 = 0 := by
+  unfold flat4 zero4
+  rw [flat3_zero]
+  exact lor_shift_zero
+
+/-- Thirty-two. -/
+theorem flat5_zero : flat5 zero5 = 0 := by
+  unfold flat5 zero5
+  rw [flat4_zero]
+  exact lor_shift_zero
+
+/-- Sixty-four. -/
+theorem flat6_zero : flat6 zero6 = 0 := by
+  unfold flat6 zero6
+  rw [flat5_zero]
+  exact lor_shift_zero
+
+/-- The whole empty tree. -/
+theorem flat7_zero : flat7 zero7 = 0 := by
+  unfold flat7 zero7
+  rw [flat6_zero]
+  exact lor_shift_zero
+
 end PrimeCert.Sieve

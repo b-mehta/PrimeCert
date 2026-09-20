@@ -375,8 +375,26 @@ public abbrev Lvl7 := Lvl6 × Lvl6
 @[expose] public noncomputable def flat7 (t : Lvl7) : Nat :=
   (flat6 t.1).lor ((flat6 t.2).shiftLeft 4194304)
 
-/-- An empty tree. -/
-@[expose] public noncomputable def zero7 : Lvl7 :=
+/-- Two empty slices. Built level by level rather than as one nested literal, so that
+`flat7 zero7 = 0` is provable by seven one-line lemmas; a literal leaves projections that no
+rewrite reduces. Timing found no difference between the two forms. -/
+@[expose] public noncomputable def zero1 : Lvl1 := (0, 0)
+/-- Four. -/
+@[expose] public noncomputable def zero2 : Lvl2 := (zero1, zero1)
+/-- Eight. -/
+@[expose] public noncomputable def zero3 : Lvl3 := (zero2, zero2)
+/-- Sixteen. -/
+@[expose] public noncomputable def zero4 : Lvl4 := (zero3, zero3)
+/-- Thirty-two. -/
+@[expose] public noncomputable def zero5 : Lvl5 := (zero4, zero4)
+/-- Sixty-four, which spans the window. -/
+@[expose] public noncomputable def zero6 : Lvl6 := (zero5, zero5)
+
+/-- An empty tree of 128 leaves. -/
+@[expose] public noncomputable def zero7 : Lvl7 := (zero6, zero6)
+
+/-- The old nested literal, kept only so the two forms can be compared. -/
+@[expose] public noncomputable def zero7lit : Lvl7 :=
   ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
     (((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))))),
    ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
