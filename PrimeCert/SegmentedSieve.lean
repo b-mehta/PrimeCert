@@ -301,38 +301,38 @@ Every entry of a batch joins two bits into the state of the slice it lands in, a
 of thousands of entries to a batch against sixty-five slices. Rewriting `stripeSort` taught that
 what such a loop costs follows the width of the number being joined into rather than the number of
 bits set in it, and the slice width is the one dimension of this design that has never been swept.
-These definitions are `entryTallyK` through `stripeBatchK` with 32768-bit slices in place of
-65536-bit ones, so a batch has 128 of them rather than 64. Timing only, and no proofs: if it wins
-the proofs are the same ones with a different constant. -/
+Halving it to 32768 was measured and lost, 2.8 and 3.6 percent of kernel and 6.3 of peak, so these
+definitions now carry 131072-bit slices instead, 32 to a batch rather than 64. Timing only, and no
+proofs: if it wins the proofs are the same ones with a different constant. -/
 
-/-- `entryTallyK` with the tally starting above a 32768-bit slice. -/
+/-- `entryTallyK` with the tally starting above a 131072-bit slice. -/
 @[expose] public noncomputable def entryTallyS (len e : Nat) : Nat :=
-  Nat.add 32768 (Nat.add (e.shiftRight 3) (Nat.mul (e.land 7) len))
+  Nat.add 131072 (Nat.add (e.shiftRight 3) (Nat.mul (e.land 7) len))
 
-/-- `stripeEntryK` over 32768-bit slices, so a seed's slice is its top bits above 15. -/
+/-- `stripeEntryK` over 131072-bit slices, so a seed's slice is its top bits above 17. -/
 @[expose] public noncomputable def stripeEntryS (st c lo start k len e : Nat) : Nat :=
   (testBitK c (e.shiftRight 3)).rec st
-    ((Nat.beq ((entrySeedK lo start e).shiftRight 15) k).rec st
-      (st.lor ((Nat.shiftLeft 1 ((entrySeedK lo start e).land 32767)).lor
+    ((Nat.beq ((entrySeedK lo start e).shiftRight 17) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedK lo start e).land 131071)).lor
         (Nat.shiftLeft 1 (entryTallyS len e)))))
 
-/-- `stripeOutK` over 32768-bit slices. -/
+/-- `stripeOutK` over 131072-bit slices. -/
 @[expose] public noncomputable def stripeOutS (st c lo start Wm1 len e : Nat) : Nat :=
   (testBitK c (e.shiftRight 3)).rec st
     ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
       (st.lor (Nat.shiftLeft 1 (entryTallyS len e))))
 
-/-- The entries of one 32768-bit slice's list. -/
+/-- The entries of one 131072-bit slice's list. -/
 @[expose] public noncomputable def stripeSlotS (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
     stripeEntryS s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
 
-/-- The entries of the out-of-window list, over 32768-bit slices. -/
+/-- The entries of the out-of-window list, over 131072-bit slices. -/
 @[expose] public noncomputable def stripeOutSlotS (c lo start Wm1 len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
     stripeOutS s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
 
-/-- `stripeUpToK` over 32768-bit slices. -/
+/-- `stripeUpToK` over 131072-bit slices. -/
 @[expose] public noncomputable def stripeUpToS
     (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
   n.rec 0 fun k asm =>
@@ -341,8 +341,8 @@ the proofs are the same ones with a different constant. -/
     let st : Nat := (Nat.beq k np).rec
       (stripeSlotS c lo start k len slot cnt 0)
       (stripeOutSlotS c lo start Wm1 len slot cnt 0)
-    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 32768) 1)).shiftLeft (k.mul 32768))).lor
-      ((st.shiftRight 32768).shiftLeft W)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 131072) 1)).shiftLeft (k.mul 131072))).lor
+      ((st.shiftRight 131072).shiftLeft W)
 
 /-- The same assembled number as `stripeBatchK`, built from twice as many slices of half the
 width. -/
@@ -3083,10 +3083,10 @@ meta def buildMaskR (p M A B : Nat) : Nat :=
   let m := p * 2
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
-/-- `stripeSort` for 32768-bit slices: a seed's slice is its top bits above 15, its place within
-the slice the low 15, and a window of `W` positions holds `W / 32768` of them. -/
+/-- `stripeSort` for 131072-bit slices: a seed's slice is its top bits above 17, its place within
+the slice the low 17, and a window of `W` positions holds `W / 131072` of them. -/
 meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
-  let np := W / 32768
+  let np := W / 131072
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
   let mut slotAsm : Array Nat := Array.replicate np 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
@@ -3097,13 +3097,13 @@ meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Na
         let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
           else firstLoc (index (p * 7)) lo (p * 2)
         let X := base + (w >>> 1) * (p * 2)
-        let k := if X ≤ Wm1 then X >>> 15 else np
+        let k := if X ≤ Wm1 then X >>> 17 else np
         slots := slots.modify k (·.push (8 * i + w))
         if X ≤ Wm1 then
-          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 32767)))
+          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 131071)))
   let mut asm := 0
   for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 32768))
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 131072))
   let mut seen := 0
   for w in [0:nrec] do
     seen := seen ||| (c <<< (w * len))
@@ -3532,7 +3532,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
-          mkRawNatLit (if mode == 40 then W / 32768 else W / 65536)]
+          mkRawNatLit (if mode == 40 then W / 131072 else W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
