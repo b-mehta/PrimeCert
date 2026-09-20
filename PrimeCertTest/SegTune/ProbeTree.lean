@@ -175,4 +175,220 @@ theorem land_split_lit {k a m : Nat} (ha : a = 2 ^ m) (hb : (2 : Nat) ^ (m + 1) 
   generalize 2 ^ m * ((k / 2 ^ m) % 2) = C at hd ⊢
   lia
 
+/-- The mask split in the `land`/`shiftRight` form the definitions use, at any width. -/
+theorem land_split_at {k : Nat} (m a b : Nat) (ha : a = 2 ^ m) (hb : b = 2 * a) :
+    k.land (b - 1) = a * ((k.shiftRight m).land 1) + k.land (a - 1) := by
+  subst ha
+  subst hb
+  have hpow : 2 * 2 ^ m = 2 ^ (m + 1) := by
+    rw [Nat.pow_succ]
+    lia
+  have e1 : (k / 2 ^ m).land 1 = (k / 2 ^ m) % 2 := by
+    have h : (k / 2 ^ m).land 1 = (k / 2 ^ m).land (2 ^ 1 - 1) := rfl
+    have hp : (2 : Nat) ^ 1 = 2 := rfl
+    rw [h, land_mask_eq, hp]
+  rw [hpow, land_mask_eq, land_mask_eq, shiftRightK_eq, e1, ← hpow]
+  exact land_split_lit rfl hpow.symm
+
+/-- One bit is zero or one. -/
+theorem land1_lt {k : Nat} : k.land 1 < 2 := by
+  have h : k.land 1 = k % 2 := by
+    have hh : k.land 1 = k.land (2 ^ 1 - 1) := rfl
+    have h2 : (2 : Nat) ^ 1 = 2 := rfl
+    rw [hh, land_mask_eq, h2]
+  rw [h]
+  exact Nat.mod_lt _ (by lia)
+
+/-- A bit at or above a level's width lands in the upper half, and the guarded shift says so. -/
+theorem shift_key {j w x : Nat} :
+    (decide (j ≥ w) && decide (j - w = x)) = decide (j = w + x) := by
+  rcases Nat.lt_or_ge j w with h | h
+  · have ha : ¬ (j ≥ w) := by lia
+    have hbb : ¬ (j = w + x) := by lia
+    rw [decide_eq_false ha, Bool.false_and, decide_eq_false hbb]
+  · have hbb : (j - w = x) ↔ (j = w + x) := by
+      constructor <;> intro hh <;> lia
+    rw [decide_eq_true h, Bool.true_and]
+    exact decide_eq_decide.mpr hbb
+
+/-- Bit 2 splits the mask of three ones. -/
+theorem land7_split {k : Nat} : k.land 7 = 4 * ((k.shiftRight 2).land 1) + k.land 3 :=
+  land_split_at 2 4 8 rfl rfl
+
+/-- Bit 3. -/
+theorem land15_split {k : Nat} : k.land 15 = 8 * ((k.shiftRight 3).land 1) + k.land 7 :=
+  land_split_at 3 8 16 rfl rfl
+
+/-- Bit 4. -/
+theorem land31_split {k : Nat} : k.land 31 = 16 * ((k.shiftRight 4).land 1) + k.land 15 :=
+  land_split_at 4 16 32 rfl rfl
+
+/-- Bit 5. -/
+theorem land63_split {k : Nat} : k.land 63 = 32 * ((k.shiftRight 5).land 1) + k.land 31 :=
+  land_split_at 5 32 64 rfl rfl
+
+/-- Bit 6, the top of a 128-leaf tree. -/
+theorem land127_split {k : Nat} : k.land 127 = 64 * ((k.shiftRight 6).land 1) + k.land 63 :=
+  land_split_at 6 64 128 rfl rfl
+
+/-- The third level. -/
+theorem testBit_flat3_upd3 {t : Lvl3} {k b j : Nat} (hb : b < 65536) :
+    (flat3 (upd3 t k b)).testBit j
+      = ((flat3 t).testBit j || decide (j = (k.land 7) * 65536 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd3 flat3
+  cases hbit : Nat.beq ((k.shiftRight 2).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 2).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 7 = k.land 3 := by rw [land7_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat2_upd2 hb]
+    rw [h3]
+    cases (flat2 t.1).testBit j <;> cases decide (j = (k.land 3) * 65536 + b) <;>
+      cases (decide (j ≥ 262144) && (flat2 t.2).testBit (j - 262144)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 2).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 2)
+      lia
+    have h3 : k.land 7 = 4 + k.land 3 := by rw [land7_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat2_upd2 hb]
+    have hkey : (decide (j ≥ 262144) && decide (j - 262144 = (k.land 3) * 65536 + b))
+        = decide (j = (k.land 7) * 65536 + b) := by
+      rw [h3, shift_key]
+      have harith : 262144 + ((k.land 3) * 65536 + b) = (4 + k.land 3) * 65536 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (flat2 t.1).testBit j <;> cases decide (j ≥ 262144) <;>
+      cases (flat2 t.2).testBit (j - 262144) <;>
+      cases decide (j - 262144 = (k.land 3) * 65536 + b) <;> rfl
+
+/-- The fourth level. -/
+theorem testBit_flat4_upd4 {t : Lvl4} {k b j : Nat} (hb : b < 65536) :
+    (flat4 (upd4 t k b)).testBit j
+      = ((flat4 t).testBit j || decide (j = (k.land 15) * 65536 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd4 flat4
+  cases hbit : Nat.beq ((k.shiftRight 3).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 3).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 15 = k.land 7 := by rw [land15_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat3_upd3 hb]
+    rw [h3]
+    cases (flat3 t.1).testBit j <;> cases decide (j = (k.land 7) * 65536 + b) <;>
+      cases (decide (j ≥ 524288) && (flat3 t.2).testBit (j - 524288)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 3).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 3)
+      lia
+    have h3 : k.land 15 = 8 + k.land 7 := by rw [land15_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat3_upd3 hb]
+    have hkey : (decide (j ≥ 524288) && decide (j - 524288 = (k.land 7) * 65536 + b))
+        = decide (j = (k.land 15) * 65536 + b) := by
+      rw [h3, shift_key]
+      have harith : 524288 + ((k.land 7) * 65536 + b) = (8 + k.land 7) * 65536 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (flat3 t.1).testBit j <;> cases decide (j ≥ 524288) <;>
+      cases (flat3 t.2).testBit (j - 524288) <;>
+      cases decide (j - 524288 = (k.land 7) * 65536 + b) <;> rfl
+
+/-- The fifth level. -/
+theorem testBit_flat5_upd5 {t : Lvl5} {k b j : Nat} (hb : b < 65536) :
+    (flat5 (upd5 t k b)).testBit j
+      = ((flat5 t).testBit j || decide (j = (k.land 31) * 65536 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd5 flat5
+  cases hbit : Nat.beq ((k.shiftRight 4).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 4).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 31 = k.land 15 := by rw [land31_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat4_upd4 hb]
+    rw [h3]
+    cases (flat4 t.1).testBit j <;> cases decide (j = (k.land 15) * 65536 + b) <;>
+      cases (decide (j ≥ 1048576) && (flat4 t.2).testBit (j - 1048576)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 4).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 4)
+      lia
+    have h3 : k.land 31 = 16 + k.land 15 := by rw [land31_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat4_upd4 hb]
+    have hkey : (decide (j ≥ 1048576) && decide (j - 1048576 = (k.land 15) * 65536 + b))
+        = decide (j = (k.land 31) * 65536 + b) := by
+      rw [h3, shift_key]
+      have harith : 1048576 + ((k.land 15) * 65536 + b) = (16 + k.land 15) * 65536 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (flat4 t.1).testBit j <;> cases decide (j ≥ 1048576) <;>
+      cases (flat4 t.2).testBit (j - 1048576) <;>
+      cases decide (j - 1048576 = (k.land 15) * 65536 + b) <;> rfl
+
+/-- The sixth level, which spans the whole window. -/
+theorem testBit_flat6_upd6 {t : Lvl6} {k b j : Nat} (hb : b < 65536) :
+    (flat6 (upd6 t k b)).testBit j
+      = ((flat6 t).testBit j || decide (j = (k.land 63) * 65536 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd6 flat6
+  cases hbit : Nat.beq ((k.shiftRight 5).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 5).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 63 = k.land 31 := by rw [land63_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat5_upd5 hb]
+    rw [h3]
+    cases (flat5 t.1).testBit j <;> cases decide (j = (k.land 31) * 65536 + b) <;>
+      cases (decide (j ≥ 2097152) && (flat5 t.2).testBit (j - 2097152)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 5).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 5)
+      lia
+    have h3 : k.land 63 = 32 + k.land 31 := by rw [land63_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat5_upd5 hb]
+    have hkey : (decide (j ≥ 2097152) && decide (j - 2097152 = (k.land 31) * 65536 + b))
+        = decide (j = (k.land 63) * 65536 + b) := by
+      rw [h3, shift_key]
+      have harith : 2097152 + ((k.land 31) * 65536 + b) = (32 + k.land 31) * 65536 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (flat5 t.1).testBit j <;> cases decide (j ≥ 2097152) <;>
+      cases (flat5 t.2).testBit (j - 2097152) <;>
+      cases decide (j - 2097152 = (k.land 31) * 65536 + b) <;> rfl
+
+/-- The seventh level, which the window never reaches but the definitions still carry. -/
+theorem testBit_flat7_upd7 {t : Lvl7} {k b j : Nat} (hb : b < 65536) :
+    (flat7 (upd7 t k b)).testBit j
+      = ((flat7 t).testBit j || decide (j = (k.land 127) * 65536 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd7 flat7
+  cases hbit : Nat.beq ((k.shiftRight 6).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 6).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 127 = k.land 63 := by rw [land127_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat6_upd6 hb]
+    rw [h3]
+    cases (flat6 t.1).testBit j <;> cases decide (j = (k.land 63) * 65536 + b) <;>
+      cases (decide (j ≥ 4194304) && (flat6 t.2).testBit (j - 4194304)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 6).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 6)
+      lia
+    have h3 : k.land 127 = 64 + k.land 63 := by rw [land127_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_flat6_upd6 hb]
+    have hkey : (decide (j ≥ 4194304) && decide (j - 4194304 = (k.land 63) * 65536 + b))
+        = decide (j = (k.land 127) * 65536 + b) := by
+      rw [h3, shift_key]
+      have harith : 4194304 + ((k.land 63) * 65536 + b) = (64 + k.land 63) * 65536 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (flat6 t.1).testBit j <;> cases decide (j ≥ 4194304) <;>
+      cases (flat6 t.2).testBit (j - 4194304) <;>
+      cases decide (j - 4194304 = (k.land 63) * 65536 + b) <;> rfl
+
 end PrimeCert.Sieve
