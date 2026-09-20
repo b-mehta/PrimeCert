@@ -12,8 +12,13 @@ public meta import PrimeCert.SegmentedSieve
 
 Throughput saturates at two files, so three and four spend memory for nothing, and the memory they
 were spending is what ruled out a wider window. These two segments of 8388608 cover exactly the
-range four segments of 4194304 cover, so the pair answers whether the width that was unaffordable
-at four files is worth having at two. -/
+range four segments of 4194304 cover, so the pair asks whether the width that was unaffordable at
+four files is worth having at two.
+
+It is not, and the peak says so without needing the clock: the pair reached 14.08, 14.18 and
+14.06 GB against the 14 the runner has, and was killed each round. At equal range a wider window
+costs slightly more memory than four narrower ones, 14.1 against 13.4, so there was no headroom to
+buy. Kept for the record; do not wire this into a job, it cannot finish. -/
 
 namespace PrimeCert.SegTune.W8_Pair1
 
