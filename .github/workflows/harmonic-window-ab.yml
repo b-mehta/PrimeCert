@@ -17,6 +17,9 @@ jobs:
           - n: "gapmem"
             rounds: 2
             cases: "GapW0524 GapW1048 GapW2097 GapW4194"
+          - n: "gapgrow"
+            rounds: 1
+            cases: "MemW1048 MemW2097"
     steps:
       - uses: actions/checkout@v7
 
