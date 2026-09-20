@@ -23,23 +23,14 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Equal range, two double-width files against four of today's
+      - name: Two segments a runner, the configuration the sweep settled on
         run: |
+          lscpu | grep -E '^CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|Model name'
           free -g
           chmod +x PrimeCertTest/SegTune/pair.sh
           for r in 1 2 3; do
             echo "=== round $r"
-            if [ $((r % 2)) -eq 1 ]; then
-              echo "-- two files of 8388608"
-              PrimeCertTest/SegTune/pair.sh W8_Pair1 W8_Pair2
-              echo "-- four files of 4194304"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
-            else
-              echo "-- four files of 4194304"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
-              echo "-- two files of 8388608"
-              PrimeCertTest/SegTune/pair.sh W8_Pair1 W8_Pair2
-            fi
+            PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
           done
       - name: Fail the job if any case failed
         run: |
