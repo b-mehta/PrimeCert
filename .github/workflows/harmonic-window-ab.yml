@@ -17,9 +17,9 @@ jobs:
           - n: "widthboth"
             rounds: 2
             cases: "Wid1Ht12 Wid1S Wid2Ht12 Wid2S Wid4Ht12 Wid4S Wid8Ht12 Wid8S"
-          - n: "mem192"
+          - n: "one48"
             rounds: 1
-            cases: "Mem192"
+            cases: "Mem48"
     steps:
       - uses: actions/checkout@v7
 
@@ -114,4 +114,55 @@ jobs:
         with:
           name: window-ab-${{ matrix.n }}
           path: out-*.txt
+
+  four:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Build the four at once and sample what they hold together
+        run: |
+          set +e +o pipefail
+          start=$(date +%s)
+          lake build PrimeCertTest.HarmonicBench.ParAll > out-four.txt 2>&1 &
+          pid=$!
+          peak=0
+          while kill -0 "$pid" 2>/dev/null; do
+            r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+            n=$(pgrep -c -x lean || echo 0)
+            if [ "$r" -gt "$peak" ]; then peak=$r; fi
+            t=$(( $(date +%s) - start ))
+            if [ $(( t % 30 )) -eq 0 ]; then
+              echo "t=${t}s processes ${n} resident $(( r / 1024 )) MB peak $(( peak / 1024 )) MB"
+            fi
+            sleep 1
+          done
+          wait "$pid"
+          code=$?
+          echo "RESULT four | exit $code | wall $(( $(date +%s) - start ))s | peak ${peak} KB summed over the lean processes"
+          tail -12 out-four.txt
+          exit "$code"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-four
+          path: out-four.txt
 
