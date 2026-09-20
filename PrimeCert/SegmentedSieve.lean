@@ -4656,13 +4656,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
-      let batchName := mkPrivateName env (parent ++ Name.mkSimple
-        (if sorted then s!"sstep_{i}" else s!"step_{i}"))
       -- How many records a divisor of this batch needs, or none if the batch is not sorted.
       let nrec := if wm1 < 2 * value start then 2
         else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
         else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
         else 0
+      -- The widest band gets its own prefix in both modes, so that `run.sh` reports the band the
+      -- tree replaces apart from the two it leaves alone and a pair can be read band by band.
+      let batchName := mkPrivateName env (parent ++ Name.mkSimple
+        (if nrec == 2 then s!"wstep_{i}" else if sorted then s!"sstep_{i}" else s!"step_{i}"))
       let treeHere := tree && nrec == 2
       let t0 ← IO.monoNanosNow
       let sortRes := if nrec == 0 || treeHere then none
