@@ -3260,8 +3260,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 38 then throwError "run_segment_variant: mode {mode} is not 0 to 38"
-  if (mode == 28 || mode == 34 || mode == 37 || mode == 38) && len > 8192 then
+  if mode > 39 then throwError "run_segment_variant: mode {mode} is not 0 to 39"
+  if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39) && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
   let env ← getEnv
@@ -3274,7 +3274,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- reaching the chain, one declaration a batch fewer, which is an elaboration cost rather than a
   -- kernel one.
   let fold := mode == 38
-  let stripes := mode == 28 || fold
+  -- Mode 39 sorts every batch exactly as mode 28 does and then throws the sorted records away,
+  -- settling the batch the plain way instead. Its statements are mode 20's, so it is sound; what
+  -- it isolates is `stripeSort`'s own cost, the sorted shape's elaboration bill minus the emitted
+  -- records.
+  let sortOnly := mode == 39
+  let stripes := mode == 28 || fold || sortOnly
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -3677,8 +3682,18 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       let batchName := mkPrivateName env (parent ++ Name.mkSimple
         (if sorted then s!"sstep_{i}" else s!"step_{i}"))
+      if sortOnly then
+        -- The sort still runs and its answer still has to be looked at, so its cost is paid.
+        let nrec := if wm1 < 2 * value start then 2
+          else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
+          else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
+          else 0
+        if nrec != 0 then
+          let (_, _, _, expect) := stripeSort sVal lo wm1 start stepN W nrec
+          if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
       let batchProof :=
-        if wm1 < 2 * value start then
+        if sortOnly then Lean.reflBoolTrue
+        else if wm1 < 2 * value start then
           let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
           mkAppN (mkConst ``stripeStep)
             #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
