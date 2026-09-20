@@ -186,6 +186,52 @@ jobs:
             out-*.txt
             time-*.txt
 
+  floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the cases import
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve PrimeCert.GapFold
+          lake build PrimeCert.Sieve PrimeCert.SieveCorrect PrimeCert.SieveBase
+
+      - name: Take the maximum resident of a process that only imports
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for r in 1 2 3; do
+            for f in F0_Bare F1_Sieve F2_Correct F3_Base F4_Segmented F5_Harmonic F6_Gap F7_All; do
+              /usr/bin/time -f "RESULT floor | $f | round $r | maxrss %M KB | wall %e s" \
+                -o "time-floor-$f-$r.txt" \
+                lean -M 12000 "PrimeCertTest/Floor/$f.lean" > "out-floor-$f-$r.txt" 2>&1
+              code=$?
+              cat "time-floor-$f-$r.txt"
+              if [ "$code" -ne 0 ]; then tail -3 "out-floor-$f-$r.txt"; fi
+            done
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-floor
+          path: |
+            out-floor-*.txt
+            time-floor-*.txt
+
   stagger:
     runs-on: ubuntu-latest
     timeout-minutes: 90
