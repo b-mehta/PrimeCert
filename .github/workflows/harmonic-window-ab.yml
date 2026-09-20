@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "widthboth"
-            rounds: 2
-            cases: "Wid1Ht12 Wid1S Wid2Ht12 Wid2S Wid4Ht12 Wid4S Wid8Ht12 Wid8S"
-          - n: "one48"
+          - n: "gapmem"
             rounds: 1
-            cases: "Mem48"
+            cases: "GapW0524 GapW1048 GapW2097"
     steps:
       - uses: actions/checkout@v7
 
@@ -183,12 +180,12 @@ jobs:
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCert.SegmentedSieve
 
-      - name: Time each batch length with the kernel checking and with it switched off
+      - name: Time each batch length and each width with the kernel checking and without
         run: |
           set +e +o pipefail
           export LEAN_PATH=$(lake env printenv LEAN_PATH)
           for r in 1 2; do
-            for f in Len0768 Len1536 Len3072 Len6144; do
+            for f in Len0768 Len1536 Len3072 Len6144 GapW0262 GapW0524 GapW1048 GapW2097; do
               for mode in on off; do
                 flag=""
                 if [ "$mode" = "off" ]; then flag="-Ddebug.skipKernelTC=true"; fi
