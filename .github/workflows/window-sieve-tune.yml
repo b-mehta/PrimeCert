@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The segment pair over five rounds, after three did not settle it
+      - name: The seed offset's two forms again, for the second job it is owed
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 E2_Tree2 E2_Rec2
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 E1_Seed
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
