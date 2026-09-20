@@ -3505,7 +3505,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 43 then throwError "run_segment_variant: mode {mode} is not 0 to 43"
+  if mode > 44 then throwError "run_segment_variant: mode {mode} is not 0 to 44"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
@@ -3785,11 +3785,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 29 || mode == 30 then
+  if mode == 29 || mode == 30 || mode == 44 then
     -- Measurement only, over the band whose divisors have their double inside the segment and
     -- their quadruple past it, so each strikes at most twice per progression: mode 29 sorts those
     -- strikes into slices, four records to a divisor, and mode 30 marks the same batches as the
-    -- sieve does today. Mode 29 carries the tally and the clear a run would owe.
+    -- sieve does today. Mode 29 carries the tally and the clear a run would owe. Mode 44 has the
+    -- kernel walk the positions and dispatch four strikes a divisor into a tree instead.
     let mut first := 1
     while 4 * value first ≤ wm1 do
       first := first + 1
@@ -3810,6 +3811,26 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+        continue
+      if mode == 44 then
+        let nsl := W / 65536
+        let mut slotAsm : Array Nat := Array.replicate nsl 0
+        for j in [0:stepN] do
+          if (cVal >>> j) &&& 1 = 1 then
+            let p := value (start + j)
+            for w in [0:4] do
+              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+                else firstLoc (index (p * 7)) lo (p * 2)
+              let X := base + (w >>> 1) * (p * 2)
+              if X ≤ wm1 then
+                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        let mut asm := 0
+        for k in [0:nsl] do
+          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        let treeE := mkAppN (mkConst ``treeBatch4K)
+          #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
+        bitsL := bitsL - (asm &&& bitsL)
         continue
       let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
       let batchE := mkAppN (mkConst ``stripeBatchK)
