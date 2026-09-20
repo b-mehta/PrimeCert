@@ -23,6 +23,9 @@ jobs:
           - n: "lenmem"
             rounds: 2
             cases: "Len0768 Len1536 Len3072 Len6144"
+          - n: "summem"
+            rounds: 2
+            cases: "Sum0512 Sum1024 Sum2048 Sum4096 Sum8192"
     steps:
       - uses: actions/checkout@v7
 
