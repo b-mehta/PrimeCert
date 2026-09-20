@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Tree dispatch over the band where a divisor strikes three or four times
+      - name: The wide band, confirming the revert restores the measured best
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 E3_Tree4 B9_Sorted
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 E4_TreeW2 Q7_Sorted
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
