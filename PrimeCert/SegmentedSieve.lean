@@ -3639,8 +3639,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       if mode == 41 then
-        -- The kernel finds the places itself, so the emitter owes it only the answer.
-        let mut asm := 0
+        -- The kernel finds the places itself, so the emitter owes it only the answer. Built a
+        -- slice at a time, for the reason `stripeSort` is: joining a bit into a segment-wide
+        -- number touches the whole width every time.
+        let nsl := W / 65536
+        let mut slotAsm : Array Nat := Array.replicate nsl 0
         for i in [0:stepN] do
           if (cVal >>> i) &&& 1 = 1 then
             let p := value (start + i)
@@ -3648,7 +3651,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
               let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
                 else firstLoc (index (p * 7)) lo (p * 2)
               let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then asm := asm ||| (1 <<< X)
+              if X ≤ wm1 then
+                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        let mut asm := 0
+        for k in [0:nsl] do
+          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
         let treeE := mkAppN (mkConst ``treeBatchK)
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
