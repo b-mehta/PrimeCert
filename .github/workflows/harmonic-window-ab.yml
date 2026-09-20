@@ -186,6 +186,61 @@ jobs:
             out-*.txt
             time-*.txt
 
+  cores2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: One against four at the record's own per-file size, where peak nears the ceiling
+        run: |
+          set +e +o pipefail
+          run_arm() {
+            tgt=$1
+            tag=$2
+            segs=$3
+            start=$(date +%s)
+            lake build "PrimeCertTest.$tgt" > "out-c2-$tag.txt" 2>&1 &
+            pid=$!
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+              if [ "$r" -gt "$peak" ]; then peak=$r; fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            echo "RESULT cores2 | $tag | exit $code | wall $(( $(date +%s) - start ))s over ${segs} segments | summed peak ${peak} KB"
+            if [ "$code" -ne 0 ]; then tail -4 "out-c2-$tag.txt"; fi
+            rm -rf .lake/build/lib/lean/PrimeCertTest/WideA
+          }
+          for r in 1 2; do
+            run_arm WideA.Part00 "one-r$r" 12
+            run_arm WideA.All "four-r$r" 48
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-cores2
+          path: out-c2-*.txt
+
   hw:
     runs-on: ubuntu-latest
     timeout-minutes: 10
