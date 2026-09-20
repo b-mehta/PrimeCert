@@ -141,4 +141,38 @@ theorem testBit_flat2_upd2 {t : Lvl2} {k b j : Nat} (hb : b < 65536) :
       cases (flat1 t.2).testBit (j - 131072) <;>
       cases decide (j - 131072 = (k.land 1) * 65536 + b) <;> rfl
 
+/-- A mask of `n` ones is a remainder. -/
+theorem land_mask_eq {k n : Nat} : k.land (2 ^ n - 1) = k % 2 ^ n := by
+  have h : k.land (2 ^ n - 1) = k &&& (2 ^ n - 1) := rfl
+  rw [h, Nat.and_two_pow_sub_one_eq_mod]
+
+/-- A shift is a division. -/
+theorem shiftRightK_eq {k n : Nat} : k.shiftRight n = k / 2 ^ n := by
+  have h : k.shiftRight n = k >>> n := rfl
+  rw [h, Nat.shiftRight_eq_div_pow]
+
+/-- Bit `n` splits a mask, stated at each width the tree uses. `2 ^ n` as an opaque term makes the
+products nonlinear and `lia` cannot close it; with the widths written as literals it can. -/
+theorem land_split_lit {k a m : Nat} (ha : a = 2 ^ m) (hb : (2 : Nat) ^ (m + 1) = 2 * a) :
+    k % (2 * a) = a * ((k / a) % 2) + k % a := by
+  subst ha
+  have h1 : 2 ^ m * (k / 2 ^ m) + k % 2 ^ m = k := Nat.div_add_mod k (2 ^ m)
+  have h2 : 2 * (k / 2 ^ m / 2) + (k / 2 ^ m) % 2 = k / 2 ^ m := Nat.div_add_mod _ 2
+  have h3 : 2 * 2 ^ m * (k / (2 * 2 ^ m)) + k % (2 * 2 ^ m) = k := Nat.div_add_mod k _
+  have h4 : k / (2 * 2 ^ m) = k / 2 ^ m / 2 := by
+    rw [Nat.mul_comm]
+    exact (Nat.div_div_eq_div_mul k (2 ^ m) 2).symm
+  rw [h4] at h3
+  have hd : 2 ^ m * (k / 2 ^ m)
+      = 2 * 2 ^ m * (k / 2 ^ m / 2) + 2 ^ m * ((k / 2 ^ m) % 2) := by
+    have e : 2 * 2 ^ m * (k / 2 ^ m / 2) = 2 ^ m * (2 * (k / 2 ^ m / 2)) := by
+      rw [Nat.mul_comm 2 (2 ^ m), Nat.mul_assoc]
+    rw [e, ← Nat.mul_add, h2]
+  -- `lia` reads `2 ^ m * (k / 2 ^ m)` as a product of two unknowns; naming the three products
+  -- makes what is left linear in them.
+  generalize 2 ^ m * (k / 2 ^ m) = A at h1 hd
+  generalize 2 * 2 ^ m * (k / 2 ^ m / 2) = B at h3 hd
+  generalize 2 ^ m * ((k / 2 ^ m) % 2) = C at hd ⊢
+  lia
+
 end PrimeCert.Sieve
