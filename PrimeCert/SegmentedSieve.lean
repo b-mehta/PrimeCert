@@ -375,33 +375,16 @@ public abbrev Lvl7 := Lvl6 × Lvl6
 @[expose] public noncomputable def flat7 (t : Lvl7) : Nat :=
   (flat6 t.1).lor ((flat6 t.2).shiftLeft 4194304)
 
-/-- Two empty slices. `flat6` already spans 64 times 65536, which is the whole window, so `Lvl7`
-and `upd7` are one level more than the design needs: every strike has `s ≤ Wm1 < W`, so bit 6 of
-its leaf number is always zero and the upper half of a `Lvl7` never holds anything. They are kept
-only to price that level. -/
-@[expose] public noncomputable def zero1 : Lvl1 := (0, 0)
-/-- Four empty slices. -/
-@[expose] public noncomputable def zero2 : Lvl2 := (zero1, zero1)
-/-- Eight. -/
-@[expose] public noncomputable def zero3 : Lvl3 := (zero2, zero2)
-/-- Sixteen. -/
-@[expose] public noncomputable def zero4 : Lvl4 := (zero3, zero3)
-/-- Thirty-two. -/
-@[expose] public noncomputable def zero5 : Lvl5 := (zero4, zero4)
-/-- Sixty-four, which is the window. -/
-@[expose] public noncomputable def zero6 : Lvl6 := (zero5, zero5)
-
-/-- An empty tree of 128 leaves, one level deeper than the window needs. -/
-@[expose] public noncomputable def zero7 : Lvl7 := (zero6, zero6)
+/-- An empty tree. -/
+@[expose] public noncomputable def zero7 : Lvl7 :=
+  ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
+    (((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))))),
+   ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
+    (((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0))))))))))
 
 /-- Put one strike into the tree, or leave it alone where the strike passes the window's end. -/
 @[expose] public noncomputable def putK (t : Lvl7) (Wm1 s : Nat) : Lvl7 :=
   (Nat.blt Wm1 s).rec (upd7 t (s.shiftRight 16) (s.land 65535)) t
-
-/-- The same at the depth the window actually needs, so a strike pays six dispatches rather than
-seven and a batch one fewer join at the window's full width. -/
-@[expose] public noncomputable def put6K (t : Lvl6) (Wm1 s : Nat) : Lvl6 :=
-  (Nat.blt Wm1 s).rec (upd6 t (s.shiftRight 16) (s.land 65535)) t
 
 /-- Every strike of one divisor, its value and stride computed once and the eight strikes derived
 from them. -/
@@ -427,19 +410,19 @@ tree. -/
 /-- The two strikes of a divisor whose double already passes the window's end. Deriving eight and
 discarding six cost 4.9 percent of kernel over that band, so the count a band needs is a parameter
 of the design rather than a constant. -/
-@[expose] public noncomputable def treeDiv2K (t : Lvl6) (lo Wm1 p : Nat) : Lvl6 :=
+@[expose] public noncomputable def treeDiv2K (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
   let d : Nat := p.mul 2
-  put6K (put6K t Wm1 (firstLocK (indexK (p.mul 5)) lo d)) Wm1
+  putK (putK t Wm1 (firstLocK (indexK (p.mul 5)) lo d)) Wm1
     (firstLocK (indexK (p.mul 7)) lo d)
 
 /-- Walk the batch, two strikes to a divisor. -/
-@[expose] public noncomputable def treeFold2K (c lo Wm1 start len : Nat) : Lvl6 :=
-  len.rec zero6 fun i t =>
+@[expose] public noncomputable def treeFold2K (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
     (testBitK c i).rec t (treeDiv2K t lo Wm1 (valueK (start.add i)))
 
 /-- The assembled mask of a batch whose divisors strike at most twice. -/
 @[expose] public noncomputable def treeBatch2K (c lo Wm1 start len : Nat) : Nat :=
-  flat6 (treeFold2K c lo Wm1 start len)
+  flat7 (treeFold2K c lo Wm1 start len)
 
 /-- The four strikes of a divisor whose double fits the window and whose quadruple does not. -/
 @[expose] public noncomputable def treeDiv4K (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
