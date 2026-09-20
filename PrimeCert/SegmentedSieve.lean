@@ -3662,6 +3662,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     -- statement a batch contributes to the chain.
     let lhsK := mkSegLoopK sE loE wE initE 1 fuel
     proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsK]
+    -- The sorted shape costs more to elaborate than the shape it replaces, and subtracting two
+    -- runs did not split that between the sorting and the records. This times the sorting itself,
+    -- which answers it without a subtraction.
+    let mut sortNanos : Nat := 0
     while start ≤ fuel do
       let owed := fuel + 1 - start
       let stepN := Nat.min (if start < 700000 then batchLen start else step0) owed
@@ -3682,43 +3686,30 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       let batchName := mkPrivateName env (parent ++ Name.mkSimple
         (if sorted then s!"sstep_{i}" else s!"step_{i}"))
-      if sortOnly then
-        -- The sort still runs and its answer still has to be looked at, so its cost is paid.
-        let nrec := if wm1 < 2 * value start then 2
-          else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
-          else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
-          else 0
-        if nrec != 0 then
-          let (_, _, _, expect) := stripeSort sVal lo wm1 start stepN W nrec
-          if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
+      -- How many records a divisor of this batch needs, or none if the batch is not sorted.
+      let nrec := if wm1 < 2 * value start then 2
+        else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
+        else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
+        else 0
+      let t0 ← IO.monoNanosNow
+      let sortRes := if nrec == 0 then none
+        else some (stripeSort sVal lo wm1 start stepN W nrec)
+      -- Looking at the answer is what forces the sort, so the time below covers it.
+      if let some (_, _, _, expect) := sortRes then
+        if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
+      let t1 ← IO.monoNanosNow
+      sortNanos := sortNanos + (t1 - t0)
       let batchProof :=
         if sortOnly then Lean.reflBoolTrue
-        else if wm1 < 2 * value start then
-          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 2
-          mkAppN (mkConst ``stripeStep)
-            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
-              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue]
-        else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then
-          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 4
-          mkAppN (mkConst ``stripeStepBand)
-            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
-              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]
-        else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then
-          let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W 8
-          mkAppN (mkConst ``stripeStepBand8)
-            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536), bitsE,
-              mkRawNatLit expect, mkRawNatLit next, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-              Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]
-        else
-          Lean.reflBoolTrue
+        else match sortRes with
+        | none => Lean.reflBoolTrue
+        | some (ls, cs, slotW, expect) =>
+          let args := #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start,
+            mkRawNatLit stepN, mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
+            mkRawNatLit (W / 65536), bitsE, mkRawNatLit expect, mkRawNatLit next]
+          let refls := Array.replicate (if nrec == 2 then 8 else 10) Lean.reflBoolTrue
+          mkAppN (mkConst (if nrec == 2 then ``stripeStep
+            else if nrec == 4 then ``stripeStepBand else ``stripeStepBand8)) (args ++ refls)
       let batchRef ← if fold then pure batchProof else do
         addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) batchProof
         pure (mkConst batchName)
@@ -3742,6 +3733,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       bitsE := mkRawNatLit next
       start := start + stepN
       i := i + 1
+    logInfo m!"stripeSort total {sortNanos / 1000000} ms"
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }

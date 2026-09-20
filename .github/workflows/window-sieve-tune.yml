@@ -23,11 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Split the sorted shape's elaboration bill between the sort and the records
+      - name: Time the sort itself, which splits the bill without a subtraction
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-Ddebug.skipKernelTC=true PrimeCertTest/SegTune/run.sh 2 \
-            S9_Stripes G7_SortOnly S7_Sched
+          LEAN_FLAGS=-Ddebug.skipKernelTC=true PrimeCertTest/SegTune/run.sh 2 S9_Stripes S7_Sched
+          grep -h "stripeSort total" out-*.txt || true
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
