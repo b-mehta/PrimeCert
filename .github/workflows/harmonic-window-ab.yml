@@ -20,6 +20,9 @@ jobs:
           - n: "gapgrow"
             rounds: 1
             cases: "MemW1048 MemW2097"
+          - n: "lenmem"
+            rounds: 2
+            cases: "Len0768 Len1536 Len3072 Len6144"
     steps:
       - uses: actions/checkout@v7
 
