@@ -213,7 +213,7 @@ jobs:
           set +e +o pipefail
           export LEAN_PATH=$(lake env printenv LEAN_PATH)
           for r in 1 2 3; do
-            for f in F0_Bare F9_Elab F8_Meta F1_Sieve F2_Correct F3_Base F4_Segmented F5_Harmonic F6_Gap F7_All; do
+            for f in F0_Bare F9_Elab F10_Lean F8_Meta F1_Sieve F2_Correct F3_Base F4_Segmented F5_Harmonic F6_Gap F7_All; do
               /usr/bin/time -f "RESULT floor | $f | round $r | maxrss %M KB | wall %e s" \
                 -o "time-floor-$f-$r.txt" \
                 lean -M 12000 "PrimeCertTest/Floor/$f.lean" > "out-floor-$f-$r.txt" 2>&1
