@@ -162,6 +162,53 @@ jobs:
           name: window-ab-elab
           path: out-*.txt
 
+  len:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Time each batch length with the kernel checking and with it switched off
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for r in 1 2; do
+            for f in Len0768 Len1536 Len3072 Len6144; do
+              for mode in on off; do
+                flag=""
+                if [ "$mode" = "off" ]; then flag="-Ddebug.skipKernelTC=true"; fi
+                start=$(date +%s)
+                lean -M 10000 $flag "PrimeCertTest/HarmonicBench/$f.lean" \
+                  > "out-$f-$mode-$r.txt" 2>&1
+                code=$?
+                echo "RESULT len | $f | checking $mode | round $r | exit $code | wall $(( $(date +%s) - start ))s"
+                if [ "$code" -ne 0 ]; then tail -5 "out-$f-$mode-$r.txt"; fi
+              done
+            done
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-len
+          path: out-*.txt
+
   four:
     runs-on: ubuntu-latest
     timeout-minutes: 120
