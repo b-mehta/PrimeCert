@@ -17,6 +17,6 @@ namespace PrimeCert.SegTune.S9_Par5
 
 run_sieve 10000000
 
-run_segment_variant 28 100000050331649 4194304 3333332 16384 10000000
+run_segment_variant 28 100000050331649 4194304 3333332 8192 10000000
 
 end PrimeCert.SegTune.S9_Par5
