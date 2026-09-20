@@ -186,6 +186,63 @@ jobs:
             out-*.txt
             time-*.txt
 
+  halves:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the eight files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: One against four, for crossing off alone and for crossing off with summing
+        run: |
+          set +e +o pipefail
+          run_arm() {
+            tgt=$1
+            tag=$2
+            segs=$3
+            start=$(date +%s)
+            lake build "PrimeCertTest.HarmonicBench.$tgt" > "out-hv-$tag.txt" 2>&1 &
+            pid=$!
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+              if [ "$r" -gt "$peak" ]; then peak=$r; fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            echo "RESULT halves | $tag | exit $code | wall $(( $(date +%s) - start ))s over ${segs} segments | summed peak ${peak} KB"
+            if [ "$code" -ne 0 ]; then tail -4 "out-hv-$tag.txt"; fi
+            rm -rf .lake/build/lib/lean/PrimeCertTest/HarmonicBench
+          }
+          for r in 1 2; do
+            run_arm Split8_Sieve "sieve-one-r$r" 8
+            run_arm SplitSieveAll "sieve-four-r$r" 32
+            run_arm Split8_Full "full-one-r$r" 8
+            run_arm SplitFullAll "full-four-r$r" 32
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-halves
+          path: out-hv-*.txt
+
   cores2:
     runs-on: ubuntu-latest
     timeout-minutes: 120
