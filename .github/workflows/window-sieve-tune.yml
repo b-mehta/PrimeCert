@@ -23,21 +23,21 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Two window widths, four files at once, which is how the sieve runs
+      - name: What four cores actually return, one file against four
         run: |
           chmod +x PrimeCertTest/SegTune/pair.sh
           for r in 1 2 3; do
             echo "=== round $r"
             if [ $((r % 2)) -eq 1 ]; then
-              echo "-- wide 4194304"
+              echo "-- one file"
+              PrimeCertTest/SegTune/pair.sh S9_Par1
+              echo "-- four files"
               PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
-              echo "-- narrow 2097152"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1 S6_Nar2 S6_Nar3 S6_Nar4
             else
-              echo "-- narrow 2097152"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1 S6_Nar2 S6_Nar3 S6_Nar4
-              echo "-- wide 4194304"
+              echo "-- four files"
               PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
+              echo "-- one file"
+              PrimeCertTest/SegTune/pair.sh S9_Par1
             fi
           done
       - name: Fail the job if any case failed
