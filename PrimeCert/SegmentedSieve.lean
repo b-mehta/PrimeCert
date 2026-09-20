@@ -295,6 +295,118 @@ the repeated subterms on its own. -/
     (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToTK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
+/-! ### Dispatching strikes into a tree instead of sorting them into records
+
+The sorted design hands the kernel a list of records and has it place each one. This asks whether
+the kernel can find the places itself as cheaply: it walks the batch's positions as the unsorted
+path does, computes a divisor's value and stride once and derives all its strikes from them, and
+puts each strike into one of 64 leaves by dispatching on the six bits of the leaf number. There are
+no records, no sort, and no tally, so a batch's whole obligation is one equation against the
+assembled mask.
+
+Timing only and no proofs: the question is whether a `Prod`-valued accumulator through `Nat.rec`
+costs what the record fold costs, and nothing in this project has measured that. If it wins, the
+proofs are `testBit_treeFold` mirroring `testBit_segAccLoopSK_wide` plus one flatten lemma per
+level, and they retire the record and tally lemmas for this path. -/
+
+/-- A tree of 64 leaves, each a slice of the window. -/
+public abbrev Lvl1 := Nat × Nat
+/-- Two slices. -/
+public abbrev Lvl2 := Lvl1 × Lvl1
+/-- Four slices. -/
+public abbrev Lvl3 := Lvl2 × Lvl2
+/-- Eight slices. -/
+public abbrev Lvl4 := Lvl3 × Lvl3
+/-- Sixteen slices. -/
+public abbrev Lvl5 := Lvl4 × Lvl4
+/-- Thirty-two slices. -/
+public abbrev Lvl6 := Lvl5 × Lvl5
+/-- Sixty-four slices, one per 65536 bits of a 4194304-bit window. -/
+public abbrev Lvl7 := Lvl6 × Lvl6
+
+/-- Set bit `b` of the leaf `k` names, dispatching on the low bit of `k`. -/
+@[expose] public noncomputable def upd1 (t : Lvl1) (k b : Nat) : Lvl1 :=
+  (Nat.beq (k.land 1) 0).rec (t.1, t.2.lor (Nat.shiftLeft 1 b))
+    (t.1.lor (Nat.shiftLeft 1 b), t.2)
+
+/-- One level up: dispatch on bit 1 of `k`. -/
+@[expose] public noncomputable def upd2 (t : Lvl2) (k b : Nat) : Lvl2 :=
+  (Nat.beq ((k.shiftRight 1).land 1) 0).rec (t.1, upd1 t.2 k b) (upd1 t.1 k b, t.2)
+
+/-- Dispatch on bit 2 of `k`. -/
+@[expose] public noncomputable def upd3 (t : Lvl3) (k b : Nat) : Lvl3 :=
+  (Nat.beq ((k.shiftRight 2).land 1) 0).rec (t.1, upd2 t.2 k b) (upd2 t.1 k b, t.2)
+
+/-- Dispatch on bit 3 of `k`. -/
+@[expose] public noncomputable def upd4 (t : Lvl4) (k b : Nat) : Lvl4 :=
+  (Nat.beq ((k.shiftRight 3).land 1) 0).rec (t.1, upd3 t.2 k b) (upd3 t.1 k b, t.2)
+
+/-- Dispatch on bit 4 of `k`. -/
+@[expose] public noncomputable def upd5 (t : Lvl5) (k b : Nat) : Lvl5 :=
+  (Nat.beq ((k.shiftRight 4).land 1) 0).rec (t.1, upd4 t.2 k b) (upd4 t.1 k b, t.2)
+
+/-- Dispatch on bit 5 of `k`. -/
+@[expose] public noncomputable def upd6 (t : Lvl6) (k b : Nat) : Lvl6 :=
+  (Nat.beq ((k.shiftRight 5).land 1) 0).rec (t.1, upd5 t.2 k b) (upd5 t.1 k b, t.2)
+
+/-- Dispatch on bit 6 of `k`, the top of a 64-leaf tree. -/
+@[expose] public noncomputable def upd7 (t : Lvl7) (k b : Nat) : Lvl7 :=
+  (Nat.beq ((k.shiftRight 6).land 1) 0).rec (t.1, upd6 t.2 k b) (upd6 t.1 k b, t.2)
+
+/-- A leaf pair as one number, the second slice above the first. -/
+@[expose] public noncomputable def flat1 (t : Lvl1) : Nat :=
+  t.1.lor (t.2.shiftLeft 65536)
+/-- Two leaf pairs joined. -/
+@[expose] public noncomputable def flat2 (t : Lvl2) : Nat :=
+  (flat1 t.1).lor ((flat1 t.2).shiftLeft 131072)
+/-- Four joined. -/
+@[expose] public noncomputable def flat3 (t : Lvl3) : Nat :=
+  (flat2 t.1).lor ((flat2 t.2).shiftLeft 262144)
+/-- Eight joined. -/
+@[expose] public noncomputable def flat4 (t : Lvl4) : Nat :=
+  (flat3 t.1).lor ((flat3 t.2).shiftLeft 524288)
+/-- Sixteen joined. -/
+@[expose] public noncomputable def flat5 (t : Lvl5) : Nat :=
+  (flat4 t.1).lor ((flat4 t.2).shiftLeft 1048576)
+/-- Thirty-two joined. -/
+@[expose] public noncomputable def flat6 (t : Lvl6) : Nat :=
+  (flat5 t.1).lor ((flat5 t.2).shiftLeft 2097152)
+/-- The whole tree as the assembled mask. -/
+@[expose] public noncomputable def flat7 (t : Lvl7) : Nat :=
+  (flat6 t.1).lor ((flat6 t.2).shiftLeft 4194304)
+
+/-- An empty tree. -/
+@[expose] public noncomputable def zero7 : Lvl7 :=
+  ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
+    (((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))))),
+   ((((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0)))))),
+    (((((0, 0), (0, 0)), (((0, 0), (0, 0)))), ((((0, 0), (0, 0)), (((0, 0), (0, 0))))))))))
+
+/-- Put one strike into the tree, or leave it alone where the strike passes the window's end. -/
+@[expose] public noncomputable def putK (t : Lvl7) (Wm1 s : Nat) : Lvl7 :=
+  (Nat.blt Wm1 s).rec (upd7 t (s.shiftRight 16) (s.land 65535)) t
+
+/-- Every strike of one divisor, its value and stride computed once and the eight strikes derived
+from them. -/
+@[expose] public noncomputable def treeDivK (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
+  let d : Nat := p.mul 2
+  let A : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let B : Nat := firstLocK (indexK (p.mul 7)) lo d
+  putK (putK (putK (putK (putK (putK (putK (putK t Wm1 A) Wm1 B)
+    Wm1 (A.add d)) Wm1 (B.add d))
+    Wm1 (A.add (d.mul 2))) Wm1 (B.add (d.mul 2)))
+    Wm1 (A.add (d.mul 3))) Wm1 (B.add (d.mul 3))
+
+/-- Walk the batch's positions, putting every strike of every divisor the slice names into the
+tree. -/
+@[expose] public noncomputable def treeFoldK (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
+    (testBitK c i).rec t (treeDivK t lo Wm1 (valueK (start.add i)))
+
+/-- The batch's assembled mask, found by the kernel rather than handed to it. -/
+@[expose] public noncomputable def treeBatchK (c lo Wm1 start len : Nat) : Nat :=
+  flat7 (treeFoldK c lo Wm1 start len)
+
 /-! ### The same design at half the slice width
 
 Every entry of a batch joins two bits into the state of the slice it lands in, and there are tens
@@ -3360,7 +3472,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 40 then throwError "run_segment_variant: mode {mode} is not 0 to 40"
+  if mode > 41 then throwError "run_segment_variant: mode {mode} is not 0 to 41"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
@@ -3496,7 +3608,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 34 || mode == 35 || mode == 37 || mode == 40 then
+  if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -3524,6 +3636,27 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsL, mkRawNatLit start,
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsL := next
+        continue
+      if mode == 41 then
+        -- The kernel finds the places itself, so the emitter owes it only the answer.
+        let mut asm := 0
+        for i in [0:stepN] do
+          if (cVal >>> i) &&& 1 = 1 then
+            let p := value (start + i)
+            for w in [0:8] do
+              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+                else firstLoc (index (p * 7)) lo (p * 2)
+              let X := base + (w >>> 1) * (p * 2)
+              if X ≤ wm1 then asm := asm ||| (1 <<< X)
+        let treeE := mkAppN (mkConst ``treeBatchK)
+          #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
+        let next := bitsL - (asm &&& bitsL)
+        let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+        let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+          (mkApp2 (mkConst ``Nat.land) (mkRawNatLit asm) (mkRawNatLit bitsL))
+        addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
         continue
       let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
