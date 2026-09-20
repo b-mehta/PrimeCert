@@ -15,8 +15,8 @@ jobs:
       matrix:
         include:
           - n: "gapmem"
-            rounds: 1
-            cases: "GapW0524 GapW1048 GapW2097"
+            rounds: 2
+            cases: "GapW0524 GapW1048 GapW2097 GapW4194"
     steps:
       - uses: actions/checkout@v7
 
