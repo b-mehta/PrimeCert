@@ -23,22 +23,26 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: What four cores actually return, one file against four
+      - name: How many files a runner should carry, one to four
         run: |
+          lscpu | grep -E '^CPU\(s\)|Thread|Core|Socket|Model name'
           chmod +x PrimeCertTest/SegTune/pair.sh
           for r in 1 2 3; do
             echo "=== round $r"
             if [ $((r % 2)) -eq 1 ]; then
-              echo "-- one file"
-              PrimeCertTest/SegTune/pair.sh S9_Par1
-              echo "-- four files"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
+              order="1 2 3 4"
             else
-              echo "-- four files"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
-              echo "-- one file"
-              PrimeCertTest/SegTune/pair.sh S9_Par1
+              order="4 3 2 1"
             fi
+            for n in $order; do
+              echo "-- $n files"
+              case $n in
+                1) PrimeCertTest/SegTune/pair.sh S9_Par1 ;;
+                2) PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 ;;
+                3) PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 ;;
+                4) PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4 ;;
+              esac
+            done
           done
       - name: Fail the job if any case failed
         run: |
