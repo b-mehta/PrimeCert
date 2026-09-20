@@ -23,23 +23,22 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The same four-file speedup at a peak that leaves the runner room
+      - name: Equal range, two double-width files against four of today's
         run: |
-          lscpu | grep -E '^CPU\(s\)|Thread|Core|Socket|Model name'
           free -g
           chmod +x PrimeCertTest/SegTune/pair.sh
           for r in 1 2 3; do
             echo "=== round $r"
             if [ $((r % 2)) -eq 1 ]; then
-              echo "-- one narrow file"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1
-              echo "-- four narrow files"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1 S6_Nar2 S6_Nar3 S6_Nar4
+              echo "-- two files of 8388608"
+              PrimeCertTest/SegTune/pair.sh W8_Pair1 W8_Pair2
+              echo "-- four files of 4194304"
+              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
             else
-              echo "-- four narrow files"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1 S6_Nar2 S6_Nar3 S6_Nar4
-              echo "-- one narrow file"
-              PrimeCertTest/SegTune/pair.sh S6_Nar1
+              echo "-- four files of 4194304"
+              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2 S9_Par3 S9_Par4
+              echo "-- two files of 8388608"
+              PrimeCertTest/SegTune/pair.sh W8_Pair1 W8_Pair2
             fi
           done
       - name: Fail the job if any case failed
