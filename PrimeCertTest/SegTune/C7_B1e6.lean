@@ -17,7 +17,8 @@ with divisors to a million rather than ten million. -/
 
 namespace PrimeCert.SegTune.C7_B1e6
 
-run_sieve 1000000
+-- No `run_sieve` here: an imported module already registers a cache covering 5..1000000, and
+-- `run_sieve` refuses to build a second one over the same range.
 
 run_segment_variant 20 100000000000001 4194304 333333 1536 1000000
 
