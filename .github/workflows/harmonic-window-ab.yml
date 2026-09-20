@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - n: "widthboth"
-            rounds: 2
-            cases: "Wid1Ht12 Wid1S Wid2Ht12 Wid2S Wid4Ht12 Wid4S Wid8Ht12 Wid8S"
-          - n: "one48"
+          - n: "gapmem"
             rounds: 1
-            cases: "Mem48"
+            cases: "GapW0524 GapW1048 GapW2097"
     steps:
       - uses: actions/checkout@v7
 
@@ -160,6 +157,113 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: window-ab-elab
+          path: out-*.txt
+
+  common:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four cases depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Break a segment into kernel, addDecl and the rest, at both parameter sets
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          run_case() {
+            d=$1
+            f=$2
+            tag=$3
+            /usr/bin/time -f "TIME $tag user %U sys %S wall %e" -o "time-$tag.txt" \
+              lean -M 12000 -DElab.async=false \
+              -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
+              "PrimeCertTest/$d/$f.lean" > "out-$tag.txt" 2>&1
+            code=$?
+            cat "time-$tag.txt"
+            grep -oE '\[[A-Za-z_.]+\] \[[0-9.]+\]' "out-$tag.txt" \
+              | awk -v tag="$tag" '{c=$1; t=$2; gsub(/[][]/,"",c); gsub(/[][]/,"",t); s[c]+=t; n[c]++}
+                  END {for (c in s) printf "CATEGORY %s | %s | %.2f s over %d entries\n", tag, c, s[c], n[c]}' \
+              | sort -t'|' -k3 -gr | head -12
+            grep -oE "stripeSort total [0-9]+ ms" "out-$tag.txt" \
+              | awk -v tag="$tag" '{s+=$3; n++} END {printf "STRIPESORT %s | %d ms over %d calls\n", tag, s+0, n+0}'
+            echo "RESULT common | $tag | exit $code"
+            if [ "$code" -ne 0 ]; then tail -5 "out-$tag.txt"; fi
+          }
+          for r in 1 2; do
+            run_case SegTune S7_Mine "mine-sieve-r$r"
+            run_case HarmonicBench GapW1048 "mine-full-r$r"
+            run_case SegTune S7_Sched "theirs-sched-r$r"
+            run_case SegTune S9_Stripes "theirs-stripes-r$r"
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-common
+          path: |
+            out-*.txt
+            time-*.txt
+
+  len:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Time each batch length and each width with the kernel checking and without
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for r in 1 2; do
+            for f in Len0768 Len1536 Len3072 Len6144 GapW0262 GapW0524 GapW1048 GapW2097; do
+              for mode in on off; do
+                flag=""
+                if [ "$mode" = "off" ]; then flag="-Ddebug.skipKernelTC=true"; fi
+                start=$(date +%s)
+                lean -M 10000 $flag "PrimeCertTest/HarmonicBench/$f.lean" \
+                  > "out-$f-$mode-$r.txt" 2>&1
+                code=$?
+                echo "RESULT len | $f | checking $mode | round $r | exit $code | wall $(( $(date +%s) - start ))s"
+                if [ "$code" -ne 0 ]; then tail -5 "out-$f-$mode-$r.txt"; fi
+              done
+            done
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-len
           path: out-*.txt
 
   four:
