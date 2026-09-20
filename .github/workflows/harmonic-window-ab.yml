@@ -159,6 +159,62 @@ jobs:
           name: window-ab-elab
           path: out-*.txt
 
+  onefour:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the four files depend on
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve
+
+      - name: Time one file alone against four at once, on one runner
+        run: |
+          set +e +o pipefail
+          run_build() {
+            tgt=$1
+            tag=$2
+            segs=$3
+            start=$(date +%s)
+            lake build "PrimeCertTest.HarmonicBench.$tgt" > "out-of-$tag.txt" 2>&1 &
+            pid=$!
+            peak=0
+            while kill -0 "$pid" 2>/dev/null; do
+              r=$(ps -o rss= -C lean | awk '{s+=$1} END {print s+0}')
+              if [ "$r" -gt "$peak" ]; then peak=$r; fi
+              sleep 1
+            done
+            wait "$pid"
+            code=$?
+            w=$(( $(date +%s) - start ))
+            echo "RESULT onefour | $tag | exit $code | wall ${w}s over ${segs} segments | peak ${peak} KB"
+            if [ "$code" -ne 0 ]; then tail -5 "out-of-$tag.txt"; fi
+            rm -rf .lake/build/lib/lean/PrimeCertTest/HarmonicBench
+          }
+          for r in 1 2; do
+            run_build Q0 "one-r$r" 24
+            run_build QAll "four-r$r" 96
+          done
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-ab-onefour
+          path: out-of-*.txt
+
   common:
     runs-on: ubuntu-latest
     timeout-minutes: 90
