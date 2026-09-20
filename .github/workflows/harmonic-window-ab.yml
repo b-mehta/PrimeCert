@@ -189,7 +189,8 @@ jobs:
             f=$2
             tag=$3
             /usr/bin/time -f "TIME $tag user %U sys %S wall %e" -o "time-$tag.txt" \
-              lean -M 12000 -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
+              lean -M 12000 -DElab.async=false \
+              -Dtrace.profiler=true -Dtrace.profiler.threshold=0 \
               "PrimeCertTest/$d/$f.lean" > "out-$tag.txt" 2>&1
             code=$?
             cat "time-$tag.txt"
