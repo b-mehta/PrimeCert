@@ -3902,6 +3902,24 @@ meta def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
     c := c >>> 1
   return a
 
+/-- Twin of `treeBatch2K`: the mask a batch of the widest band assembles. Built one slice at a
+time and joined at the end, for the reason `stripeSort` is, since joining a bit straight into a
+segment-wide accumulator rebuilds the whole number per record. -/
+meta def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
+  let nsl := W / 65536
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  for j in [0:len] do
+    if (c >>> j) &&& 1 = 1 then
+      let p := value (start + j)
+      for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
+        if X ≤ Wm1 then
+          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+  let mut asm := 0
+  for k in [0:nsl] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  return asm
+
 /-- Twin of `segMarkRK`. -/
 meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
   let A := firstLoc (index (p * 5)) lo (p * 2)
@@ -4084,8 +4102,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 44 then throwError "run_segment_variant: mode {mode} is not 0 to 44"
-  if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40)
+  if mode > 45 then throwError "run_segment_variant: mode {mode} is not 0 to 45"
+  if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
+        || mode == 45)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -4104,7 +4123,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- it isolates is `stripeSort`'s own cost, the sorted shape's elaboration bill minus the emitted
   -- records.
   let sortOnly := mode == 39
-  let stripes := mode == 28 || fold || sortOnly
+  -- Mode 45 is mode 28 with the widest band routed through the tree: the kernel derives each
+  -- divisor's two strikes and dispatches them by the bits of the leaf number, so the batch owes
+  -- one equation against the assembled mask instead of a record list, a tally and a clear.
+  let tree := mode == 45
+  let stripes := mode == 28 || fold || sortOnly || tree
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -4593,8 +4616,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
         else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
         else 0
+      let treeHere := tree && nrec == 2
       let t0 ← IO.monoNanosNow
-      let sortRes := if nrec == 0 then none
+      let sortRes := if nrec == 0 || treeHere then none
         else some (stripeSort sVal lo wm1 start stepN W nrec)
       -- Looking at the answer is what forces the sort, so the time below covers it.
       if let some (_, _, _, expect) := sortRes then
@@ -4603,6 +4627,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       sortNanos := sortNanos + (t1 - t0)
       let batchProof :=
         if sortOnly then Lean.reflBoolTrue
+        else if treeHere then
+          let asm := treeAsm2 sVal lo wm1 start stepN W
+          mkAppN (mkConst ``treeStep2)
+            (#[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
+                bitsE, mkRawNatLit asm, mkRawNatLit next]
+              ++ Array.replicate 6 Lean.reflBoolTrue)
         else match sortRes with
         | none => Lean.reflBoolTrue
         | some (ls, cs, slotW, expect) =>
