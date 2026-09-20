@@ -407,6 +407,39 @@ tree. -/
 @[expose] public noncomputable def treeBatchK (c lo Wm1 start len : Nat) : Nat :=
   flat7 (treeFoldK c lo Wm1 start len)
 
+/-- The two strikes of a divisor whose double already passes the window's end. Deriving eight and
+discarding six cost 4.9 percent of kernel over that band, so the count a band needs is a parameter
+of the design rather than a constant. -/
+@[expose] public noncomputable def treeDiv2K (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
+  let d : Nat := p.mul 2
+  putK (putK t Wm1 (firstLocK (indexK (p.mul 5)) lo d)) Wm1
+    (firstLocK (indexK (p.mul 7)) lo d)
+
+/-- Walk the batch, two strikes to a divisor. -/
+@[expose] public noncomputable def treeFold2K (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
+    (testBitK c i).rec t (treeDiv2K t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of a batch whose divisors strike at most twice. -/
+@[expose] public noncomputable def treeBatch2K (c lo Wm1 start len : Nat) : Nat :=
+  flat7 (treeFold2K c lo Wm1 start len)
+
+/-- The four strikes of a divisor whose double fits the window and whose quadruple does not. -/
+@[expose] public noncomputable def treeDiv4K (t : Lvl7) (lo Wm1 p : Nat) : Lvl7 :=
+  let d : Nat := p.mul 2
+  let A : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let B : Nat := firstLocK (indexK (p.mul 7)) lo d
+  putK (putK (putK (putK t Wm1 A) Wm1 B) Wm1 (A.add d)) Wm1 (B.add d)
+
+/-- Walk the batch, four strikes to a divisor. -/
+@[expose] public noncomputable def treeFold4K (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
+    (testBitK c i).rec t (treeDiv4K t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of a batch whose divisors strike three or four times. -/
+@[expose] public noncomputable def treeBatch4K (c lo Wm1 start len : Nat) : Nat :=
+  flat7 (treeFold4K c lo Wm1 start len)
+
 /-! ### The same design at half the slice width
 
 Every entry of a batch joins two bits into the state of the slice it lands in, and there are tens
@@ -3472,7 +3505,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 42 then throwError "run_segment_variant: mode {mode} is not 0 to 42"
+  if mode > 43 then throwError "run_segment_variant: mode {mode} is not 0 to 43"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
@@ -3528,7 +3561,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 25 || mode == 26 || mode == 27 || mode == 42 then
+  if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -3552,14 +3585,17 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
         continue
-      if mode == 42 then
+      if mode == 42 || mode == 43 then
+        -- Mode 42 derives eight strikes a divisor and discards the six that pass the window's
+        -- end; mode 43 derives the two this band actually has.
+        let nrec := if mode == 43 then 2 else 8
         let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
         let nsl := W / 65536
         let mut slotAsm : Array Nat := Array.replicate nsl 0
         for j in [0:stepN] do
           if (cVal >>> j) &&& 1 = 1 then
             let p := value (start + j)
-            for w in [0:8] do
+            for w in [0:nrec] do
               let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
                 else firstLoc (index (p * 7)) lo (p * 2)
               let X := base + (w >>> 1) * (p * 2)
@@ -3569,7 +3605,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         for k in [0:nsl] do
           asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
         let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
-        let treeE := mkAppN (mkConst ``treeBatchK)
+        let treeE := mkAppN (mkConst (if mode == 43 then ``treeBatch2K else ``treeBatchK))
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
         bitsL := bitsL - (asm &&& bitsL)
