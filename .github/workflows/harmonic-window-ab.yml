@@ -171,6 +171,7 @@ jobs:
             run_case SegTune S7_Low "mine-low-r$r"
             run_case SegTune S7_Mine "mine-sieve-r$r"
             run_case SegTune S7_High "mine-high-r$r"
+            run_case SegTune S7_HighBig "mine-highbig-r$r"
             run_case SegTune S7_Max "mine-max-r$r"
             run_case HarmonicBench GapW1048 "mine-full-r$r"
             run_case SegTune S7_Sched "theirs-sched-r$r"
