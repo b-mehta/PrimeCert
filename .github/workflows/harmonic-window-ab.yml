@@ -136,12 +136,13 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
 
-      - name: Build what the five cases depend on
+      - name: Build what the six cases depend on
         run: |
           lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
           lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
           lake build PrimeCert.SegmentedSieve
           lake build PrimeCertTest.HarmonicBench.SieveHt12
+          lake build PrimeCertTest.HarmonicBench.SieveHt14
 
       - name: Break a segment into kernel, addDecl and the rest, at both parameter sets
         run: |
@@ -170,6 +171,7 @@ jobs:
             run_case SegTune S7_Low "mine-low-r$r"
             run_case SegTune S7_Mine "mine-sieve-r$r"
             run_case SegTune S7_High "mine-high-r$r"
+            run_case SegTune S7_Max "mine-max-r$r"
             run_case HarmonicBench GapW1048 "mine-full-r$r"
             run_case SegTune S7_Sched "theirs-sched-r$r"
           done
