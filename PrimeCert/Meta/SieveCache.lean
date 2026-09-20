@@ -5,7 +5,7 @@ Authors: Bhavik Mehta
 -/
 module
 
-public import Lean
+public import Lean.Elab.Command
 
 /-! # The registry of sieve caches
 
