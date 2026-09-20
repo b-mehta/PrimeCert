@@ -40,9 +40,11 @@ open Nat
 /-- A window of `W` live candidates: the low `W` bits set, i.e. `2^W - 1`. -/
 @[expose] public def initSegK (W : Nat) : Nat := Nat.sub (Nat.shiftLeft 1 W) 1
 
-/-- The least offset `j` with `lo + j` in the residue class of `A` modulo `m`. -/
+/-- The least offset `j` with `lo + j` in the residue class of `A` modulo `m`. Written against
+`lo % m` rather than `lo / m`, so that neither the quotient nor the product `m * (lo / m)` is
+formed. -/
 @[expose] public def firstLocK (A lo m : Nat) : Nat :=
-  Nat.mod (Nat.sub (Nat.add A (Nat.mul m (Nat.succ (Nat.div lo m)))) lo) m
+  Nat.mod (Nat.sub (Nat.add A m) (Nat.mod lo m)) m
 
 /-- Clear from the window `seg` every local offset holding a coprime-to-6 multiple of `p`. -/
 @[expose] public noncomputable def segMarkK (seg p lo Wm1 : Nat) : Nat :=
@@ -3416,7 +3418,7 @@ right one, and a local offset names the number you expect. -/
 
 /-- `firstLocK` in ordinary notation, for use in proofs. -/
 public theorem firstLocK_eq {A lo m : ℕ} :
-    firstLocK A lo m = (A + m * (lo / m + 1) - lo) % m := rfl
+    firstLocK A lo m = (A + m - lo % m) % m := rfl
 
 /-- The seed offset lies inside one period. -/
 public theorem firstLocK_lt {A lo m : ℕ} (hm : 0 < m) : firstLocK A lo m < m := by
@@ -3435,8 +3437,6 @@ public theorem firstLocK_spec {A lo m : ℕ} (hm : 0 < m) (hA : A ≤ lo) :
   have h4 : m * (x / m) + x % m = x := Nat.div_add_mod x m
   have hx : firstLocK A lo m = x % m := by
     rw [firstLocK_eq, hxdef]
-    congr 1
-    lia
   have h5 : x / m ≤ lo / m + 1 := by
     have hle : m * (x / m) ≤ m * (lo / m + 1) := by lia
     exact Nat.le_of_mul_le_mul_left hle hm
@@ -3756,7 +3756,7 @@ The kernel checks each batch equation, so a twin that disagreed would make `run_
 
 meta def initSeg (W : Nat) : Nat := (1 <<< W) - 1
 
-meta def firstLoc (A lo m : Nat) : Nat := (A + m * (lo / m + 1) - lo) % m
+meta def firstLoc (A lo m : Nat) : Nat := (A + m - lo % m) % m
 
 meta def segMark (seg p lo Wm1 : Nat) : Nat :=
   seg - (seg &&& buildMask p Wm1 (firstLoc (index (p * 5)) lo (p * 2))
