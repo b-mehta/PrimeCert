@@ -23,11 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The base sieve alone, everything else held
+      - name: Three base-held fuels in one job, the series to set against theirs
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
           LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 2 \
-            C7_Base1e7 C7_B1e6 C7_B31627
+            C7_B31627 C7_B1e5 C7_B1e6
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
