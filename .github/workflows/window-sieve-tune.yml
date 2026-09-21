@@ -23,15 +23,11 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Two segments a runner, the configuration the sweep settled on
+      - name: Where the time goes, cost against how many divisor positions are walked
         run: |
-          lscpu | grep -E '^CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|Model name'
-          free -g
-          chmod +x PrimeCertTest/SegTune/pair.sh
-          for r in 1 2 3; do
-            echo "=== round $r"
-            PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-          done
+          chmod +x PrimeCertTest/SegTune/run.sh
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 \
+            D1_Fuel3333332 D1_Fuel1666666 D1_Fuel833333 D1_Fuel333333
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
