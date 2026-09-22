@@ -459,6 +459,47 @@ first window and stepping them to the second. -/
   len.rec (zero7, zero7) fun i t =>
     (testBitK c i).rec t (treeDiv2PairK t lo Wm1 W (valueK (start.add i)))
 
+/-! The definitions below repeat the tree with leaves of 262144 bits rather than 65536, so sixteen
+leaves span the window where 128 did. `upd1` to `upd4` are unchanged, since a leaf's number and a
+strike's offset within it do not mention the leaf's width; only the flatten steps and the split of
+a strike into leaf and offset do. -/
+
+/-- Two leaves of 262144 bits. -/
+@[expose] public noncomputable def wflat1 (t : Lvl1) : Nat :=
+  Nat.lor t.1 (Nat.shiftLeft t.2 262144)
+
+/-- Four. -/
+@[expose] public noncomputable def wflat2 (t : Lvl2) : Nat :=
+  Nat.lor (wflat1 t.1) (Nat.shiftLeft (wflat1 t.2) 524288)
+
+/-- Eight. -/
+@[expose] public noncomputable def wflat3 (t : Lvl3) : Nat :=
+  Nat.lor (wflat2 t.1) (Nat.shiftLeft (wflat2 t.2) 1048576)
+
+/-- Sixteen, spanning a window of 4194304 bits. -/
+@[expose] public noncomputable def wflat4 (t : Lvl4) : Nat :=
+  Nat.lor (wflat3 t.1) (Nat.shiftLeft (wflat3 t.2) 2097152)
+
+/-- Put one strike into a sixteen-leaf tree, or leave it alone where the strike passes the
+window's end. -/
+@[expose] public noncomputable def wputK (t : Lvl4) (Wm1 s : Nat) : Lvl4 :=
+  (Nat.blt Wm1 s).rec (upd4 t (s.shiftRight 18) (s.land 262143)) t
+
+/-- The two strikes of a divisor whose double already passes the window's end. -/
+@[expose] public noncomputable def wtreeDiv2K (t : Lvl4) (lo Wm1 p : Nat) : Lvl4 :=
+  let d : Nat := p.mul 2
+  wputK (wputK t Wm1 (firstLocK (indexK (p.mul 5)) lo d)) Wm1
+    (firstLocK (indexK (p.mul 7)) lo d)
+
+/-- Walk the batch, two strikes to a divisor. -/
+@[expose] public noncomputable def wtreeFold2K (c lo Wm1 start len : Nat) : Lvl4 :=
+  len.rec zero4 fun i t =>
+    (testBitK c i).rec t (wtreeDiv2K t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of a batch, through leaves of 262144 bits. -/
+@[expose] public noncomputable def wtreeBatch2K (c lo Wm1 start len : Nat) : Nat :=
+  wflat4 (wtreeFold2K c lo Wm1 start len)
+
 /-- Four consecutive windows' trees. -/
 @[expose] public noncomputable def Quad7 : Type := Pair7 × Pair7
 
@@ -4183,7 +4224,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 48 then throwError "run_segment_variant: mode {mode} is not 0 to 48"
+  if mode > 49 then throwError "run_segment_variant: mode {mode} is not 0 to 49"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4245,7 +4286,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
   if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46
-      || mode == 47 || mode == 48 then
+      || mode == 47 || mode == 48 || mode == 49 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -4268,6 +4309,26 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+        continue
+      if mode == 49 then
+        -- The same batch assembled through leaves of 65536 bits and of 262144.
+        let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+        let asm := treeAsm2 sVal lo wm1 start stepN W
+        let args := #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
+        let emitNarrow := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) args) (mkRawNatLit asm))
+            Lean.reflBoolTrue
+        let emitWide := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``wtreeBatch2K) args) (mkRawNatLit asm))
+            Lean.reflBoolTrue
+        if i % 2 == 0 then
+          emitNarrow
+          emitWide
+        else
+          emitWide
+          emitNarrow
         continue
       if mode == 48 then
         -- Four consecutive windows, struck by four walks of the batch and by one.
