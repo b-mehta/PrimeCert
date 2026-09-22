@@ -500,6 +500,41 @@ window's end. -/
 @[expose] public noncomputable def wtreeBatch2K (c lo Wm1 start len : Nat) : Nat :=
   wflat4 (wtreeFold2K c lo Wm1 start len)
 
+/-- The four strikes of a divisor whose double fits the window and whose quadruple does not. -/
+@[expose] public noncomputable def wtreeDiv4K (t : Lvl4) (lo Wm1 p : Nat) : Lvl4 :=
+  let d : Nat := p.mul 2
+  let A : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let B : Nat := firstLocK (indexK (p.mul 7)) lo d
+  wputK (wputK (wputK (wputK t Wm1 A) Wm1 B) Wm1 (A.add d)) Wm1 (B.add d)
+
+/-- Walk the batch, four strikes to a divisor. -/
+@[expose] public noncomputable def wtreeFold4K (c lo Wm1 start len : Nat) : Lvl4 :=
+  len.rec zero4 fun i t =>
+    (testBitK c i).rec t (wtreeDiv4K t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of a four-strike batch, through leaves of 262144 bits. -/
+@[expose] public noncomputable def wtreeBatch4K (c lo Wm1 start len : Nat) : Nat :=
+  wflat4 (wtreeFold4K c lo Wm1 start len)
+
+/-- The eight strikes of a divisor whose quadruple fits the window and whose octuple does not. -/
+@[expose] public noncomputable def wtreeDivK (t : Lvl4) (lo Wm1 p : Nat) : Lvl4 :=
+  let d : Nat := p.mul 2
+  let A : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let B : Nat := firstLocK (indexK (p.mul 7)) lo d
+  wputK (wputK (wputK (wputK (wputK (wputK (wputK (wputK t Wm1 A) Wm1 B)
+    Wm1 (A.add d)) Wm1 (B.add d))
+    Wm1 (A.add (d.mul 2))) Wm1 (B.add (d.mul 2)))
+    Wm1 (A.add (d.mul 3))) Wm1 (B.add (d.mul 3))
+
+/-- Walk the batch, eight strikes to a divisor. -/
+@[expose] public noncomputable def wtreeFoldK (c lo Wm1 start len : Nat) : Lvl4 :=
+  len.rec zero4 fun i t =>
+    (testBitK c i).rec t (wtreeDivK t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of an eight-strike batch, through leaves of 262144 bits. -/
+@[expose] public noncomputable def wtreeBatchK (c lo Wm1 start len : Nat) : Nat :=
+  wflat4 (wtreeFoldK c lo Wm1 start len)
+
 /-! The same again with leaves of 1048576 bits, four of them spanning the window. -/
 
 /-- Two leaves of 1048576 bits. -/
@@ -4072,6 +4107,27 @@ meta def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
   return asm
 
+/-- Twin of `treeBatch4K` and `treeBatchK`: the mask a batch assembles when each divisor places
+`nrec` strikes. Built one 65536-bit slice at a time and joined at the end. -/
+meta def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
+  let nsl := W / 65536
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  for j in [0:len] do
+    if (c >>> j) &&& 1 = 1 then
+      let p := value (start + j)
+      let d := p * 2
+      for w in [0:nrec] do
+        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo d
+          else firstLoc (index (p * 7)) lo d
+        let X := base + (w >>> 1) * d
+        if X ≤ Wm1 then
+          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+  let mut asm := 0
+  for k in [0:nsl] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  return asm
+
 /-- Twin of `segMarkRK`. -/
 meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
   let A := firstLoc (index (p * 5)) lo (p * 2)
@@ -4254,7 +4310,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 50 then throwError "run_segment_variant: mode {mode} is not 0 to 50"
+  if mode > 52 then throwError "run_segment_variant: mode {mode} is not 0 to 52"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4314,6 +4370,46 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
+    return
+  if mode == 51 || mode == 52 then
+    -- Measurement only, over one of the two middle bands: mode 51 the divisors striking at most
+    -- four times, mode 52 those striking at most eight. Each batch is settled by the sorted
+    -- records the run uses today and by a tree with leaves of 262144 bits, alternating which goes
+    -- first. `run.sh` reports the records under `batch lemmas` and the tree under `sorted batch
+    -- lemmas`.
+    let nrec := if mode == 51 then 4 else 8
+    let mut first := 1
+    while nrec * value first ≤ wm1 do
+      first := first + 1
+    let mut last := first
+    while (nrec / 2) * value (last + 1) ≤ wm1 do
+      last := last + 1
+    let mut i := 0
+    let mut start := first
+    while start + step0 ≤ last do
+      let stepN := step0
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let asm := treeAsmN sVal lo wm1 start stepN W nrec
+      let (ls, cs, slotW, expect) := stripeSort sVal lo wm1 start stepN W nrec
+      let emitRecords := do
+        addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+          (mkSegBeqTrue (mkAppN (mkConst ``stripeBatchK)
+            #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)])
+            (mkRawNatLit expect)) Lean.reflBoolTrue
+      let emitTree := do
+        addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
+          (mkSegBeqTrue (mkAppN (mkConst (if mode == 51 then ``wtreeBatch4K else ``wtreeBatchK))
+            #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN])
+            (mkRawNatLit asm)) Lean.reflBoolTrue
+      if i % 2 == 0 then
+        emitRecords
+        emitTree
+      else
+        emitTree
+        emitRecords
+      start := start + stepN
+      i := i + 1
     return
   if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46
       || mode == 47 || mode == 48 || mode == 49 || mode == 50 then
