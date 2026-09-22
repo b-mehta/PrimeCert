@@ -437,6 +437,36 @@ of the design rather than a constant. -/
 @[expose] public noncomputable def treeBatch2K (c lo Wm1 start len : Nat) : Nat :=
   flat7 (treeFold2K c lo Wm1 start len)
 
+/-- Two consecutive windows' trees. -/
+@[expose] public noncomputable def Pair7 : Type := Lvl7 × Lvl7
+
+/-- The seed offset in the next window, from the offset in this one. Correct where the stride `m`
+is at least the window width `W`, which holds for every divisor with `Wm1 < 2 * p`. -/
+@[expose] public def stepLocK (x W m : Nat) : Nat :=
+  (Nat.blt x W).rec (Nat.sub x W) (Nat.sub (Nat.add x m) W)
+
+/-- One divisor's two strikes in each of two consecutive windows, deriving the offsets for the
+first window and stepping them to the second. -/
+@[expose] public noncomputable def treeDiv2PairK (t : Pair7) (lo Wm1 W p : Nat) : Pair7 :=
+  let d : Nat := p.mul 2
+  let a : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let b : Nat := firstLocK (indexK (p.mul 7)) lo d
+  (putK (putK t.1 Wm1 a) Wm1 b,
+    putK (putK t.2 Wm1 (stepLocK a W d)) Wm1 (stepLocK b W d))
+
+/-- Walk a batch of divisor positions once, striking both windows. -/
+@[expose] public noncomputable def treeFold2PairK (c lo Wm1 W start len : Nat) : Pair7 :=
+  len.rec (zero7, zero7) fun i t =>
+    (testBitK c i).rec t (treeDiv2PairK t lo Wm1 W (valueK (start.add i)))
+
+/-- The first window's assembled mask from one walk of the batch. -/
+@[expose] public noncomputable def treeBatch2PairAK (c lo Wm1 W start len : Nat) : Nat :=
+  flat7 (treeFold2PairK c lo Wm1 W start len).1
+
+/-- The second window's assembled mask from the same walk. -/
+@[expose] public noncomputable def treeBatch2PairBK (c lo Wm1 W start len : Nat) : Nat :=
+  flat7 (treeFold2PairK c lo Wm1 W start len).2
+
 /-! The four definitions below exist only so that the seed offset's two forms can be timed against
 each other inside one file, under a real batch. They carry no proofs: mode 46 settles both by
 `reflBoolTrue` and reports them apart. -/
@@ -4125,7 +4155,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 46 then throwError "run_segment_variant: mode {mode} is not 0 to 46"
+  if mode > 47 then throwError "run_segment_variant: mode {mode} is not 0 to 47"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4186,7 +4216,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
-  if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46 then
+  if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46
+      || mode == 47 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -4209,6 +4240,37 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+        continue
+      if mode == 47 then
+        -- Two consecutive windows, struck by two walks of the batch and by one. `run.sh` reports
+        -- `step_` and `sstep_` apart, so the two shapes land in separate columns.
+        let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+        let asmA := treeAsm2 sVal lo wm1 start stepN W
+        let asmB := treeAsm2 sVal (lo + W) wm1 start stepN W
+        let cE := mkRawNatLit cVal
+        let loBE := mkRawNatLit (lo + W)
+        let sE' := mkRawNatLit start
+        let lE := mkRawNatLit stepN
+        let emitTwo := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}a"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) #[cE, loE, wE, sE', lE])
+              (mkRawNatLit asmA)) Lean.reflBoolTrue
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}b"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) #[cE, loBE, wE, sE', lE])
+              (mkRawNatLit asmB)) Lean.reflBoolTrue
+        let emitOne := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}a"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2PairAK)
+              #[cE, loE, wE, mkRawNatLit W, sE', lE]) (mkRawNatLit asmA)) Lean.reflBoolTrue
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}b"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2PairBK)
+              #[cE, loE, wE, mkRawNatLit W, sE', lE]) (mkRawNatLit asmB)) Lean.reflBoolTrue
+        if i % 2 == 0 then
+          emitTwo
+          emitOne
+        else
+          emitOne
+          emitTwo
         continue
       if mode == 46 then
         -- The seed offset's two forms over the same batch, the old one first and the new one
