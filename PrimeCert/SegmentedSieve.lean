@@ -459,6 +459,36 @@ first window and stepping them to the second. -/
   len.rec (zero7, zero7) fun i t =>
     (testBitK c i).rec t (treeDiv2PairK t lo Wm1 W (valueK (start.add i)))
 
+/-- Four consecutive windows' trees. -/
+@[expose] public noncomputable def Quad7 : Type := Pair7 × Pair7
+
+/-- One divisor's two strikes in each of four consecutive windows, deriving the offsets for the
+first window and stepping them three times. -/
+@[expose] public noncomputable def treeDiv2QuadK (t : Quad7) (lo Wm1 W p : Nat) : Quad7 :=
+  let d : Nat := p.mul 2
+  let a0 : Nat := firstLocK (indexK (p.mul 5)) lo d
+  let b0 : Nat := firstLocK (indexK (p.mul 7)) lo d
+  let a1 : Nat := stepLocK a0 W d
+  let b1 : Nat := stepLocK b0 W d
+  let a2 : Nat := stepLocK a1 W d
+  let b2 : Nat := stepLocK b1 W d
+  ((putK (putK t.1.1 Wm1 a0) Wm1 b0, putK (putK t.1.2 Wm1 a1) Wm1 b1),
+    (putK (putK t.2.1 Wm1 a2) Wm1 b2,
+      putK (putK t.2.2 Wm1 (stepLocK a2 W d)) Wm1 (stepLocK b2 W d)))
+
+/-- Walk a batch of divisor positions once, striking four windows. -/
+@[expose] public noncomputable def treeFold2QuadK (c lo Wm1 W start len : Nat) : Quad7 :=
+  len.rec ((zero7, zero7), (zero7, zero7)) fun i t =>
+    (testBitK c i).rec t (treeDiv2QuadK t lo Wm1 W (valueK (start.add i)))
+
+/-- All four windows' assembled masks from one walk, as one number, window `j` occupying bits
+`j * W` to `j * W + W - 1`. One equation settles all four. -/
+@[expose] public noncomputable def treeBatchQuad2K (c lo Wm1 W start len : Nat) : Nat :=
+  let t : Quad7 := treeFold2QuadK c lo Wm1 W start len
+  Nat.lor (Nat.lor (flat7 t.1.1) (Nat.shiftLeft (flat7 t.1.2) W))
+    (Nat.lor (Nat.shiftLeft (flat7 t.2.1) (W.mul 2))
+      (Nat.shiftLeft (flat7 t.2.2) (W.mul 3)))
+
 /-- Both windows' assembled masks from one walk of the batch, as one number: the first window in
 bits `0` to `W - 1` and the second in bits `W` upwards. One equation settles both. -/
 @[expose] public noncomputable def treeBatchPair2K (c lo Wm1 W start len : Nat) : Nat :=
@@ -4153,7 +4183,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 47 then throwError "run_segment_variant: mode {mode} is not 0 to 47"
+  if mode > 48 then throwError "run_segment_variant: mode {mode} is not 0 to 48"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4215,7 +4245,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
   if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46
-      || mode == 47 then
+      || mode == 47 || mode == 48 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -4238,6 +4268,31 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
+        continue
+      if mode == 48 then
+        -- Four consecutive windows, struck by four walks of the batch and by one.
+        let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+        let cE := mkRawNatLit cVal
+        let sE' := mkRawNatLit start
+        let lE := mkRawNatLit stepN
+        let asms := (List.range 4).map fun j => treeAsm2 sVal (lo + j * W) wm1 start stepN W
+        let emitFour := do
+          for j in [0:4] do
+            addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}_{j}"))
+              (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K)
+                #[cE, mkRawNatLit (lo + j * W), wE, sE', lE])
+                (mkRawNatLit (asms[j]!))) Lean.reflBoolTrue
+        let joined := (List.range 4).foldl (fun acc j => acc ||| (asms[j]! <<< (j * W))) 0
+        let emitOne := do
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatchQuad2K)
+              #[cE, loE, wE, mkRawNatLit W, sE', lE]) (mkRawNatLit joined)) Lean.reflBoolTrue
+        if i % 2 == 0 then
+          emitFour
+          emitOne
+        else
+          emitOne
+          emitFour
         continue
       if mode == 47 then
         -- Two consecutive windows, struck by two walks of the batch and by one. `run.sh` reports
