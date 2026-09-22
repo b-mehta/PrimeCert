@@ -459,13 +459,11 @@ first window and stepping them to the second. -/
   len.rec (zero7, zero7) fun i t =>
     (testBitK c i).rec t (treeDiv2PairK t lo Wm1 W (valueK (start.add i)))
 
-/-- The first window's assembled mask from one walk of the batch. -/
-@[expose] public noncomputable def treeBatch2PairAK (c lo Wm1 W start len : Nat) : Nat :=
-  flat7 (treeFold2PairK c lo Wm1 W start len).1
-
-/-- The second window's assembled mask from the same walk. -/
-@[expose] public noncomputable def treeBatch2PairBK (c lo Wm1 W start len : Nat) : Nat :=
-  flat7 (treeFold2PairK c lo Wm1 W start len).2
+/-- Both windows' assembled masks from one walk of the batch, as one number: the first window in
+bits `0` to `W - 1` and the second in bits `W` upwards. One equation settles both. -/
+@[expose] public noncomputable def treeBatchPair2K (c lo Wm1 W start len : Nat) : Nat :=
+  let t : Pair7 := treeFold2PairK c lo Wm1 W start len
+  Nat.lor (flat7 t.1) (Nat.shiftLeft (flat7 t.2) W)
 
 /-! The four definitions below exist only so that the seed offset's two forms can be timed against
 each other inside one file, under a real batch. They carry no proofs: mode 46 settles both by
@@ -4259,12 +4257,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) #[cE, loBE, wE, sE', lE])
               (mkRawNatLit asmB)) Lean.reflBoolTrue
         let emitOne := do
-          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}a"))
-            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2PairAK)
-              #[cE, loE, wE, mkRawNatLit W, sE', lE]) (mkRawNatLit asmA)) Lean.reflBoolTrue
-          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}b"))
-            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2PairBK)
-              #[cE, loE, wE, mkRawNatLit W, sE', lE]) (mkRawNatLit asmB)) Lean.reflBoolTrue
+          addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
+            (mkSegBeqTrue (mkAppN (mkConst ``treeBatchPair2K)
+              #[cE, loE, wE, mkRawNatLit W, sE', lE])
+              (mkRawNatLit (asmA ||| (asmB <<< W)))) Lean.reflBoolTrue
         if i % 2 == 0 then
           emitTwo
           emitOne
