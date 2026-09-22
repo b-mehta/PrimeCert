@@ -5621,7 +5621,6 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let owed := fuel + 1 - start
       let stepN := Nat.min (if start < 700000 then batchLen start else step0) owed
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
-      let next := segLoopC sVal lo wm1 nb bits start stepN
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let cE := mkRawNatLit cVal
       let sorted := wm1 < 2 * value start
@@ -5648,6 +5647,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let t0 ← IO.monoNanosNow
       let sortRes := if nrec == 0 || treeHere then none
         else some (stripeSort sVal lo wm1 start stepN W nrec)
+      let asmRes := if treeHere then some (treeAsmN sVal lo wm1 start stepN W nrec) else none
+      -- The window after this batch is the window with the batch's mask cleared from it, so a
+      -- batch that has already assembled its mask needs no second marking pass to find it. Only
+      -- an unsorted batch, which assembles nothing, still runs the twin.
+      let next := match sortRes, asmRes with
+        | some (_, _, _, expect), _ => bits - (expect &&& bits)
+        | _, some asm => bits - (asm &&& bits)
+        | _, _ => segLoopC sVal lo wm1 nb bits start stepN
       -- Looking at the answer is what forces the sort, so the time below covers it.
       if let some (_, _, _, expect) := sortRes then
         if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
@@ -5656,7 +5663,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchProof :=
         if sortOnly then Lean.reflBoolTrue
         else if treeHere then
-          let asm := treeAsmN sVal lo wm1 start stepN W nrec
+          let asm := asmRes.getD 0
           let args := #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start,
             mkRawNatLit stepN, bitsE, mkRawNatLit asm, mkRawNatLit next]
           if nrec == 2 then
