@@ -3598,6 +3598,338 @@ public theorem treeStep2 {c lo Wm1 n W start len seg lit next : Nat}
   rw [segLoopSCK_eq_tree2 hseg hW' (wide_of_blt hwide), hb, ldiff_eq_sub]
   exact Nat.eq_of_beq_eq_true hclear
 
+/-! ## The wide-leaf tree's correctness
+
+The same argument as for `flat7`, at leaves of 262144 bits. Four levels span the window where
+seven did, and `upd1` to `upd4` are shared, so only the flatten steps and the split of a strike
+into leaf and offset are restated. -/
+
+/-- One level, with leaves of 262144 bits. -/
+theorem testBit_wflat1_upd1 {t : Lvl1} {k b j : Nat} :
+    (wflat1 (upd1 t k b)).testBit j
+      = ((wflat1 t).testBit j || decide (j = (k.land 1) * 262144 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  have hone : ∀ a x : Nat, ((1 : Nat) <<< a).testBit x = decide (x = a) := by
+    intro a x
+    have hs : (1 : Nat) <<< a = Nat.shiftLeft 1 a := rfl
+    rw [hs, testBit_oneShift]
+    cases h : Nat.beq x a with
+    | true => simp [Nat.eq_of_beq_eq_true h]
+    | false => simp [Nat.ne_of_beq_eq_false h]
+  unfold upd1 wflat1
+  cases hbit : Nat.beq (k.land 1) 0 with
+  | true =>
+    have hz : k.land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, hone]
+    rw [hz]
+    have hzz : (0 : Nat) * 262144 + b = b := by lia
+    rw [hzz]
+    cases t.1.testBit j <;> cases decide (j = b) <;>
+      cases (decide (j ≥ 262144) && t.2.testBit (j - 262144)) <;> rfl
+  | false =>
+    have h1 : k.land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k)
+      lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, hone]
+    rw [h1]
+    have hkey : (decide (j ≥ 262144) && decide (j - 262144 = b))
+        = decide (j = 1 * 262144 + b) := by
+      rw [shift_key]
+    rw [← hkey]
+    cases t.1.testBit j <;> cases decide (j ≥ 262144) <;>
+      cases t.2.testBit (j - 262144) <;> cases decide (j - 262144 = b) <;> rfl
+
+/-- The second level, with leaves of 262144 bits. -/
+theorem testBit_wflat2_upd2 {t : Lvl2} {k b j : Nat} (_hb : b < 262144) :
+    (wflat2 (upd2 t k b)).testBit j
+      = ((wflat2 t).testBit j || decide (j = (k.land 3) * 262144 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd2 wflat2
+  cases hbit : Nat.beq ((k.shiftRight 1).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 1).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 3 = k.land 1 := by rw [land3_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat1_upd1]
+    rw [h3]
+    cases (wflat1 t.1).testBit j <;> cases decide (j = (k.land 1) * 262144 + b) <;>
+      cases (decide (j ≥ 524288) && (wflat1 t.2).testBit (j - 524288)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 1).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 1)
+      lia
+    have h3 : k.land 3 = 2 + k.land 1 := by rw [land3_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat1_upd1]
+    have hkey : (decide (j ≥ 524288) && decide (j - 524288 = (k.land 1) * 262144 + b))
+        = decide (j = (k.land 3) * 262144 + b) := by
+      rw [h3, shift_key]
+      have harith : 524288 + ((k.land 1) * 262144 + b) = (2 + k.land 1) * 262144 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (wflat1 t.1).testBit j <;> cases decide (j ≥ 524288) <;>
+      cases (wflat1 t.2).testBit (j - 524288) <;>
+      cases decide (j - 524288 = (k.land 1) * 262144 + b) <;> rfl
+
+/-- The third level, with leaves of 262144 bits. -/
+theorem testBit_wflat3_upd3 {t : Lvl3} {k b j : Nat} (hb : b < 262144) :
+    (wflat3 (upd3 t k b)).testBit j
+      = ((wflat3 t).testBit j || decide (j = (k.land 7) * 262144 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd3 wflat3
+  cases hbit : Nat.beq ((k.shiftRight 2).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 2).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 7 = k.land 3 := by rw [land7_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat2_upd2 hb]
+    rw [h3]
+    cases (wflat2 t.1).testBit j <;> cases decide (j = (k.land 3) * 262144 + b) <;>
+      cases (decide (j ≥ 1048576) && (wflat2 t.2).testBit (j - 1048576)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 2).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 2)
+      lia
+    have h3 : k.land 7 = 4 + k.land 3 := by rw [land7_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat2_upd2 hb]
+    have hkey : (decide (j ≥ 1048576) && decide (j - 1048576 = (k.land 3) * 262144 + b))
+        = decide (j = (k.land 7) * 262144 + b) := by
+      rw [h3, shift_key]
+      have harith : 1048576 + ((k.land 3) * 262144 + b) = (4 + k.land 3) * 262144 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (wflat2 t.1).testBit j <;> cases decide (j ≥ 1048576) <;>
+      cases (wflat2 t.2).testBit (j - 1048576) <;>
+      cases decide (j - 1048576 = (k.land 3) * 262144 + b) <;> rfl
+
+/-- The fourth level, which spans the window at leaves of 262144 bits. -/
+theorem testBit_wflat4_upd4 {t : Lvl4} {k b j : Nat} (hb : b < 262144) :
+    (wflat4 (upd4 t k b)).testBit j
+      = ((wflat4 t).testBit j || decide (j = (k.land 15) * 262144 + b)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold upd4 wflat4
+  cases hbit : Nat.beq ((k.shiftRight 3).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 3).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 15 = k.land 7 := by rw [land15_split, hz]; lia
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat3_upd3 hb]
+    rw [h3]
+    cases (wflat3 t.1).testBit j <;> cases decide (j = (k.land 7) * 262144 + b) <;>
+      cases (decide (j ≥ 2097152) && (wflat3 t.2).testBit (j - 2097152)) <;> rfl
+  | false =>
+    have hz : (k.shiftRight 3).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 3)
+      lia
+    have h3 : k.land 15 = 8 + k.land 7 := by rw [land15_split, hz]
+    simp only [hlor, hsl, Nat.testBit_or, Nat.testBit_shiftLeft, testBit_wflat3_upd3 hb]
+    have hkey : (decide (j ≥ 2097152) && decide (j - 2097152 = (k.land 7) * 262144 + b))
+        = decide (j = (k.land 15) * 262144 + b) := by
+      rw [h3, shift_key]
+      have harith : 2097152 + ((k.land 7) * 262144 + b) = (8 + k.land 7) * 262144 + b := by lia
+      rw [harith]
+    rw [← hkey]
+    cases (wflat3 t.1).testBit j <;> cases decide (j ≥ 2097152) <;>
+      cases (wflat3 t.2).testBit (j - 2097152) <;>
+      cases decide (j - 2097152 = (k.land 7) * 262144 + b) <;> rfl
+
+/-- Putting one strike into the wide-leaf tree sets exactly that position, and nothing when the
+strike falls past the window's end. -/
+theorem testBit_wputK {t : Lvl4} {Wm1 s j : Nat} (hW : Wm1 < 4194304) :
+    (wflat4 (wputK t Wm1 s)).testBit j
+      = ((wflat4 t).testBit j || (decide (s ≤ Wm1) && decide (j = s))) := by
+  unfold wputK
+  cases hblt : Nat.blt Wm1 s with
+  | true =>
+    have hgt : Wm1 < s := Nat.le_of_ble_eq_true hblt
+    have hno : ¬ (s ≤ Wm1) := by lia
+    rw [decide_eq_false hno, Bool.false_and, Bool.or_false]
+  | false =>
+    have hle : s ≤ Wm1 := blt_false_le hblt
+    have hl : s.land 262143 = s % 262144 := by
+      have hh : s.land 262143 = s.land (2 ^ 18 - 1) := rfl
+      have h2 : (2 : Nat) ^ 18 = 262144 := rfl
+      rw [hh, land_mask_eq, h2]
+    have hb : s.land 262143 < 262144 := by
+      rw [hl]
+      exact Nat.mod_lt _ (by lia)
+    have hsr : s.shiftRight 18 = s / 262144 := by
+      have h := shiftRightK_eq (k := s) (n := 18)
+      have h2 : (2 : Nat) ^ 18 = 262144 := rfl
+      rw [h2] at h
+      exact h
+    have hk : (s.shiftRight 18).land 15 = s.shiftRight 18 := by
+      have hlt : s / 262144 < 16 := by
+        have : s < 4194304 := by lia
+        lia
+      have hm : (s / 262144).land 15 = (s / 262144) % 16 := by
+        have hh : (s / 262144).land 15 = (s / 262144).land (2 ^ 4 - 1) := rfl
+        have h2 : (2 : Nat) ^ 4 = 16 := rfl
+        rw [hh, land_mask_eq, h2]
+      rw [hsr, hm]
+      exact Nat.mod_eq_of_lt hlt
+    have hpos : (s.shiftRight 18).land 15 * 262144 + s.land 262143 = s := by
+      rw [hk, hsr, hl]
+      have := Nat.div_add_mod s 262144
+      lia
+    rw [testBit_wflat4_upd4 hb, hpos, decide_eq_true hle, Bool.true_and]
+
+/-- The two strikes of one divisor, in the wide-leaf tree. -/
+theorem testBit_wtreeDiv2K {t : Lvl4} {lo Wm1 p j : Nat} (hW : Wm1 < 4194304) :
+    (wflat4 (wtreeDiv2K t lo Wm1 p)).testBit j
+      = ((wflat4 t).testBit j
+          || (decide (firstLocK (indexK (p.mul 5)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 5)) lo (p.mul 2)))
+          || (decide (firstLocK (indexK (p.mul 7)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 7)) lo (p.mul 2)))) := by
+  unfold wtreeDiv2K
+  rw [testBit_wputK hW, testBit_wputK hW]
+
+/-- An empty wide-leaf tree holds nothing, two leaves. -/
+theorem wflat1_zero : wflat1 zero1 = 0 := by
+  unfold wflat1 zero1
+  exact lor_shift_zero
+
+/-- Four. -/
+theorem wflat2_zero : wflat2 zero2 = 0 := by
+  unfold wflat2 zero2
+  rw [wflat1_zero]
+  exact lor_shift_zero
+
+/-- Eight. -/
+theorem wflat3_zero : wflat3 zero3 = 0 := by
+  unfold wflat3 zero3
+  rw [wflat2_zero]
+  exact lor_shift_zero
+
+/-- Sixteen, the whole empty tree. -/
+theorem wflat4_zero : wflat4 zero4 = 0 := by
+  unfold wflat4 zero4
+  rw [wflat3_zero]
+  exact lor_shift_zero
+
+/-- What the wide-leaf tree holds after walking a batch: exactly the in-window strikes of the
+divisors the slice names, two to a divisor. -/
+theorem testBit_wtreeFold2K {c lo Wm1 start len j : Nat} (hW : Wm1 < 4194304) (hj : j ≤ Wm1) :
+    (wflat4 (wtreeFold2K c lo Wm1 start len)).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 2 ∧ testBitK c i = true
+        ∧ entrySeedK lo start (8 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : wtreeFold2K c lo Wm1 start 0 = zero4 := rfl
+    rw [hz, wflat4_zero]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have hadd : start.add len = start + len := rfl
+    have hstep : wtreeFold2K c lo Wm1 start (len + 1)
+        = (testBitK c len).rec (wtreeFold2K c lo Wm1 start len)
+            (wtreeDiv2K (wtreeFold2K c lo Wm1 start len) lo Wm1 (valueK (start.add len))) := rfl
+    rw [hstep]
+    cases hb : testBitK c len with
+    | false =>
+      rw [ih]
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      rw [hadd, testBit_wtreeDiv2K hW]
+      have hA : entrySeedK lo start (8 * len + 0)
+          = firstLocK (indexK ((valueK (start + len)).mul 5)) lo ((valueK (start + len)).mul 2) :=
+        entrySeedK_five
+      have hB : entrySeedK lo start (8 * len + 1)
+          = firstLocK (indexK ((valueK (start + len)).mul 7)) lo ((valueK (start + len)).mul 2) :=
+        entrySeedK_seven
+      simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, ih]
+      constructor
+      · rintro ((h | ⟨-, hjA⟩) | ⟨-, hjB⟩)
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := h
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+        · exact ⟨len, by lia, 0, by lia, hb, by rw [hA]; exact hjA.symm⟩
+        · exact ⟨len, by lia, 1, by lia, hb, by rw [hB]; exact hjB.symm⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact Or.inl (Or.inl ⟨i, h, w, hw, hc, hs⟩)
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          rcases (by lia : w = 0 ∨ w = 1) with hw0 | hw1
+          · rw [hw0, hA] at hs
+            exact Or.inl (Or.inr ⟨by lia, hs.symm⟩)
+          · rw [hw1, hB] at hs
+            exact Or.inr ⟨by lia, hs.symm⟩
+
+/-- The wide-leaf tree fold removes from the window exactly what the batch's run removes. -/
+theorem segLoopSCK_eq_wtree2 {c lo start len n Wm1 seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 4194304)
+    (hwide : ∀ i, i < len → Wm1 < valueK (start + i) * 2) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (wtreeBatch2K c lo Wm1 start len) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (wtreeBatch2K c lo Wm1 start len).testBit j = true := by
+      rw [testBit_segAccLoopSK_wide hj hwide]
+      unfold wtreeBatch2K
+      rw [testBit_wtreeFold2K hW hj]
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (wtreeBatch2K c lo Wm1 start len).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
+/-- One batch of the widest band, settled by a tree with leaves of 262144 bits. -/
+public theorem wtreeStep2 {c lo Wm1 n W start len seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hW4 : Nat.blt Wm1 4194304 = true)
+    (hwide : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true)
+    (hbatch : Nat.beq (wtreeBatch2K c lo Wm1 start len) lit = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hW' : Wm1 < 4194304 := Nat.le_of_ble_eq_true hW4
+  have hb := Nat.eq_of_beq_eq_true hbatch
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_wtree2 hseg hW' (wide_of_blt hwide), hb, ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
+
 /-! ## What the window holds
 
 The two facts below are the arithmetic that segmentation actually adds: the local seed is the
