@@ -500,6 +500,36 @@ window's end. -/
 @[expose] public noncomputable def wtreeBatch2K (c lo Wm1 start len : Nat) : Nat :=
   wflat4 (wtreeFold2K c lo Wm1 start len)
 
+/-! The same again with leaves of 1048576 bits, four of them spanning the window. -/
+
+/-- Two leaves of 1048576 bits. -/
+@[expose] public noncomputable def vflat1 (t : Lvl1) : Nat :=
+  Nat.lor t.1 (Nat.shiftLeft t.2 1048576)
+
+/-- Four, spanning a window of 4194304 bits. -/
+@[expose] public noncomputable def vflat2 (t : Lvl2) : Nat :=
+  Nat.lor (vflat1 t.1) (Nat.shiftLeft (vflat1 t.2) 2097152)
+
+/-- Put one strike into a four-leaf tree, or leave it alone where the strike passes the window's
+end. -/
+@[expose] public noncomputable def vputK (t : Lvl2) (Wm1 s : Nat) : Lvl2 :=
+  (Nat.blt Wm1 s).rec (upd2 t (s.shiftRight 20) (s.land 1048575)) t
+
+/-- The two strikes of a divisor whose double already passes the window's end. -/
+@[expose] public noncomputable def vtreeDiv2K (t : Lvl2) (lo Wm1 p : Nat) : Lvl2 :=
+  let d : Nat := p.mul 2
+  vputK (vputK t Wm1 (firstLocK (indexK (p.mul 5)) lo d)) Wm1
+    (firstLocK (indexK (p.mul 7)) lo d)
+
+/-- Walk the batch, two strikes to a divisor. -/
+@[expose] public noncomputable def vtreeFold2K (c lo Wm1 start len : Nat) : Lvl2 :=
+  len.rec zero2 fun i t =>
+    (testBitK c i).rec t (vtreeDiv2K t lo Wm1 (valueK (start.add i)))
+
+/-- The assembled mask of a batch, through leaves of 1048576 bits. -/
+@[expose] public noncomputable def vtreeBatch2K (c lo Wm1 start len : Nat) : Nat :=
+  vflat2 (vtreeFold2K c lo Wm1 start len)
+
 /-- Four consecutive windows' trees. -/
 @[expose] public noncomputable def Quad7 : Type := Pair7 × Pair7
 
@@ -4224,7 +4254,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 49 then throwError "run_segment_variant: mode {mode} is not 0 to 49"
+  if mode > 50 then throwError "run_segment_variant: mode {mode} is not 0 to 50"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45)
       && len > 8192 then
@@ -4286,7 +4316,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         value := mkRawNatLit bitsL, hints := .regular 0, safety := .safe }
     return
   if mode == 25 || mode == 26 || mode == 27 || mode == 42 || mode == 43 || mode == 46
-      || mode == 47 || mode == 48 || mode == 49 then
+      || mode == 47 || mode == 48 || mode == 49 || mode == 50 then
     -- Measurement only, over the positions whose primes are past half the window's width, where a
     -- prime hits at most twice: mode 25 sorts each batch's hits into slices of the window, mode 26
     -- marks the same batches as the sieve does today, so the pair isolates that change. Mode 27 is
@@ -4310,18 +4340,21 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
         bitsL := next
         continue
-      if mode == 49 then
-        -- The same batch assembled through leaves of 65536 bits and of 262144.
+      if mode == 49 || mode == 50 then
+        -- The same batch assembled through two leaf widths: 65536 bits against 262144 at mode 49,
+        -- and 262144 against 1048576 at mode 50.
         let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
         let asm := treeAsm2 sVal lo wm1 start stepN W
         let args := #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         let emitNarrow := do
           addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
-            (mkSegBeqTrue (mkAppN (mkConst ``treeBatch2K) args) (mkRawNatLit asm))
+            (mkSegBeqTrue (mkAppN (mkConst
+              (if mode == 50 then ``wtreeBatch2K else ``treeBatch2K)) args) (mkRawNatLit asm))
             Lean.reflBoolTrue
         let emitWide := do
           addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"sstep_{i}"))
-            (mkSegBeqTrue (mkAppN (mkConst ``wtreeBatch2K) args) (mkRawNatLit asm))
+            (mkSegBeqTrue (mkAppN (mkConst
+              (if mode == 50 then ``vtreeBatch2K else ``wtreeBatch2K)) args) (mkRawNatLit asm))
             Lean.reflBoolTrue
         if i % 2 == 0 then
           emitNarrow
