@@ -3930,6 +3930,154 @@ public theorem wtreeStep2 {c lo Wm1 n W start len seg lit next : Nat}
   rw [segLoopSCK_eq_wtree2 hseg hW' (wide_of_blt hwide), hb, ldiff_eq_sub]
   exact Nat.eq_of_beq_eq_true hclear
 
+/-- The four strikes of one divisor, in the wide-leaf tree. -/
+theorem testBit_wtreeDiv4K {t : Lvl4} {lo Wm1 p j : Nat} (hW : Wm1 < 4194304) :
+    (wflat4 (wtreeDiv4K t lo Wm1 p)).testBit j
+      = ((wflat4 t).testBit j
+          || (decide (firstLocK (indexK (p.mul 5)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 5)) lo (p.mul 2)))
+          || (decide (firstLocK (indexK (p.mul 7)) lo (p.mul 2) ≤ Wm1)
+              && decide (j = firstLocK (indexK (p.mul 7)) lo (p.mul 2)))
+          || (decide ((firstLocK (indexK (p.mul 5)) lo (p.mul 2)).add (p.mul 2) ≤ Wm1)
+              && decide (j = (firstLocK (indexK (p.mul 5)) lo (p.mul 2)).add (p.mul 2)))
+          || (decide ((firstLocK (indexK (p.mul 7)) lo (p.mul 2)).add (p.mul 2) ≤ Wm1)
+              && decide (j = (firstLocK (indexK (p.mul 7)) lo (p.mul 2)).add (p.mul 2)))) := by
+  unfold wtreeDiv4K
+  rw [testBit_wputK hW, testBit_wputK hW, testBit_wputK hW, testBit_wputK hW]
+
+/-- What the wide-leaf tree holds after walking a batch of the four-strike band. -/
+theorem testBit_wtreeFold4K {c lo Wm1 start len j : Nat} (hW : Wm1 < 4194304) (hj : j ≤ Wm1) :
+    (wflat4 (wtreeFold4K c lo Wm1 start len)).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 4 ∧ testBitK c i = true
+        ∧ entrySeedK lo start (8 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : wtreeFold4K c lo Wm1 start 0 = zero4 := rfl
+    rw [hz, wflat4_zero]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have hadd : start.add len = start + len := rfl
+    have hstep : wtreeFold4K c lo Wm1 start (len + 1)
+        = (testBitK c len).rec (wtreeFold4K c lo Wm1 start len)
+            (wtreeDiv4K (wtreeFold4K c lo Wm1 start len) lo Wm1 (valueK (start.add len))) := rfl
+    rw [hstep]
+    cases hb : testBitK c len with
+    | false =>
+      rw [ih]
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      rw [hadd, testBit_wtreeDiv4K hW]
+      have h0 : entrySeedK lo start (8 * len + 0)
+          = firstLocK (indexK ((valueK (start + len)).mul 5)) lo ((valueK (start + len)).mul 2) :=
+        entrySeedK_five
+      have h1 : entrySeedK lo start (8 * len + 1)
+          = firstLocK (indexK ((valueK (start + len)).mul 7)) lo ((valueK (start + len)).mul 2) :=
+        entrySeedK_seven
+      have h2 : entrySeedK lo start (8 * len + 2)
+          = (firstLocK (indexK ((valueK (start + len)).mul 5)) lo
+              ((valueK (start + len)).mul 2)).add ((valueK (start + len)).mul 2) :=
+        entrySeedK_five'
+      have h3 : entrySeedK lo start (8 * len + 3)
+          = (firstLocK (indexK ((valueK (start + len)).mul 7)) lo
+              ((valueK (start + len)).mul 2)).add ((valueK (start + len)).mul 2) :=
+        entrySeedK_seven'
+      simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, ih]
+      constructor
+      · rintro ((((h | ⟨-, e⟩) | ⟨-, e⟩) | ⟨-, e⟩) | ⟨-, e⟩)
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := h
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+        · exact ⟨len, by lia, 0, by lia, hb, by rw [h0]; exact e.symm⟩
+        · exact ⟨len, by lia, 1, by lia, hb, by rw [h1]; exact e.symm⟩
+        · exact ⟨len, by lia, 2, by lia, hb, by rw [h2]; exact e.symm⟩
+        · exact ⟨len, by lia, 3, by lia, hb, by rw [h3]; exact e.symm⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact Or.inl (Or.inl (Or.inl (Or.inl ⟨i, h, w, hw, hc, hs⟩)))
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3) with hw0 | hw1 | hw2 | hw3
+          · rw [hw0, h0] at hs
+            exact Or.inl (Or.inl (Or.inl (Or.inr ⟨by lia, hs.symm⟩)))
+          · rw [hw1, h1] at hs
+            exact Or.inl (Or.inl (Or.inr ⟨by lia, hs.symm⟩))
+          · rw [hw2, h2] at hs
+            exact Or.inl (Or.inr ⟨by lia, hs.symm⟩)
+          · rw [hw3, h3] at hs
+            exact Or.inr ⟨by lia, hs.symm⟩
+
+/-- The wide-leaf tree removes from the window exactly what a four-strike batch's run removes. -/
+theorem segLoopSCK_eq_wtree4 {c lo start len n Wm1 seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 4194304) (hn : 1 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 2 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 4) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (wtreeBatch4K c lo Wm1 start len) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (wtreeBatch4K c lo Wm1 start len).testBit j = true := by
+      rw [testBit_segAccLoopSK_band hj hn hband]
+      unfold wtreeBatch4K
+      rw [testBit_wtreeFold4K hW hj]
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (wtreeBatch4K c lo Wm1 start len).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
+/-- One batch of the four-strike band, settled by a tree with leaves of 262144 bits. -/
+public theorem wtreeStep4 {c lo Wm1 n W start len seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hW4 : Nat.blt Wm1 4194304 = true) (hn : Nat.ble 1 n = true)
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 2) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 4) = true)
+    (hbatch : Nat.beq (wtreeBatch4K c lo Wm1 start len) lit = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hW' : Wm1 < 4194304 := Nat.le_of_ble_eq_true hW4
+  have hb := Nat.eq_of_beq_eq_true hbatch
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_wtree4 hseg hW' (Nat.le_of_ble_eq_true hn) (band_of_tests hlast hfirst), hb,
+    ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
+
 /-! ## What the window holds
 
 The two facts below are the arithmetic that segmentation actually adds: the local seed is the
