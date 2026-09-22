@@ -36,6 +36,13 @@ ksum() {
     | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}'
 }
 
+# esum <file> <tag>: the sum of the seconds on lines whose profiler tag is <tag>, e.g. Elab.command
+# or Elab.step. These cover the elaborator rather than the kernel.
+esum() {
+  grep -o "\[$2\] \[[0-9.]*\]" "$1" | grep -o '[0-9]\+\.[0-9]\+' \
+    | awk '{s+=$1} END {printf "%.3f", s+0}'
+}
+
 for round in $(seq 1 "$rounds"); do
   for k in $(seq 0 $((n - 1))); do
     f=${cases[$(( (k + round - 1) % n ))]}
@@ -74,12 +81,16 @@ for round in $(seq 1 "$rounds"); do
     sorted=$(ksum "$out" "segEqV_.*sstep_")
     wide=$(ksum "$out" "segEqV_.*wstep_")
     chunks=$(ksum "$out" "segEqV_.*chunk_")
+    elab=$(esum "$out" "Elab.command")
+    addd=$(esum "$out" "addDecl")
+    typec=$(esum "$out" "typechecking")
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
     cpu=$(grep -E 'User time|System time' "$tim" | awk '{s += $NF} END {printf "%.1f", s}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
     nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
+      "elab command ${elab}s | addDecl ${addd}s | typechecking ${typec}s |" \
       "wall $wall | processor ${cpu}s | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
       "batch lemma count $nsteps"
   done

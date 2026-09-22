@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The whole segment, records against the wide-leaf tree in every band
+      - name: Where the elaborator's share of a segment goes
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 E2_All54 E2_Rec2
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 E2_Rec2 E2_All54
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
