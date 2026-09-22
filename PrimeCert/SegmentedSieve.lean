@@ -4982,9 +4982,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 54 then throwError "run_segment_variant: mode {mode} is not 0 to 54"
+  if mode > 55 then throwError "run_segment_variant: mode {mode} is not 0 to 55"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
-        || mode == 45 || mode == 53 || mode == 54)
+        || mode == 45 || mode == 53 || mode == 54 || mode == 55)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5011,7 +5011,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let tree := mode == 45 || mode == 53 || mode == 54
   let wideLeaf := mode == 53 || mode == 54
   let allTree := mode == 54
-  let stripes := mode == 28 || fold || sortOnly || tree
+  -- Mode 55 is mode 28 with the twin's marking pass kept, so a pair of runs prices taking the
+  -- next window from the batch's own mask instead.
+  let twoPass := mode == 55
+  let stripes := mode == 28 || fold || sortOnly || tree || twoPass
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -5651,7 +5654,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       -- The window after this batch is the window with the batch's mask cleared from it, so a
       -- batch that has already assembled its mask needs no second marking pass to find it. Only
       -- an unsorted batch, which assembles nothing, still runs the twin.
-      let next := match sortRes, asmRes with
+      let next := if twoPass then segLoopC sVal lo wm1 nb bits start stepN else
+        match sortRes, asmRes with
         | some (_, _, _, expect), _ => bits - (expect &&& bits)
         | _, some asm => bits - (asm &&& bits)
         | _, _ => segLoopC sVal lo wm1 nb bits start stepN
