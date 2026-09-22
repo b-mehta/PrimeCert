@@ -1,0 +1,74 @@
+name: Carry a proved range from one job to the next
+
+on:
+  push:
+    branches:
+      - 'ci/carry'
+  workflow_dispatch:
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Sum eight segments and leave the range theorem behind
+        run: |
+          lake build PrimeCertTest.HarmonicBench.Split8_Full
+          ls -la .lake/build/lib/lean/PrimeCertTest/HarmonicBench/
+
+      - name: Hand the compiled part to the next job
+        uses: actions/upload-artifact@v4
+        with:
+          name: split8-part
+          path: .lake/build/lib/lean/PrimeCertTest/HarmonicBench/Split8_Full.*
+          retention-days: 1
+
+  use:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: prove
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the part depends on, leaving the part itself unbuilt
+        run: |
+          lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.PrimeHarmonic
+          lake build PrimeCert.Meta.Sieve PrimeCert.Meta.QuickRfl
+          lake build PrimeCert.SegmentedSieve PrimeCert.GapFold
+
+      - name: Take the part the first job proved
+        uses: actions/download-artifact@v4
+        with:
+          name: split8-part
+          path: .lake/build/lib/lean/PrimeCertTest/HarmonicBench/
+
+      - name: Use its range theorem without reproving it
+        run: |
+          set +e +o pipefail
+          ls -la .lake/build/lib/lean/PrimeCertTest/HarmonicBench/
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          start=$(date +%s)
+          lean -M 8000 PrimeCertTest/HarmonicBench/CarryProbe.lean
+          code=$?
+          echo "RESULT carry | exit $code | wall $(( $(date +%s) - start ))s"
+          exit "$code"
