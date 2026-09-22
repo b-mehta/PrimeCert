@@ -4982,9 +4982,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 53 then throwError "run_segment_variant: mode {mode} is not 0 to 53"
+  if mode > 54 then throwError "run_segment_variant: mode {mode} is not 0 to 54"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
-        || mode == 45 || mode == 53)
+        || mode == 45 || mode == 53 || mode == 54)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5006,9 +5006,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 45 is mode 28 with the widest band routed through the tree: the kernel derives each
   -- divisor's two strikes and dispatches them by the bits of the leaf number, so the batch owes
   -- one equation against the assembled mask instead of a record list, a tally and a clear.
-  -- Mode 53 is mode 45 with the tree's leaves at 262144 bits rather than 65536.
-  let tree := mode == 45 || mode == 53
-  let wideLeaf := mode == 53
+  -- Mode 53 is mode 45 with the tree's leaves at 262144 bits rather than 65536. Mode 54 sends all
+  -- three bands through that tree, so no batch of the run uses sorted records.
+  let tree := mode == 45 || mode == 53 || mode == 54
+  let wideLeaf := mode == 53 || mode == 54
+  let allTree := mode == 54
   let stripes := mode == 28 || fold || sortOnly || tree
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
@@ -5642,7 +5644,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       -- tree replaces apart from the two it leaves alone and a pair can be read band by band.
       let batchName := mkPrivateName env (parent ++ Name.mkSimple
         (if nrec == 2 then s!"wstep_{i}" else if sorted then s!"sstep_{i}" else s!"step_{i}"))
-      let treeHere := tree && nrec == 2
+      let treeHere := tree && (nrec == 2 || (allTree && nrec > 0))
       let t0 ← IO.monoNanosNow
       let sortRes := if nrec == 0 || treeHere then none
         else some (stripeSort sVal lo wm1 start stepN W nrec)
@@ -5654,11 +5656,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchProof :=
         if sortOnly then Lean.reflBoolTrue
         else if treeHere then
-          let asm := treeAsm2 sVal lo wm1 start stepN W
-          mkAppN (mkConst (if wideLeaf then ``wtreeStep2 else ``treeStep2))
-            (#[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start, mkRawNatLit stepN,
-                bitsE, mkRawNatLit asm, mkRawNatLit next]
-              ++ Array.replicate 6 Lean.reflBoolTrue)
+          let asm := treeAsmN sVal lo wm1 start stepN W nrec
+          let args := #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start,
+            mkRawNatLit stepN, bitsE, mkRawNatLit asm, mkRawNatLit next]
+          if nrec == 2 then
+            mkAppN (mkConst (if wideLeaf then ``wtreeStep2 else ``treeStep2))
+              (args ++ Array.replicate 6 Lean.reflBoolTrue)
+          else
+            mkAppN (mkConst (if nrec == 4 then ``wtreeStep4 else ``wtreeStep8))
+              (args ++ Array.replicate 8 Lean.reflBoolTrue)
         else match sortRes with
         | none => Lean.reflBoolTrue
         | some (ls, cs, slotW, expect) =>
