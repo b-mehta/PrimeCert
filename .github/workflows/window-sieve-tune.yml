@@ -23,24 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Does the per-prime cost amortise over a wider window, at equal range
+      - name: Two windows struck by two walks of a batch and by one
         run: |
-          free -g
-          chmod +x PrimeCertTest/SegTune/pair.sh
-          for r in 1 2 3; do
-            echo "=== round $r"
-            if [ $((r % 2)) -eq 1 ]; then
-              echo "-- one file of 8388608"
-              PrimeCertTest/SegTune/pair.sh W8_Pair1
-              echo "-- two files of 4194304"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-            else
-              echo "-- two files of 4194304"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-              echo "-- one file of 8388608"
-              PrimeCertTest/SegTune/pair.sh W8_Pair1
-            fi
-          done
+          chmod +x PrimeCertTest/SegTune/run.sh
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 P2_Paired
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
