@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: What the twin's second marking pass costs
+      - name: The twin's marking pass at the batch length the parallel arms use
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 E2_Rec2 N1_TwoPass
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 S9_Par1 N2_TwoPass8192
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
