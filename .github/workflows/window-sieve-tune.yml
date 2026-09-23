@@ -23,23 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The marking pass in the two-file configuration the estimate came from
+      - name: Sorted records against a mask built by doubling, over a certificate
         run: |
-          chmod +x PrimeCertTest/SegTune/pair.sh
-          for r in 1 2 3; do
-            echo "=== round $r"
-            if [ $((r % 2)) -eq 1 ]; then
-              echo "-- next from the mask"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-              echo "-- next from a marking pass"
-              PrimeCertTest/SegTune/pair.sh N2_TwoPass8192 N3_TwoPass8192b
-            else
-              echo "-- next from a marking pass"
-              PrimeCertTest/SegTune/pair.sh N2_TwoPass8192 N3_TwoPass8192b
-              echo "-- next from the mask"
-              PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-            fi
-          done
+          chmod +x PrimeCertTest/SegTune/run.sh
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 S9_Par1 D2_Marked
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
