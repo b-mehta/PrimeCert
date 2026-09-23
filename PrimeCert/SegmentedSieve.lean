@@ -4982,7 +4982,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 55 then throwError "run_segment_variant: mode {mode} is not 0 to 55"
+  if mode > 56 then throwError "run_segment_variant: mode {mode} is not 0 to 56"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55)
       && len > 8192 then
@@ -5014,7 +5014,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 55 is mode 28 with the twin's marking pass kept, so a pair of runs prices taking the
   -- next window from the batch's own mask instead.
   let twoPass := mode == 55
-  let stripes := mode == 28 || fold || sortOnly || tree || twoPass
+  -- Mode 56 is mode 28 with every batch settled by the marked shape, whose mask is built by
+  -- doubling rather than by sorting the batch's strikes into records.
+  let marked := mode == 56
+  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -5626,9 +5629,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let cE := mkRawNatLit cVal
-      let sorted := wm1 < 2 * value start
+      let sorted := !marked && (wm1 < 2 * value start
         || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start)
-        || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start)
+        || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start))
       let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
       let sliceE := mkApp2 (mkConst ``Nat.land)
         (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
@@ -5638,7 +5641,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       -- How many records a divisor of this batch needs, or none if the batch is not sorted.
-      let nrec := if wm1 < 2 * value start then 2
+      let nrec := if marked then 0
+        else if wm1 < 2 * value start then 2
         else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
         else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
         else 0
