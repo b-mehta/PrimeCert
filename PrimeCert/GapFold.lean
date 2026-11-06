@@ -283,6 +283,24 @@ public theorem le_offAtW_of_walk {w lo len C D : ℕ}
   have h2 := sumB_posAtW1_eq w len
   omega
 
+/-- `offAtW_le_of_walk` for the rebased fold, the one that joins across batches. -/
+public theorem offAtW_le_of_walk0 {w lo len C D : ℕ}
+    (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW0 w lo) 0 len 1 = D) :
+    sumB (offAtW w lo (Sieve.value lo)) 0 len 1 + 3 * (lo * C) ≤ 3 * D + C := by
+  have h1 := offAtW_le_of_walk (lo := lo) hC (D := sumB (posAtW1 w) 0 len 1) rfl
+  have h2 := posAtW0_eq w lo len
+  rw [hC, hD] at h2
+  omega
+
+/-- `le_offAtW_of_walk` for the rebased fold. -/
+public theorem le_offAtW_of_walk0 {w lo len C D : ℕ}
+    (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW0 w lo) 0 len 1 = D) :
+    3 * D ≤ sumB (offAtW w lo (Sieve.value lo)) 0 len 1 + C + 3 * (lo * C) := by
+  have h1 := le_offAtW_of_walk (lo := lo) hC (D := sumB (posAtW1 w) 0 len 1) rfl
+  have h2 := posAtW0_eq w lo len
+  rw [hC, hD] at h2
+  omega
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
