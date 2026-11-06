@@ -162,6 +162,47 @@ public theorem sumB_posAtW_le (w lo len : ℕ) :
     have := posAtW_le_offAtW w lo (n * 1 + 0)
     omega
 
+/-- The position `lo + i` of a set bit, counted from the start of the segment rather than from
+the window's own base. The walk produces `posAtW1`, counted from the window; `posAtW0_eq` rebases
+one to the other at the cost of one multiplication by the window's base. -/
+@[expose] public def posAtW0 (w lo i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec (nat_lit 0) (Nat.add lo i)
+
+/-- The segment-level fold of the positions of the set bits. -/
+@[expose] public def posAtK (s i : ℕ) : ℕ :=
+  (Sieve.testBitK s i).rec (nat_lit 0) i
+
+/-- Rebasing a window's positions onto the segment: the two folds differ by the window's base
+times the count, with one correction because the walk counts from one. -/
+theorem posAtW0_add_bit (w lo i : ℕ) :
+    posAtW0 w lo i + bitAtW w i = lo * bitAtW w i + posAtW1 w i := by
+  rw [posAtW0, posAtW1, bitAtW]
+  cases Sieve.testBitK w i with
+  | false => simp
+  | true =>
+    simp only [Nat.add_eq, Nat.mul_one]
+    omega
+
+public theorem posAtW0_eq (w lo len : ℕ) :
+    sumB (posAtW0 w lo) 0 len 1 + sumB (bitAtW w) 0 len 1
+      = lo * sumB (bitAtW w) 0 len 1 + sumB (posAtW1 w) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum, sumB_eq_sum]
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [Finset.sum_range_succ, Finset.sum_range_succ, Finset.sum_range_succ, Nat.mul_add]
+    have := posAtW0_add_bit w lo (n * 1 + 0)
+    omega
+
+/-- The scan of the shifted segment is the windowed fold of the positions. -/
+public theorem pos_shift (g lo len : ℕ) :
+    sumB (posAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (posAtW0 g lo) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, posAtK, posAtW0, Bool.rec_eq, Bool.rec_eq,
+    Sieve.testBitK_eq_testBit, Sieve.testBitK_eq_testBit, Nat.add_eq]
+  simp [Nat.testBit_shiftLeft]
+
 /-- Each offset in a window of `len` positions is at most `3 * len + 1`. -/
 public theorem offAtW_le (w lo len i : ℕ) (hi : i < len) :
     offAtW w lo (Sieve.value lo) i ≤ 3 * len + 1 := by
