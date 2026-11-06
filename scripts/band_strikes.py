@@ -45,6 +45,7 @@ def main() -> None:
     lo = index(A)
     sieve = primes_upto(BOUND)
     bands = {"small": [0, 0], "eight": [0, 0], "four": [0, 0], "wide": [0, 0]}
+    idle: dict[str, int] = {}
 
     # Walk the same wheel positions the segment walks, 1 .. fuel.
     k = 1
@@ -70,6 +71,8 @@ def main() -> None:
                 band = "wide"
             bands[band][0] += 1
             bands[band][1] += strikes
+            if strikes == 0:
+                idle[band] = idle.get(band, 0) + 1
         k += 1
 
     # Kernel seconds per band, means over three rounds of run 35610941156 at fuel 3333332.
@@ -82,7 +85,9 @@ def main() -> None:
     print(f"{'band':>12} {'primes':>10} {'strikes':>12} {'share':>8} {'kernel s':>9} {'us/strike':>10}")
     for name in ("small", "eight", "four", "wide"):
         n, s = bands[name]
-        print(f"{name:>12} {n:>10} {s:>12} {100*s/tot_s:>7.2f}% {'':>9} {'':>10}")
+        z = idle.get(name, 0)
+        print(f"{name:>12} {n:>10} {s:>12} {100*s/tot_s:>7.2f}% "
+              f"{z:>9} {100*z/n if n else 0:>9.2f}% place nothing")
     print()
     mid = bands["eight"][1] + bands["four"][1]
     for name, strikes in (("small", bands["small"][1]), ("eight+four", mid), ("wide", bands["wide"][1])):
