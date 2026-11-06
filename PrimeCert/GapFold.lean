@@ -96,6 +96,26 @@ what `gapFoldPosK` accumulates, against `offAtW`'s offset from `value lo`. -/
 @[expose] public def posAtW (w i : ℕ) : ℕ :=
   (Sieve.testBitK w i).rec (nat_lit 0) i
 
+/-- `posAtW` counted from one position below, which is where the walk starts: the rebuilt window
+sits one place above the batch's own window, so the walk reaches position `i + 1` at bit `i`. -/
+@[expose] public def posAtW1 (w i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec (nat_lit 0) (Nat.add i (nat_lit 1))
+
+/-- The walk's positions exceed the window's by one each, so the two folds differ by the count. -/
+public theorem sumB_posAtW1_eq (w len : ℕ) :
+    sumB (posAtW1 w) 0 len 1 = sumB (posAtW w) 0 len 1 + sumB (bitAtW w) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum, sumB_eq_sum]
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [Finset.sum_range_succ, Finset.sum_range_succ, Finset.sum_range_succ, ih]
+    rw [posAtW1, posAtW, bitAtW]
+    cases Sieve.testBitK w (n * 1 + 0) with
+    | false => simp
+    | true =>
+      simp only [Nat.add_eq]
+      omega
+
 theorem offAtW_le_posAtW (w lo i : ℕ) :
     offAtW w lo (Sieve.value lo) i ≤ 3 * posAtW w i + bitAtW w i := by
   rw [offAtW, posAtW, bitAtW]
@@ -171,6 +191,11 @@ def gapTot (F M G lo S : ℕ) : ℕ → ℕ
   | 0 => 0
   | i + 1 => gapTot F M G lo S i + S / Sieve.value (lo + gapPos F M G (i + 1))
 
+/-- The position walk's total after `i` gaps: the position reached, summed. -/
+def gapPosTot (F M G : ℕ) : ℕ → ℕ
+  | 0 => 0
+  | i + 1 => gapPosTot F M G i + gapPos F M G (i + 1)
+
 /-- One step of `gapFoldK` on the packed state `st`, for the proof to unfold. -/
 def gapStep (P Q PQ F M G lo S i st : ℕ) : ℕ :=
   Nat.add
@@ -188,9 +213,28 @@ def gapStep (P Q PQ F M G lo S i st : ℕ) : ℕ :=
                   (Nat.add (Nat.mod (Nat.div st P) Q)
                     (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)))))))))
 
+/-- One step of `gapFoldPosK` on the packed state `st`, for the proof to unfold. -/
+def gapPosStep (P Q PQ F M G i st : ℕ) : ℕ :=
+  Nat.add
+    (Nat.lor (Nat.mod st P)
+      (Nat.shiftLeft (nat_lit 1)
+        (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))
+    (Nat.mul P
+      (Nat.add
+        (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))
+        (Nat.mul Q
+          (Nat.add (Nat.div st PQ)
+            (Nat.add (Nat.mod (Nat.div st P) Q)
+              (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))))
+
 theorem gapFoldK_succ (P Q PQ F M G lo S c : ℕ) :
     gapFoldK P Q PQ F M G lo S (c + 1)
       = gapStep P Q PQ F M G lo S c (gapFoldK P Q PQ F M G lo S c) :=
+  rfl
+
+theorem gapFoldPosK_succ (P Q PQ F M G c : ℕ) :
+    gapFoldPosK P Q PQ F M G (c + 1)
+      = gapPosStep P Q PQ F M G c (gapFoldPosK P Q PQ F M G c) :=
   rfl
 
 theorem gapWalkK_succ (F M G c : ℕ) :
@@ -290,6 +334,33 @@ theorem gapFoldK_eq (P Q PQ F M G lo S : ℕ) {Pb c : ℕ} (hP : P = 2 ^ Pb) (hP
       Nat.mod_eq_of_lt hQ', Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ', Nat.zero_add]
     simp only [gapWin, gapPos, gapTot, gapAt]
 
+theorem gapFoldPosK_eq (P Q PQ F M G : ℕ) {Pb c : ℕ} (hP : P = 2 ^ Pb) (hPQ : PQ = P * Q)
+    (hQ : gapPos F M G c < Q) (hPb : gapPos F M G c < Pb) :
+    gapFoldPosK P Q PQ F M G c
+      = gapWin F M G c + P * (gapPos F M G c + Q * gapPosTot F M G c) := by
+  induction c with
+  | zero => simp [gapFoldPosK, gapWin, gapPos, gapPosTot]
+  | succ c ih =>
+    have hmono := gapPos_monotone F M G (Nat.le_succ c)
+    have hQ' := hmono.trans_lt hQ
+    have hW := gapWin_lt F M G (hmono.trans_lt hPb)
+    rw [← hP] at hW
+    have hQ0 : 0 < Q := by omega
+    have hP0 : 0 < P := by omega
+    rw [gapFoldPosK_succ, ih hQ' (hmono.trans_lt hPb), gapPosStep]
+    simp only [Nat.add_eq, Nat.mul_eq, Nat.mod_eq_mod, Nat.div_eq_div, Nat.lor_eq, Nat.land_eq,
+      Nat.shiftLeft_eq', Nat.shiftRight_eq', Nat.one_shiftLeft]
+    rw [hPQ, ← Nat.div_div_eq_div_mul, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hW,
+      Nat.add_mul_div_left _ _ hP0, Nat.div_eq_of_lt hW, Nat.zero_add, Nat.add_mul_mod_self_left,
+      Nat.mod_eq_of_lt hQ', Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ', Nat.zero_add]
+    simp only [gapWin, gapPos, gapPosTot, gapAt]
+
+theorem gapPosTot_eq_sum (F M G c : ℕ) :
+    gapPosTot F M G c = ∑ i ∈ range c, gapPos F M G (i + 1) := by
+  induction c with
+  | zero => rfl
+  | succ c ih => rw [gapPosTot, ih, Finset.sum_range_succ]
+
 theorem gapTot_eq_sum (F M G lo S c : ℕ) :
     gapTot F M G lo S c = ∑ i ∈ range c, S / Sieve.value (lo + gapPos F M G (i + 1)) := by
   induction c with
@@ -371,6 +442,79 @@ public theorem gapFoldK_div (P Q PQ Pb F M G lo S c w B : ℕ)
       exact hjk
   have e1 := Finset.sum_image (f := fun k ↦ S / Sieve.value (lo + k)) hinj
   have e2 := Finset.sum_image (f := fun k ↦ S / Sieve.value (lo + k)) hinj2
+  rw [← e1, hset, e2]
+
+/-- The position walk's total is the windowed fold of positions. The hypotheses are those of
+`gapFoldK_div`, which this mirrors, with the reciprocal replaced by the position: `hP` and `hPQ`
+fix the two field boundaries, `hQ` and `hPb` keep every position inside its field, `hgaps` says
+every gap is at least one, `hw` bounds the window by its `B` bits, and `htie` says the rebuilt
+window is `w` shifted up one place. -/
+public theorem gapFoldPosK_pos (P Q PQ Pb F M G c w B : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (htie : Nat.beq (Nat.mod (gapFoldPosK P Q PQ F M G c) P)
+      (Nat.shiftLeft w (nat_lit 1)) = true) :
+    Nat.div (gapFoldPosK P Q PQ F M G c) PQ = sumB (posAtW1 w) 0 B 1 := by
+  rw [Nat.beq_eq] at hP hPQ htie
+  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
+  rw [Nat.blt_eq, Nat.pow_eq] at hw
+  rw [Nat.pow_eq] at hP
+  rw [Nat.mul_eq] at hPQ
+  rw [gapsPosK_eq] at hgaps
+  have hdec := gapFoldPosK_eq P Q PQ F M G hP hPQ hQ hPb
+  have hW := gapWin_lt F M G hPb
+  rw [← hP] at hW
+  have hQ0 : 0 < Q := by omega
+  have hP0 : 0 < P := by omega
+  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hW]
+    at htie
+  rw [Nat.div_eq_div, hdec, hPQ, ← Nat.div_div_eq_div_mul, Nat.add_mul_div_left _ _ hP0,
+    Nat.div_eq_of_lt hW, Nat.zero_add, Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ,
+    Nat.zero_add, gapPosTot_eq_sum, sumB_eq_sum]
+  have hR : ∀ n, posAtW1 w (n * 1 + 0) = if w.testBit n = true then n + 1 else 0 := by
+    intro n
+    rw [posAtW1, Bool.rec_eq, Sieve.testBitK_eq_testBit, Nat.add_eq, Nat.mul_one, Nat.add_zero]
+  simp only [hR]
+  rw [← Finset.sum_filter]
+  have hinj : ∀ x ∈ range c, ∀ y ∈ range c,
+      gapPos F M G (x + 1) = gapPos F M G (y + 1) → x = y := by
+    intro x hx y hy hxy
+    rw [Finset.mem_range] at hx hy
+    by_contra hne
+    rcases Nat.lt_or_gt_of_ne hne with h | h
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hy).ne
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hx).ne'
+  have hinj2 : ∀ x ∈ (range B).filter (fun n ↦ w.testBit n = true),
+      ∀ y ∈ (range B).filter (fun n ↦ w.testBit n = true), x + 1 = y + 1 → x = y :=
+    fun x _ y _ h ↦ Nat.succ_injective h
+  have hset : (range c).image (fun i ↦ gapPos F M G (i + 1))
+      = ((range B).filter (fun n ↦ w.testBit n = true)).image (fun n ↦ n + 1) := by
+    ext k
+    simp only [Finset.mem_image, Finset.mem_filter, Finset.mem_range]
+    have hk : (gapWin F M G c).testBit k = (w <<< 1).testBit k := by rw [htie]
+    rw [Nat.testBit_shiftLeft] at hk
+    constructor
+    · rintro ⟨i, hi, rfl⟩
+      have h1 : (gapWin F M G c).testBit (gapPos F M G (i + 1)) = true :=
+        (gapWin_testBit F M G c _).mpr ⟨i + 1, Nat.succ_pos i, hi, rfl⟩
+      rw [hk, Bool.and_eq_true, decide_eq_true_iff] at h1
+      refine ⟨gapPos F M G (i + 1) - 1, ⟨?_, h1.2⟩, by omega⟩
+      by_contra hB
+      have h2 := h1.2
+      rw [Nat.testBit_lt_two_pow
+        (hw.trans_le (Nat.pow_le_pow_right Nat.two_pos (not_lt.mp hB)))] at h2
+      exact absurd h2 Bool.false_ne_true
+    · rintro ⟨n, ⟨_, hbit⟩, rfl⟩
+      have h1 : (gapWin F M G c).testBit (n + 1) = true := by
+        rw [hk, Bool.and_eq_true, decide_eq_true_iff, Nat.add_sub_cancel]
+        exact ⟨by omega, hbit⟩
+      obtain ⟨j, hj0, hjc, hjk⟩ := (gapWin_testBit F M G c (n + 1)).mp h1
+      refine ⟨j - 1, by omega, ?_⟩
+      rw [Nat.sub_add_cancel hj0]
+      exact hjk
+  have e1 := Finset.sum_image (f := fun k ↦ k) hinj
+  have e2 := Finset.sum_image (f := fun k ↦ k) hinj2
   rw [← e1, hset, e2]
 
 /-- `gapFoldK_div` with the fold's value `R` as its own literal, so that the kernel check of the
