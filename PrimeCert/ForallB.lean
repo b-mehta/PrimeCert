@@ -17,20 +17,18 @@ import Mathlib.Tactic.Ring
 explicit list.
 -/
 
-open Internal
-
 public theorem List.rec_and {α : Type*} (f : α → Bool) (b : Bool) (l : List α) :
-    List.rec b (fun hd _ ih ↦ (f hd).and' ih) l = true ↔ b = true ∧ ∀ x ∈ l, f x := by
+    List.rec b (fun hd _ ih ↦ (f hd).and ih) l = true ↔ b = true ∧ ∀ x ∈ l, f x := by
   induction l with
   | nil => simp
-  | cons _ _ ih => grind [Bool.and'_eq_and]
+  | cons _ _ ih => grind
 
 namespace PrimeCert
 
 /-- `f` holds at each of the `len` elements `start, start + step, …`, as a `Bool`.
 `forallB_iff` states this as an ordinary `∀`. -/
 @[expose] public noncomputable def forallB (f : ℕ → Bool) (start len : ℕ) (step : ℕ) : Bool :=
-  len.rec true fun n b ↦ (f ((n.mul step).add start)).and' b
+  len.rec true fun n b ↦ (f ((n.mul step).add start)).and b
 
 @[simp, grind =] theorem forallB_zero (f : ℕ → Bool) (start step : ℕ) :
     forallB f start 0 step = true :=
@@ -38,7 +36,7 @@ namespace PrimeCert
 
 @[simp, grind =] theorem forallB_succ (f : ℕ → Bool) (start len step : ℕ) :
     forallB f start (len + 1) step =
-      (f ((len.mul step).add start)).and' (forallB f start len step) :=
+      (f ((len.mul step).add start)).and (forallB f start len step) :=
   rfl
 
 /-- Read the fold as a statement about the indices `0` to `len`, whose elements are

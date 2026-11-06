@@ -20,8 +20,6 @@ an additional divisibility sieve up to a small bound `m` and a non-square check 
 (where `R = (N-1)/F` and `R = 2·F·s + r`).
 -/
 
-open Internal
-
 /-- `Nat.modEq_iff_exists_eq_add` reshaped into the `k * b + q = p` form that
 `pocklington3_test` consumes directly. -/
 theorem Nat.modEq_iff_exists_mul_add' {p q b : ℕ} (hqp : q ≤ p) :
@@ -176,7 +174,7 @@ theorem PrimePow.prime_dvd_toNat (pp : PrimePow) : pp.prime ∣ pp.toNat :=
   let s := R.div two_F
   F'.rec (powModK root (N.div 2) N |>.pred.gcd N |>.beq 1)
     (fun pp _ ih ↦ pp.rec fun p _ _ _ ↦
-      (powModK root (N.div p) N |>.pred.gcd N |>.beq 1).and' ih) &&
+      (powModK root (N.div p) N |>.pred.gcd N |>.beq 1).and ih) &&
   (0).blt e &&
   (mode.calculate r s) &&
   (N.mod F |>.beq 1) &&
