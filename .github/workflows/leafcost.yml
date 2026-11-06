@@ -30,7 +30,7 @@ jobs:
           set +e +o pipefail
           export LEAN_PATH=$(lake env printenv LEAN_PATH)
           for round in 1 2 3; do
-            if [ "$round" = "3" ]; then order="Pos Div"; else order="Div Pos"; fi
+            if [ "$round" = "3" ]; then order="Floor Pos Div"; else order="Div Pos Floor"; fi
             for arm in $order; do
               start=$(date +%s%3N)
               lean -M 8000 "PrimeCertTest/GapAB/${arm}.lean" > /dev/null
