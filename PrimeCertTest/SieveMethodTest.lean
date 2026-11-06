@@ -29,5 +29,5 @@ example : Nat.Prime 1997 := by prime_cert [small {2; 3}, sieve {1993; 1997}]
 
 example : Nat.Prime 16290860017 := by
   prime_cert [sieve {3; 29},
-    pock3 (339392917, 2, 3, 2 ^ 2 * 3 ^ 4 * 29),
+    pock3 (339392917, 2, interval, 2 ^ 2 * 3 ^ 4 * 29),
     pock3 (16290860017, 5, 0, 2 ^ 4 * 3 * 339392917)]
