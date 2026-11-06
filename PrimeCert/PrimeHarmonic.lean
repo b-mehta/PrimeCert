@@ -1149,6 +1149,28 @@ public theorem primeRecipIcc_of_single {Nb N S s len A : ℕ} (hs : Sieve.IsSiev
   refine ⟨hlo, hhi.trans ?_⟩
   gcongr
 
+/-- A range of primes above `N₁` extends an interval enclosure up to `N₂`, with the two totals and
+the two counts added as literals. A run split into one base interval and several ranges joins into
+a single enclosure this way, with no arithmetic outside the kernel. -/
+public theorem primeRecipIcc_add_range {N₁ N₂ A₁ C₁ A₂ C₂ A C S : ℕ}
+    (hN : Nat.ble N₁ N₂ = true)
+    (h₁ : PrimeRecipIcc N₁ A₁ C₁ S) (h₂ : PrimeRecipRange (N₁ + 1) (N₂ + 1) A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
+    PrimeRecipIcc N₂ A C S := by
+  rw [Nat.beq_eq] at hA hC
+  rw [Nat.ble_eq] at hN
+  rw [PrimeRecipIcc, Finset.sum_filter, Finset.range_eq_Ico] at h₁ ⊢
+  rw [PrimeRecipRange, Finset.sum_filter] at h₂
+  rw [← Finset.sum_Ico_consecutive _ (Nat.zero_le (N₁ + 1)) (by omega : N₁ + 1 ≤ N₂ + 1)]
+  obtain ⟨hlo₁, hhi₁⟩ := h₁
+  obtain ⟨hlo₂, hhi₂⟩ := h₂
+  subst hA
+  subst hC
+  simp only [Nat.add_eq]
+  push_cast
+  simp only [add_div] at hhi₁ hhi₂ ⊢
+  exact ⟨by linarith, by linarith⟩
+
 theorem bitAtW_le_one (w i : ℕ) : bitAtW w i ≤ 1 := by
   rw [bitAtW]
   cases Sieve.testBitK w i <;> simp
