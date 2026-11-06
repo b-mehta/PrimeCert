@@ -54,6 +54,25 @@ starting at bit `F * i`, read through the mask `M`. -/
                     (Nat.add (Nat.mod (Nat.div st P) Q)
                       (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)))))))))
 
+/-- `gapFoldK` with the position itself added to the total, in place of
+`S / value (lo + position)`. The offset expansion encloses the sum of reciprocals from the count,
+the sum of positions and a bound on the spread, so this walk reaches the same enclosure with one
+addition of a number below `M` where `gapFoldK` divides. Nothing is proved about it yet; it exists
+to be timed against `gapFoldK` on identical gaps. -/
+@[expose] public noncomputable def gapFoldPosK (P Q PQ F M G c : ℕ) : ℕ :=
+  c.rec (nat_lit 0) fun i st ↦
+    Nat.add
+      (Nat.lor (Nat.mod st P)
+        (Nat.shiftLeft (nat_lit 1)
+          (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))
+      (Nat.mul P
+        (Nat.add
+          (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))
+          (Nat.mul Q
+            (Nat.add (Nat.div st PQ)
+              (Nat.add (Nat.mod (Nat.div st P) Q)
+                (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))))
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
