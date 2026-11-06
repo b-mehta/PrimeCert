@@ -194,6 +194,27 @@ public theorem posAtW0_eq (w lo len : ℕ) :
     have := posAtW0_add_bit w lo (n * 1 + 0)
     omega
 
+/-- A batch's window read out of the segment literal: below `B` bits, the window agrees with the
+segment shifted down by the batch's start. -/
+theorem testBit_of_window {s k B w i : ℕ} (hi : i < B)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    w.testBit i = s.testBit (k + i) := by
+  rw [Nat.beq_eq] at hw
+  subst hw
+  rw [Nat.land_eq, Nat.shiftRight_eq', Nat.shiftLeft_eq', Nat.sub_eq, Nat.testBit_and,
+    Nat.testBit_shiftRight, Nat.one_shiftLeft, Nat.testBit_two_pow_sub_one, Nat.add_comm k i]
+  simp [hi]
+
+/-- The segment's fold of positions over a batch is the batch's own windowed fold. -/
+public theorem posW_window (s k B w len : ℕ) (hlen : len ≤ B)
+    (hw : Nat.beq (Nat.land (Nat.shiftRight s k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
+    sumB (posAtK s) k len 1 = sumB (posAtW0 w k) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum]
+  refine Finset.sum_congr rfl fun i hi ↦ ?_
+  have hb := testBit_of_window (lt_of_lt_of_le (Finset.mem_range.mp hi) hlen) hw
+  rw [posAtK, posAtW0, Bool.rec_eq, Bool.rec_eq, Sieve.testBitK_eq_testBit,
+    Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero, Nat.add_eq, hb, Nat.add_comm i k]
+
 /-- The scan of the shifted segment is the windowed fold of the positions. -/
 public theorem pos_shift (g lo len : ℕ) :
     sumB (posAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (posAtW0 g lo) 0 len 1 := by
