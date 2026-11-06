@@ -151,12 +151,12 @@ theorem testBit_buildMaskK_pow {p M A B n t : ℕ} (ht : t ≤ M) :
     rw [buildMaskK_succ]
     have h : 2 ^ (n + 1) = 2 ^ n + 2 ^ n := by grind
     obtain hg | hg := le_or_gt (p * 2 ^ (n + 1)) M
-    · rw [if_pos hg, Nat.testBit_or, Nat.testBit_shiftLeft]
+    · rw [ite_eq_left hg, Nat.testBit_or, Nat.testBit_shiftLeft]
       simp only [ge_iff_le, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq]
       rw [ih (by lia), ih (by lia), h, exists_lt_add_iff_lt_left, ← exists_and_left]
       congr! 1
       apply exists_congr (by grind)
-    · rw [if_neg hg.not_ge, ih ht, h, exists_lt_add_iff_lt_left, iff_self_or]
+    · rw [ite_eq_right hg.not_ge, ih ht, h, exists_lt_add_iff_lt_left, iff_self_or]
       grind [mul_add]
 
 theorem prog_iff_dvd {c t p B : ℕ} (hB : t < 2 * p * B) :
@@ -282,7 +282,7 @@ theorem sieveLoopK_clears {M start t j m : ℕ} (hstart : start ≠ 0)
     · have hset : (sieveLoopK M (initK M) start f).testBit (start + f) = true := by
         rw [sieveLoopK_preserves hstart hM (by lia) (by grind)]
         grind [testBit_initK]
-      simp_rw [if_pos hset, testBit_markMaskK, Bool.and_eq_false_iff, Bool.not_eq_eq_eq_not,
+      simp_rw [ite_eq_left hset, testBit_markMaskK, Bool.and_eq_false_iff, Bool.not_eq_eq_eq_not,
         Bool.not_false]
       rw [mask_iff (value_coprime6 _) hM ht]
       exact Or.inr ⟨m, by grind⟩

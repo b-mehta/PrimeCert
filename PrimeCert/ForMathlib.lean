@@ -75,12 +75,12 @@ public theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
     refine pow_dvd_of_le_multiplicity ?_
     rw [multiplicity_eq_factorization hq hqn₀, multiplicity_eq_factorization hq hx₀,
       Nat.factorization_mul hq.ne_zero hn₀, Finsupp.add_apply, hq.factorization,
-      Finsupp.single_apply, if_pos rfl, add_comm]
+      Finsupp.single_apply, ite_eq_left rfl, add_comm]
     refine le_of_not_gt fun h ↦ hxnq fun p ↦ ?_
     by_cases hpq : p = q
     · subst hpq; exact Nat.lt_succ_iff.mp h
     convert hxn p using 1
-    rw [Finsupp.add_apply, Finsupp.single_apply, if_neg (Ne.symm hpq), add_zero]
+    rw [Finsupp.add_apply, Finsupp.single_apply, ite_eq_right (Ne.symm hpq), add_zero]
   · rw [multiplicity_eq_zero.mpr hqn, pow_zero]
     exact one_dvd _
 

@@ -56,7 +56,7 @@ noncomputable def mirimanoffK (p : ℕ) : Bool :=
 
 /-! # We check odd numbers up to 6000 in the classes 1%6 and 5%6 -/
 
-open PrimeCert
+open PrimeCert Internal
 
 theorem wieferich_mirimanoff₁ : ∀ n < 6000, n % 6 = 1 →
     (wieferichK n).not'.or' (mirimanoffK n).not' :=
