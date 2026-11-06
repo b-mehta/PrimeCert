@@ -73,6 +73,75 @@ to be timed against `gapFoldK` on identical gaps. -/
               (Nat.add (Nat.mod (Nat.div st P) Q)
                 (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))))
 
+/-! ## Positions against offsets
+
+The position walk accumulates `r`, the position reached, where the paper's expansion wants
+`d = value (lo + r) - value lo`. The wheel's step is three with a parity correction, so `d` is
+within one of `3 * r` and a fold of positions bounds a fold of offsets without a second pass. -/
+
+/-- The offset from `value lo` of the number `r` positions above it is at most `3 * r + 1`. -/
+theorem value_add_le (lo r : ℕ) : Sieve.value (lo + r) ≤ Sieve.value lo + 3 * r + 1 := by
+  rw [Sieve.value, Sieve.value]
+  have h : (lo + r) % 2 ≤ lo % 2 + 1 := by omega
+  omega
+
+/-- That offset is at least `3 * r - 1`, written without subtraction. -/
+theorem le_value_add (lo r : ℕ) : Sieve.value lo + 3 * r ≤ Sieve.value (lo + r) + 1 := by
+  rw [Sieve.value, Sieve.value]
+  have h : lo % 2 ≤ (lo + r) % 2 + 1 := by omega
+  omega
+
+/-- The position `i` where bit `i` of the window `w` is set, and `0` where it is clear. This is
+what `gapFoldPosK` accumulates, against `offAtW`'s offset from `value lo`. -/
+@[expose] public def posAtW (w i : ℕ) : ℕ :=
+  (Sieve.testBitK w i).rec (nat_lit 0) i
+
+theorem offAtW_le_posAtW (w lo i : ℕ) :
+    offAtW w lo (Sieve.value lo) i ≤ 3 * posAtW w i + bitAtW w i := by
+  rw [offAtW, posAtW, bitAtW]
+  cases Sieve.testBitK w i with
+  | false => simp
+  | true =>
+    have := value_add_le lo i
+    simp only [Sieve.valueK_eq_value, Nat.sub_eq, Nat.add_eq]
+    omega
+
+theorem posAtW_le_offAtW (w lo i : ℕ) :
+    3 * posAtW w i ≤ offAtW w lo (Sieve.value lo) i + bitAtW w i := by
+  rw [offAtW, posAtW, bitAtW]
+  cases Sieve.testBitK w i with
+  | false => simp
+  | true =>
+    have := le_value_add lo i
+    have := Sieve.value_strictMono.monotone (Nat.le_add_right lo i)
+    simp only [Sieve.valueK_eq_value, Nat.sub_eq, Nat.add_eq]
+    omega
+
+/-- The fold of offsets is bounded by three times the fold of positions, with the count as slack,
+so a walk that accumulates positions bounds the paper's first moment without a second pass. -/
+public theorem sumB_offAtW_le (w lo len : ℕ) :
+    sumB (offAtW w lo (Sieve.value lo)) 0 len 1
+      ≤ 3 * sumB (posAtW w) 0 len 1 + sumB (bitAtW w) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum, sumB_eq_sum]
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [Finset.sum_range_succ, Finset.sum_range_succ, Finset.sum_range_succ]
+    have := offAtW_le_posAtW w lo (n * 1 + 0)
+    omega
+
+/-- The bound in the other direction. -/
+public theorem sumB_posAtW_le (w lo len : ℕ) :
+    3 * sumB (posAtW w) 0 len 1
+      ≤ sumB (offAtW w lo (Sieve.value lo)) 0 len 1 + sumB (bitAtW w) 0 len 1 := by
+  rw [sumB_eq_sum, sumB_eq_sum, sumB_eq_sum]
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    rw [Finset.sum_range_succ, Finset.sum_range_succ, Finset.sum_range_succ]
+    have := posAtW_le_offAtW w lo (n * 1 + 0)
+    omega
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
