@@ -198,6 +198,29 @@ public theorem sumB_osqAtW_le (w lo K : ℕ) :
       simp only [Sieve.sqK, Nat.mul_eq] at hle ⊢
       exact Nat.mul_le_mul_right _ hle
 
+/-! ## What the walk gives the enclosure
+
+A batch's walk yields two literals, the count `C` and the total `D` of the positions it reached.
+The pair below turns those into two-sided bounds on the fold of offsets from `value lo`, which is
+the quantity the three-term expansion consumes. Both are free of subtraction, so the emitter can
+check them as `Nat.ble` literals. -/
+
+/-- The offset fold, bounded above by the walk's two literals. -/
+public theorem offAtW_le_of_walk {w lo len C D : ℕ}
+    (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW1 w) 0 len 1 = D) :
+    sumB (offAtW w lo (Sieve.value lo)) 0 len 1 + 2 * C ≤ 3 * D := by
+  have h1 := sumB_offAtW_le w lo len
+  have h2 := sumB_posAtW1_eq w len
+  omega
+
+/-- The offset fold, bounded below by the walk's two literals. -/
+public theorem le_offAtW_of_walk {w lo len C D : ℕ}
+    (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW1 w) 0 len 1 = D) :
+    3 * D ≤ sumB (offAtW w lo (Sieve.value lo)) 0 len 1 + 4 * C := by
+  have h1 := sumB_posAtW_le w lo len
+  have h2 := sumB_posAtW1_eq w len
+  omega
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
