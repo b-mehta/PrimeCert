@@ -203,4 +203,40 @@ public theorem primeRecipRange_segment_walk {B a W S g o A C D Vlo Vhi Q Cw : �
   have := primeRecipRange_of_window_walk0 h1 hS ho hbit hC hD hVhi hVlo hQb hAb hUb
   rwa [hlo] at this
 
+/-- Everything the segment command's output needs for a run that never divides, in one
+application: the base sieve, the run equation, the numeric side conditions as literals, and the
+two folds the walks produce. The counterpart of `primeRecipRange_of_segRun`. -/
+public theorem primeRecipRange_of_segRun_walk {s B a W S g o A C D Vlo Vhi Q Cw lo next : ℕ}
+    (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB1 : Nat.ble 1 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (hov : Nat.beq (Sieve.value lo) o = true)
+    (htop : Nat.blt (Sieve.value (lo + W - 1)) (B ^ 2) = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hD : sumB (posAtW0 g lo) 0 W 1 = D)
+    (hVhi : Nat.ble (o * C + 3 * D + C) (Vhi + 3 * (lo * C)) = true)
+    (hVlo : Nat.ble (Vlo + C + 3 * (lo * C)) (o * C + 3 * D) = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D + C) + (3 * W + 1) * (3 * D + C)) Q = true)
+    (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
+    (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
+    PrimeRecipRange a next A Cw S := by
+  rw [Nat.beq_eq] at hlo htv hov
+  subst hlo
+  subst htv
+  rw [Nat.ble_eq] at ha5 hB1 h7B
+  rw [Nat.blt_eq] at hW htop
+  rw [Sieve.segRun_eq] at hseg
+  have hsound' := Sieve.segmentSound_of hs ha hW hB1 h7B
+  have hcomplete' := Sieve.segmentComplete_of hs hB6 hW h7B
+  rw [Sieve.SegmentSound] at hsound'
+  rw [Sieve.SegmentComplete] at hcomplete'
+  rw [hseg] at hsound' hcomplete'
+  exact primeRecipRange_segment_walk ha ha5 (by omega) hS hov htop
+    (fun j hj h ↦ hsound' j hj h) hcomplete' hC hD hVhi hVlo hQb hAb hUb
+
 end PrimeCert
