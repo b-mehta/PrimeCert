@@ -553,6 +553,21 @@ public theorem gapFoldPosK_pos (P Q PQ Pb F M G c w B : ℕ)
   have e2 := Finset.sum_image (f := fun k ↦ k) hinj2
   rw [← e1, hset, e2]
 
+/-- `gapFoldPosK_pos` with the walk's value `R` as its own literal, the shape the emitter needs:
+one kernel check of the walk, one of the tie to the window, and the division of `R` by the two
+field widths done as a literal. -/
+public theorem gapFoldPosK_pos_lit (P Q PQ Pb F M G c w B R A : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (hR : Nat.beq (gapFoldPosK P Q PQ F M G c) R = true)
+    (htie : Nat.beq (Nat.mod R P) (Nat.shiftLeft w (nat_lit 1)) = true)
+    (hA : Nat.beq (Nat.div R PQ) A = true) :
+    sumB (posAtW1 w) (nat_lit 0) B (nat_lit 1) = A := by
+  rw [Nat.beq_eq] at hR hA
+  subst hR hA
+  exact (gapFoldPosK_pos P Q PQ Pb F M G c w B hP hPQ hQ hPb hgaps hw htie).symm
+
 /-- `gapFoldK_div` with the fold's value `R` as its own literal, so that the kernel check of the
 fold and the tie to the window are the declarations `run_gap` emits, and the division is a
 literal the emitter computes. -/
