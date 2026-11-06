@@ -283,6 +283,17 @@ public theorem le_offAtW_of_walk {w lo len C D : ℕ}
   have h2 := sumB_posAtW1_eq w len
   omega
 
+/-- The rebased fold as its own literal, the form the emitter states: the rebasing itself is one
+comparison of literals, `D0 + C = lo * C + D`. -/
+public theorem posAtW0_lit (w lo len C D D0 : ℕ)
+    (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW1 w) 0 len 1 = D)
+    (h : Nat.beq (Nat.add D0 C) (Nat.add (Nat.mul lo C) D) = true) :
+    sumB (posAtW0 w lo) 0 len 1 = D0 := by
+  rw [Nat.beq_eq, Nat.add_eq, Nat.add_eq, Nat.mul_eq] at h
+  have h2 := posAtW0_eq w lo len
+  rw [hC, hD] at h2
+  omega
+
 /-- `offAtW_le_of_walk` for the rebased fold, the one that joins across batches. -/
 public theorem offAtW_le_of_walk0 {w lo len C D : ℕ}
     (hC : sumB (bitAtW w) 0 len 1 = C) (hD : sumB (posAtW0 w lo) 0 len 1 = D) :
