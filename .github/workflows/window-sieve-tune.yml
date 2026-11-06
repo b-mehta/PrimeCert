@@ -23,10 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Sorted records against a mask built by doubling, over a certificate
+      - name: The same two arms with declaration names and file positions held equal
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 S9_Par1 D2_Marked
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 5 Z1_NameA Z1_NameB
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
