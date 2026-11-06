@@ -1,0 +1,73 @@
+name: What one special leaf costs, and what the division costs
+
+on:
+  push:
+    branches:
+      - 'ci/leafcost'
+  workflow_dispatch:
+
+jobs:
+  gap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what both arms import, leaving the arms unbuilt
+        run: lake build PrimeCert.GapFold PrimeCert.Meta.QuickRfl
+
+      - name: Time the two gap walks, alternating, order reversed halfway
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          for round in 1 2 3; do
+            if [ "$round" = "3" ]; then order="Pos Div"; else order="Div Pos"; fi
+            for arm in $order; do
+              start=$(date +%s%3N)
+              lean -M 8000 "PrimeCertTest/GapAB/${arm}.lean" > /dev/null
+              code=$?
+              echo "RESULT gap | round $round | $arm | exit $code | $(( $(date +%s%3N) - start )) ms"
+            done
+          done
+
+  leaf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.1.2/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the mathlib build cache
+        run: lake exe cache get
+
+      - name: Build what the leaves import, leaving the leaves unbuilt
+        run: lake build PrimeCert.PrimeHarmonic PrimeCert.Meta.QuickRfl
+
+      - name: Time one file per pair of parameters, twice, the second pass reversed
+        run: |
+          set +e +o pipefail
+          export LEAN_PATH=$(lake env printenv LEAN_PATH)
+          files=$(ls PrimeCertTest/LeafProbe/*.lean | sort)
+          for round in 1 2; do
+            if [ "$round" = "2" ]; then files=$(ls PrimeCertTest/LeafProbe/*.lean | sort -r); fi
+            for f in $files; do
+              start=$(date +%s%3N)
+              lean -M 8000 "$f" > /dev/null
+              code=$?
+              echo "RESULT leaf | round $round | $(basename "$f" .lean) | exit $code | $(( $(date +%s%3N) - start )) ms"
+            done
+          done
