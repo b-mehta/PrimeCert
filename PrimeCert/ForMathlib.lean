@@ -13,7 +13,6 @@ import Mathlib.Data.Nat.ChineseRemainder
 import Mathlib.Data.Nat.Totient
 import Mathlib.Data.Finset.Pairwise
 import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Order
 
 /-! # Lemmas destined for Mathlib
@@ -40,24 +39,14 @@ theorem Nat.modEq_finset_prod_iff {a b : ℕ} {ι : Type*} (s : Finset ι) (e : 
   · simp_rw [List.mem_toFinset]
   · rwa [← List.pairwise_iff_coe_toFinset_pairwise hl]
 
-public theorem Nat.modEq_iff_forall_prime_dvd {a b n : ℕ} :
+public theorem Nat.modEq_iff_forall_prime_dvd {a b n : ℕ} (hn₀ : n ≠ 0) :
     a ≡ b [MOD n] ↔ ∀ p : ℕ, p ∣ n → p.Prime → a ≡ b [MOD p ^ multiplicity p n] := by
-  by_cases hn₀ : n = 0
-  · subst hn₀
-    simp_rw [modEq_zero_iff, dvd_zero, true_imp_iff]
-    constructor
-    · rintro rfl; exact fun _ _ ↦ by rfl
-    · intro h
-      obtain ⟨p, hbp, hp⟩ := exists_infinite_primes (a + b + 1)
-      specialize h p hp
-      rw [multiplicity_zero, pow_one] at h
-      exact h.eq_of_lt_of_lt (by linarith) (by linarith)
-  · conv_lhs => rw [← prod_factorization_pow_eq_self hn₀]
-    rw [Finsupp.prod, modEq_finset_prod_iff]
-    · simp_rw [support_factorization, mem_primeFactors_of_ne_zero hn₀, and_comm, and_imp]
-      refine forall_congr' fun p ↦ imp_congr_right fun hpn ↦ imp_congr_right fun hp ↦ ?_
-      rw [multiplicity_eq_factorization hp hn₀]
-    · grind [support_factorization, coprime_pow_primes, Set.Pairwise]
+  conv_lhs => rw [← prod_factorization_pow_eq_self hn₀]
+  rw [Finsupp.prod, modEq_finset_prod_iff]
+  · simp_rw [support_factorization, mem_primeFactors_of_ne_zero hn₀, and_comm, and_imp]
+    refine forall_congr' fun p ↦ imp_congr_right fun hpn ↦ imp_congr_right fun hp ↦ ?_
+    rw [multiplicity_eq_factorization hp]
+  · grind [support_factorization, coprime_pow_primes, Set.Pairwise]
 
 public theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
     {q n x : ℕ} (hq : q.Prime) (hxn : x ∣ n) (hxnq : ¬ x ∣ n / q) :
@@ -73,7 +62,7 @@ public theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
     rw [← Nat.factorization_le_iff_dvd hx₀ hqn₀] at hxn
     rw [Nat.factorization_mul hq.ne_zero hn₀, hq.factorization, add_comm] at hxn
     refine pow_dvd_of_le_multiplicity ?_
-    rw [multiplicity_eq_factorization hq hqn₀, multiplicity_eq_factorization hq hx₀,
+    rw [multiplicity_eq_factorization hq, multiplicity_eq_factorization hq,
       Nat.factorization_mul hq.ne_zero hn₀, Finsupp.add_apply, hq.factorization,
       Finsupp.single_apply, ite_eq_left rfl, add_comm]
     refine le_of_not_gt fun h ↦ hxnq fun p ↦ ?_
@@ -81,7 +70,7 @@ public theorem Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div
     · subst hpq; exact Nat.lt_succ_iff.mp h
     convert hxn p using 1
     rw [Finsupp.add_apply, Finsupp.single_apply, ite_eq_right (Ne.symm hpq), add_zero]
-  · rw [multiplicity_eq_zero.mpr hqn, pow_zero]
+  · rw [multiplicity_eq_factorization hq, factorization_eq_zero_of_not_dvd hqn, pow_zero]
     exact one_dvd _
 
 public theorem Nat.modEq_one_of_dvd_of_prime (n b : ℕ)
