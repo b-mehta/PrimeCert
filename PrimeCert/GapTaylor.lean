@@ -76,4 +76,45 @@ public theorem primeRecipRange_of_taylor_bounded {s S lo len o A C Vlo Vhi Q Cw 
   · exact div_le_div_cross hSQ (by positivity) (by nlinarith [hq1])
   · exact div_le_div_cross (by positivity) hSQ (by nlinarith [hq2])
 
+/-- The enclosure of one batch from a walk that only adds. `C` and `D` are the walk's own two
+literals, the count and the total of the positions it reached; `Vhi`, `Vlo` and `Q` are the
+emitter's bounds on the fold of the numbers and the fold of their squares, each tied to `C` and
+`D` by a comparison of literals the kernel checks. -/
+public theorem primeRecipRange_of_window_walk {w lo len S o A C D Vlo Vhi Q Cw : ℕ}
+    (hlo : 1 ≤ lo) (hS : Nat.blt 0 S = true) (ho : Sieve.value lo = o)
+    (hbit : ∀ t, lo ≤ t → t < lo + len →
+      ((Nat.shiftLeft w lo).testBit t ↔ (Sieve.value t).Prime))
+    (hC : sumB (bitAtW w) 0 len 1 = C)
+    (hD : sumB (posAtW1 w) 0 len 1 = D)
+    (hVhi : Nat.ble (o * C + 3 * D) Vhi = true)
+    (hVlo : Nat.ble (Vlo + 4 * C) (o * C + 3 * D) = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D) + (3 * len + 1) * (3 * D)) Q = true)
+    (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
+    (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
+    PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A Cw S := by
+  rw [Nat.ble_eq] at hVhi hVlo hQb
+  subst ho
+  have hge : ∀ i < len, Sieve.value lo ≤ Sieve.value (lo + i) := fun i _ ↦
+    Sieve.value_strictMono.monotone (Nat.le_add_right lo i)
+  have hCs : sumB (bitAtK (Nat.shiftLeft w lo)) lo len 1 = C := by rw [bit_shift, hC]
+  have hVs : sumB (valAtK (Nat.shiftLeft w lo)) lo len 1
+      = Sieve.value lo * C + sumB (offAtW w lo (Sieve.value lo)) 0 len 1 := by
+    rw [val_shift, sumB_valAtW_eq hge, hC]
+  have hQs : sumB (sqAtK (Nat.shiftLeft w lo)) lo len 1
+      = Sieve.value lo ^ 2 * C + 2 * Sieve.value lo * sumB (offAtW w lo (Sieve.value lo)) 0 len 1
+        + sumB (osqAtW w lo (Sieve.value lo)) 0 len 1 := by
+    rw [sq_shift, sumB_sqAtW_eq hge, hC]
+  have hup := offAtW_le_of_walk (lo := lo) hC hD
+  have hdn := le_offAtW_of_walk (lo := lo) hC hD
+  have hsq := sumB_osqAtW_le w lo (3 * len + 1) len fun i hi ↦ offAtW_le w lo len i hi
+  refine primeRecipRange_of_taylor_bounded hlo hS rfl hbit hCs ?_ ?_ ?_ hAb hUb
+  · omega
+  · omega
+  · have : sumB (osqAtW w lo (Sieve.value lo)) 0 len 1 ≤ (3 * len + 1) * (3 * D) := by
+      refine hsq.trans ?_
+      exact Nat.mul_le_mul_left _ (by omega)
+    have h2 : 2 * Sieve.value lo * sumB (offAtW w lo (Sieve.value lo)) 0 len 1
+        ≤ 2 * Sieve.value lo * (3 * D) := Nat.mul_le_mul_left _ (by omega)
+    omega
+
 end PrimeCert

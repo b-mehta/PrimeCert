@@ -163,7 +163,7 @@ public theorem sumB_posAtW_le (w lo len : ℕ) :
     omega
 
 /-- Each offset in a window of `len` positions is at most `3 * len + 1`. -/
-theorem offAtW_le (w lo len i : ℕ) (hi : i < len) :
+public theorem offAtW_le (w lo len i : ℕ) (hi : i < len) :
     offAtW w lo (Sieve.value lo) i ≤ 3 * len + 1 := by
   rw [offAtW]
   cases Sieve.testBitK w i with
