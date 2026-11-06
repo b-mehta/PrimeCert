@@ -204,7 +204,7 @@ theorem mem_primeFactors_prod_toNat (L : List PrimePow) (p : ℕ) :
 -- `omega` is >2x faster than `lia` here (57ms vs 148ms median over 5 runs)
 theorem of_gcd_pred_mod_eq_one (a b : ℕ) (h : (a % b - 1).gcd b = 1)
     (hb : 2 ≤ b) : (a - 1).gcd b = 1 := by
-  rwa [Nat.gcd_comm, Nat.gcd_def, if_neg (by omega), ← Nat.mod_sub_of_le]
+  rwa [Nat.gcd_comm, Nat.gcd_def, ite_eq_right (by omega), ← Nat.mod_sub_of_le]
   · by_cases h₀ : a % b = 0
     · rw [h₀, Nat.zero_sub, Nat.gcd_zero_left] at h; omega
     · omega
