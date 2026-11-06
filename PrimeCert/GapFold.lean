@@ -162,6 +162,42 @@ public theorem sumB_posAtW_le (w lo len : ℕ) :
     have := posAtW_le_offAtW w lo (n * 1 + 0)
     omega
 
+/-- Each offset in a window of `len` positions is at most `3 * len + 1`. -/
+theorem offAtW_le (w lo len i : ℕ) (hi : i < len) :
+    offAtW w lo (Sieve.value lo) i ≤ 3 * len + 1 := by
+  rw [offAtW]
+  cases Sieve.testBitK w i with
+  | false => simp
+  | true =>
+    have := value_add_le lo i
+    simp only [Sieve.valueK_eq_value, Nat.sub_eq, Nat.add_eq]
+    omega
+
+/-- The fold of squared offsets is at most `K` times the fold of offsets, whenever `K` bounds
+every offset in the window. With `offAtW_le` this gives the second moment from the first, so the
+enclosure closes without a second fold. -/
+public theorem sumB_osqAtW_le (w lo K : ℕ) :
+    ∀ len, (∀ i < len, offAtW w lo (Sieve.value lo) i ≤ K) →
+      sumB (osqAtW w lo (Sieve.value lo)) 0 len 1
+        ≤ K * sumB (offAtW w lo (Sieve.value lo)) 0 len 1 := by
+  intro len
+  rw [sumB_eq_sum, sumB_eq_sum]
+  induction len with
+  | zero => simp
+  | succ n ih =>
+    intro hK
+    rw [Finset.sum_range_succ, Finset.sum_range_succ, Nat.mul_add]
+    refine Nat.add_le_add (ih fun i hi ↦ hK i (Nat.lt_succ_of_lt hi)) ?_
+    have hle := hK (n * 1 + 0) (by omega)
+    rw [offAtW] at hle
+    rw [osqAtW, offAtW]
+    cases h : Sieve.testBitK w (n * 1 + 0) with
+    | false => simp
+    | true =>
+      rw [h] at hle
+      simp only [Sieve.sqK, Nat.mul_eq] at hle ⊢
+      exact Nat.mul_le_mul_right _ hle
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
