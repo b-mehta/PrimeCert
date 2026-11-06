@@ -157,4 +157,50 @@ public theorem primeRecipRange_of_window_walk0 {w lo len S o A C D Vlo Vhi Q Cw 
         ≤ 2 * Sieve.value lo * (3 * D + C) := Nat.mul_le_mul_left _ hoff
     omega
 
+/-- One sieved segment enclosed from the joined walks, the counterpart of
+`primeRecipRange_segment` for a run in which the kernel never divides. `C` is the count and `D`
+the total of the positions counted from the segment's start; the rest are comparisons of
+literals. -/
+public theorem primeRecipRange_segment_walk {B a W S g o A C D Vlo Vhi Q Cw : ℕ}
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (ha5 : 5 ≤ a) (hBa : B < a)
+    (hS : Nat.blt 0 S = true) (ho : Sieve.value (Sieve.index a) = o)
+    (htop : Sieve.value (Sieve.index a + W - 1) < B ^ 2)
+    (hsound : ∀ j < W, g.testBit j = true →
+      ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j))
+    (hcomplete : ∀ j < W,
+      (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) → g.testBit j = true)
+    (hC : sumB (bitAtW g) 0 W 1 = C)
+    (hD : sumB (posAtW0 g (Sieve.index a)) 0 W 1 = D)
+    (hVhi : Nat.ble (o * C + 3 * D + C) (Vhi + 3 * (Sieve.index a * C)) = true)
+    (hVlo : Nat.ble (Vlo + C + 3 * (Sieve.index a * C)) (o * C + 3 * D) = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D + C) + (3 * W + 1) * (3 * D + C)) Q = true)
+    (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
+    (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
+    PrimeRecipRange a (Sieve.value (Sieve.index a + W)) A Cw S := by
+  have hlo : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
+  have hmono : ∀ j, Sieve.value (Sieve.index a) ≤ Sieve.value (Sieve.index a + j) := fun j ↦
+    Sieve.value_strictMono.monotone (Nat.le_add_right _ _)
+  have hlow : ∀ j < W, B < Sieve.value (Sieve.index a + j) := by
+    intro j _
+    have := hmono j
+    omega
+  have hhigh : ∀ j < W, Sieve.value (Sieve.index a + j) < B ^ 2 := by
+    intro j hj
+    have : Sieve.value (Sieve.index a + j) ≤ Sieve.value (Sieve.index a + W - 1) :=
+      Sieve.value_strictMono.monotone (by omega)
+    omega
+  have hiff := segment_bit_iff (fun j hj h ↦ hsound j hj h) hcomplete hlow hhigh
+  have hbit : ∀ t, Sieve.index a ≤ t → t < Sieve.index a + W →
+      ((Nat.shiftLeft g (Sieve.index a)).testBit t ↔ (Sieve.value t).Prime) := by
+    intro t h1 h2
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le h1
+    rw [Nat.shiftLeft_eq', Nat.testBit_shiftLeft]
+    simp only [Bool.and_eq_true, decide_eq_true_eq, Nat.add_sub_cancel_left]
+    exact ⟨fun h ↦ (hiff j (by omega)).mp h.2, fun h ↦ ⟨by omega, (hiff j (by omega)).mpr h⟩⟩
+  have h1 : 1 ≤ Sieve.index a := by
+    rw [Sieve.index]
+    omega
+  have := primeRecipRange_of_window_walk0 h1 hS ho hbit hC hD hVhi hVlo hQb hAb hUb
+  rwa [hlo] at this
+
 end PrimeCert
