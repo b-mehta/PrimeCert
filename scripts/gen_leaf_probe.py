@@ -24,6 +24,13 @@ B_VALUES = (16, 64, 256, 1024, 4797)        # primes sieved out; 4797 = pi(1e14^
 LENGTHS = (1024, 4096, 16384, 65536)        # prefix length, in wheel positions
 REPEATS = 2                                  # leaves emitted per (b, length) pair
 
+if len(sys.argv) > 3:
+    REPEATS = int(sys.argv[3])
+if len(sys.argv) > 4:
+    LENGTHS = (int(sys.argv[4]),)
+if len(sys.argv) > 5:
+    B_VALUES = (int(sys.argv[5]),)
+
 
 def value(k: int) -> int:
     return 3 * k + 1 + (k % 2)
