@@ -5,7 +5,10 @@ step adds to the total: `gapFoldK` adds `S / value (lo + position)`, `gapFoldPos
 position. Nothing here is proved; the file exists to be timed, with the kernel settling each
 `Nat.beq` against a literal computed below.
 
-Usage: gen_gap_ab.py OUT START_POSITION BATCHES [BATCH_LEN]
+Each arm lands in its own file so each is a separate `lean` invocation and the two can be
+alternated without one sharing the other's process.
+
+Usage: gen_gap_ab.py OUT_DIR START_POSITION BATCHES [BATCH_LEN]
 """
 
 import sys
@@ -75,49 +78,51 @@ def main() -> None:
                      window + P * (pos + Q * total_div),
                      window + P * (pos + Q * total_pos)))
 
-    lines = [
-        "/-",
-        "Copyright (c) 2026 Bhavik Mehta. All rights reserved.",
-        "Released under Apache 2.0 license as described in the file LICENSE.",
-        "Authors: Bhavik Mehta",
-        "-/",
-        "module",
-        "",
-        "public meta import PrimeCert.Meta.QuickRfl",
-        "public import PrimeCert.GapFold",
-        "",
-        "/-! # The gap walk that divides, against the gap walk that sums positions",
-        "",
-        f"{batches} batches of {blen} wheel positions from position {start}, whose numbers begin at",
-        f"{value(start)}. Each batch appears twice over the same packed gaps: `div_i` adds",
-        "`10 ^ 20` divided by the number at each position reached, `pos_i` adds the position. The",
-        "offset expansion encloses the sum of reciprocals from the count and the sum of positions,",
-        "so the second arm reaches the same enclosure with an addition where the first divides.",
-        "",
-        "Nothing here is proved to agree with `sumB (recipAtW ...)`; the file is for timing.",
-        "-/",
-        "",
-        "set_option linter.style.longLine false",
-        "",
-        "namespace PrimeCert.GapAB",
-        "",
-        "open PrimeCert",
-        "",
-    ]
-    for b, lo, c, G, exp_div, exp_pos in arms:
-        for tag, fold, exp in (
-            ("div", f"gapFoldK {P} {Q} {PQ} {FIELD} {MASK} {G} {lo} {SCALE} {c}", exp_div),
-            ("pos", f"gapFoldPosK {P} {Q} {PQ} {FIELD} {MASK} {G} {c}", exp_pos),
-        ):
+    for name, what in (("Div", "divides"), ("Pos", "sums positions")):
+        lines = [
+            "/-",
+            "Copyright (c) 2026 Bhavik Mehta. All rights reserved.",
+            "Released under Apache 2.0 license as described in the file LICENSE.",
+            "Authors: Bhavik Mehta",
+            "-/",
+            "module",
+            "",
+            "public meta import PrimeCert.Meta.QuickRfl",
+            "public import PrimeCert.GapFold",
+            "",
+            f"/-! # The gap walk that {what}",
+            "",
+            f"{batches} batches of {blen} wheel positions from position {start}, whose numbers",
+            f"begin at {value(start)}. The sibling file walks the identical packed gaps with the",
+            "other accumulator: one adds `10 ^ 20` divided by the number at each position reached,",
+            "the other adds the position. The offset expansion encloses the sum of reciprocals",
+            "from the count and the sum of positions, so both reach the same enclosure.",
+            "",
+            "Nothing here is proved to agree with `sumB (recipAtW ...)`; the file is for timing.",
+            "-/",
+            "",
+            "set_option linter.style.longLine false",
+            "",
+            f"namespace PrimeCert.GapAB.{name}",
+            "",
+            "open PrimeCert",
+            "",
+        ]
+        for b, lo, c, G, exp_div, exp_pos in arms:
+            if name == "Div":
+                fold = f"gapFoldK {P} {Q} {PQ} {FIELD} {MASK} {G} {lo} {SCALE} {c}"
+                exp = exp_div
+            else:
+                fold = f"gapFoldPosK {P} {Q} {PQ} {FIELD} {MASK} {G} {c}"
+                exp = exp_pos
             lines += [
-                f"public theorem {tag}_{b} : Nat.beq ({fold}) {exp} = true := by quickRfl",
+                f"public theorem batch_{b} : Nat.beq ({fold}) {exp} = true := by quickRfl",
                 "",
             ]
-    lines += ["end PrimeCert.GapAB", ""]
-
-    with open(out, "w") as f:
-        f.write("\n".join(lines))
-    print(f"{out}: {batches} batches, {sum(a[2] for a in arms)} gaps in each arm")
+        lines += [f"end PrimeCert.GapAB.{name}", ""]
+        with open(f"{out}/{name}.lean", "w") as f:
+            f.write("\n".join(lines))
+    print(f"{out}: {batches} batches, {sum(a[2] for a in arms)} gaps in each of Div and Pos")
 
 
 main()
