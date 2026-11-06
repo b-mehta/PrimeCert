@@ -576,6 +576,76 @@ public theorem gapFoldPosK_pos (P Q PQ Pb F M G c w B : ℕ)
   have e2 := Finset.sum_image (f := fun k ↦ k) hinj2
   rw [← e1, hset, e2]
 
+/-- The count the enclosure needs is the walk's own number of gaps, under the hypotheses that
+already tie the walk to the window. So one walk yields both literals and no second fold is run. -/
+public theorem sumB_bitAtW_eq_gaps (P Q PQ Pb F M G c w B : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (htie : Nat.beq (Nat.mod (gapFoldPosK P Q PQ F M G c) P)
+      (Nat.shiftLeft w (nat_lit 1)) = true) :
+    sumB (bitAtW w) 0 B 1 = c := by
+  rw [Nat.beq_eq] at hP hPQ htie
+  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
+  rw [Nat.blt_eq, Nat.pow_eq] at hw
+  rw [Nat.pow_eq] at hP
+  rw [Nat.mul_eq] at hPQ
+  rw [gapsPosK_eq] at hgaps
+  have hdec := gapFoldPosK_eq P Q PQ F M G hP hPQ hQ hPb
+  have hWlt := gapWin_lt F M G hPb
+  rw [← hP] at hWlt
+  have hP0 : 0 < P := by omega
+  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left,
+    Nat.mod_eq_of_lt hWlt] at htie
+  rw [sumB_eq_sum]
+  have hR : ∀ n, bitAtW w (n * 1 + 0) = if w.testBit n = true then 1 else 0 := by
+    intro n
+    rw [bitAtW, Bool.rec_eq, Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero]
+  simp only [hR]
+  rw [← Finset.sum_filter, ← Finset.card_eq_sum_ones]
+  have hinj : ∀ x ∈ range c, ∀ y ∈ range c,
+      gapPos F M G (x + 1) = gapPos F M G (y + 1) → x = y := by
+    intro x hx y hy hxy
+    rw [Finset.mem_range] at hx hy
+    by_contra hne
+    rcases Nat.lt_or_gt_of_ne hne with h | h
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hy).ne
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hx).ne'
+  have hinj2 : ∀ x ∈ (range B).filter (fun n ↦ w.testBit n = true),
+      ∀ y ∈ (range B).filter (fun n ↦ w.testBit n = true), x + 1 = y + 1 → x = y :=
+    fun x _ y _ h ↦ Nat.succ_injective h
+  have hset : (range c).image (fun i ↦ gapPos F M G (i + 1))
+      = ((range B).filter (fun n ↦ w.testBit n = true)).image (fun n ↦ n + 1) := by
+    ext k
+    simp only [Finset.mem_image, Finset.mem_filter, Finset.mem_range]
+    have hk : (gapWin F M G c).testBit k = (w <<< 1).testBit k := by rw [htie]
+    rw [Nat.testBit_shiftLeft] at hk
+    constructor
+    · rintro ⟨i, hi, rfl⟩
+      have h1 : (gapWin F M G c).testBit (gapPos F M G (i + 1)) = true :=
+        (gapWin_testBit F M G c _).mpr ⟨i + 1, Nat.succ_pos i, hi, rfl⟩
+      rw [hk, Bool.and_eq_true, decide_eq_true_iff] at h1
+      refine ⟨gapPos F M G (i + 1) - 1, ⟨?_, h1.2⟩, by omega⟩
+      by_contra hB
+      have h2 := h1.2
+      rw [Nat.testBit_lt_two_pow
+        (hw.trans_le (Nat.pow_le_pow_right Nat.two_pos (not_lt.mp hB)))] at h2
+      exact absurd h2 Bool.false_ne_true
+    · rintro ⟨n, ⟨_, hbit⟩, rfl⟩
+      have h1 : (gapWin F M G c).testBit (n + 1) = true := by
+        rw [hk, Bool.and_eq_true, decide_eq_true_iff, Nat.add_sub_cancel]
+        exact ⟨by omega, hbit⟩
+      obtain ⟨j, hj0, hjc, hjk⟩ := (gapWin_testBit F M G c (n + 1)).mp h1
+      refine ⟨j - 1, by omega, ?_⟩
+      rw [Nat.sub_add_cancel hj0]
+      exact hjk
+  have e1 : ((range c).image (fun i ↦ gapPos F M G (i + 1))).card = c := by
+    rw [Finset.card_image_of_injOn hinj, Finset.card_range]
+  have e2 : (((range B).filter (fun n ↦ w.testBit n = true)).image (fun n ↦ n + 1)).card
+      = ((range B).filter (fun n ↦ w.testBit n = true)).card :=
+    Finset.card_image_of_injOn hinj2
+  rw [← e2, ← hset, e1]
+
 /-- `gapFoldPosK_pos` with the walk's value `R` as its own literal, the shape the emitter needs:
 one kernel check of the walk, one of the tie to the window, and the division of `R` by the two
 field widths done as a literal. -/
