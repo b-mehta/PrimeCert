@@ -44,7 +44,7 @@ public theorem pocklington_test (N F₁ : ℕ) (hn₀ : 0 < N) (hf₁ : F₁ ∣
     rintro rfl
     rw [zero_dvd_iff] at hf₁
     omega
-  rw [Nat.modEq_iff_forall_prime_dvd]
+  rw [Nat.modEq_iff_forall_prime_dvd hf₀]
   intro q hqf hq
   have := Fact.mk hp
   have := (Nat.prime_iff_card_units _).mp hp
@@ -55,7 +55,7 @@ public theorem pocklington_test (N F₁ : ℕ) (hn₀ : 0 < N) (hf₁ : F₁ ∣
   let a' : (ZMod p)ˣ := Units.ofPowEqOne _ _ hanp (by grind)
   refine dvd_trans ?_ (orderOf_dvd_card (x := a'))
   have : multiplicity q F₁ ≤ multiplicity q (N - 1) := by
-    rw [Nat.multiplicity_eq_factorization hq hf₀, Nat.multiplicity_eq_factorization hq (by grind)]
+    rw [Nat.multiplicity_eq_factorization hq, Nat.multiplicity_eq_factorization hq]
     exact (Nat.factorization_le_iff_dvd hf₀ (by grind)).mpr hf₁ _
   refine dvd_trans (pow_dvd_pow _ this) ?_
   refine Nat.pow_multiplicity_dvd_of_dvd_of_not_dvd_div hq ?_ ?_
