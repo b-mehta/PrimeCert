@@ -8,6 +8,7 @@ module
 import Lean.Elab.Command
 public meta import PrimeCert.PrimeHarmonic
 public meta import PrimeCert.GapFold
+public meta import PrimeCert.GapTaylor
 public meta import PrimeCert.Meta.SieveCache
 public meta import PrimeCert.SegmentedSieve
 
@@ -623,7 +624,7 @@ meta def emitGapPosRun (parent : Name) (gE : Expr) (loBase : Nat)
   let qE := mkRawNatLit (1 <<< 32)
   let fE8 := mkRawNatLit 8
   let mE := mkRawNatLit 255
-  let fPos := mkApp (mkConst ``posAtK) gE
+  let fPos := mkApp2 (mkConst ``posAtW0) gE (mkRawNatLit loBase)
   let fBit := mkApp (mkConst ``bitAtW) gE
   let mut posNodes : Array RunNode := #[]
   let mut bitNodes : Array RunNode := #[]
@@ -680,8 +681,8 @@ than the eight bits a gap field holds"
       (mkAppN (mkConst ``sumB_windowEqG)
         #[fPos, mkApp2 (mkConst ``posAtW0) wE (mkRawNatLit lok), mkRawNatLit wb.lo, lenE,
           mkRawNatLit D0,
-          mkAppN (mkConst ``posW_window)
-            #[gE, mkRawNatLit wb.lo, lenE, wE, lenE,
+          mkAppN (mkConst ``posW0_window)
+            #[gE, mkRawNatLit loBase, mkRawNatLit wb.lo, lenE, wE, lenE,
               mkApp (mkConst ``Nat.le_refl) lenE, Lean.reflBoolTrue],
           mkConst d0Name])
     posNodes := posNodes.push { lo := wb.lo, len := wb.len, tot := D0, name := segName }
@@ -1378,6 +1379,51 @@ so the lower end of the expansion is negative"
         (implicits ++ sides ++ folds ++ #[Lean.reflBoolTrue, Lean.reflBoolTrue]))
     logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
 {batch}, divisors to {B}, expansion form {form}; A = {A}, Cw = {Cw}"
+    return
+  -- form 16 walks the gaps adding the position reached, so the kernel never divides
+  if form == 16 then
+    let aE := mkRawNatLit a
+    let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+    let bCount : Nat → Nat → Nat → Name → Expr := fun k n w nm ↦
+      mkAppN (mkConst ``bitW_windowR)
+        #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
+    let (C, cProof, D, dProof) ←
+      emitGapPosRun (base ++ Name.mkSimple "walk") gE lo bCount wins winNames
+    let o := twinValue lo
+    let Si := (S : Int)
+    let oi := (o : Int)
+    let Ci := (C : Int)
+    let Di := (D : Int)
+    let loi := (lo : Int)
+    let Ei := 3 * Di + Ci - 3 * (loi * Ci)
+    let Vhi := oi * Ci + Ei
+    let Vlo := oi * Ci + 3 * Di - Ci - 3 * (loi * Ci)
+    let Qi := oi ^ 2 * Ci + 2 * oi * Ei + (3 * (W : Int) + 1) * Ei
+    let Ai := (2 * oi * Ci * Si - Vhi * Si) / oi ^ 2
+    let need := 3 * oi ^ 2 * Ci * Si + Qi * Si - 3 * oi * Vlo * Si
+    let Cwi := (need + oi ^ 3 - 1) / oi ^ 3 - Ai
+    if Ei < 0 || Vlo < 0 || Ai < 0 || Cwi < 0 then
+      throwError "run_harmonic_segment: form 16 produced a negative numeral at {a}"
+    let A := Ai.toNat
+    let Cw := Cwi.toNat
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``PrimeRecipRange)
+        #[aE, mkRawNatLit next, mkRawNatLit A, mkRawNatLit Cw, SE])
+      (mkAppN (mkConst ``primeRecipRange_of_segRun_walk)
+        #[mkConst cache.litName, mkRawNatLit B, aE, mkRawNatLit W, SE, gE, mkRawNatLit o,
+          mkRawNatLit A, mkRawNatLit C, mkRawNatLit D, mkRawNatLit Ei.toNat,
+          mkRawNatLit Vlo.toNat, mkRawNatLit Vhi.toNat, mkRawNatLit Qi.toNat, mkRawNatLit Cw,
+          loE, mkRawNatLit next,
+          mkAppN (mkConst ``Sieve.IsSieve.monoB)
+            #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
+              mkConst cache.isSieveName, Lean.reflBoolTrue],
+          mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst segEqI,
+          cProof, dProof, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue])
+    logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
+{batch}, divisors to {B}, walking positions; C = {C}, A = {A}, Cw = {Cw}"
     return
   -- forms 3, 4 and 5 sum over a variant of the bit test, carried back by a conversion theorem
   let (recipF, bitF, recipWin, bitWin, conv) := match form with

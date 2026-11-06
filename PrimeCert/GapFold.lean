@@ -168,9 +168,6 @@ one to the other at the cost of one multiplication by the window's base. -/
 @[expose] public def posAtW0 (w lo i : ℕ) : ℕ :=
   (Sieve.testBitK w i).rec (nat_lit 0) (Nat.add lo i)
 
-/-- The segment-level fold of the positions of the set bits. -/
-@[expose] public def posAtK (s i : ℕ) : ℕ :=
-  (Sieve.testBitK s i).rec (nat_lit 0) i
 
 /-- Rebasing a window's positions onto the segment: the two folds differ by the window's base
 times the count, with one correction because the walk counts from one. -/
@@ -205,24 +202,17 @@ theorem testBit_of_window {s k B w i : ℕ} (hi : i < B)
     Nat.testBit_shiftRight, Nat.one_shiftLeft, Nat.testBit_two_pow_sub_one, Nat.add_comm k i]
   simp [hi]
 
-/-- The segment's fold of positions over a batch is the batch's own windowed fold. -/
-public theorem posW_window (s k B w len : ℕ) (hlen : len ≤ B)
+/-- A batch of the segment's position fold, read through the batch's own window. The segment
+counts positions from `lo`, so the batch counts from `lo + k`. -/
+public theorem posW0_window (s lo k B w len : ℕ) (hlen : len ≤ B)
     (hw : Nat.beq (Nat.land (Nat.shiftRight s k) (Nat.sub (Nat.shiftLeft 1 B) 1)) w = true) :
-    sumB (posAtK s) k len 1 = sumB (posAtW0 w k) 0 len 1 := by
+    sumB (posAtW0 s lo) k len 1 = sumB (posAtW0 w (lo + k)) 0 len 1 := by
   rw [sumB_eq_sum, sumB_eq_sum]
   refine Finset.sum_congr rfl fun i hi ↦ ?_
   have hb := testBit_of_window (lt_of_lt_of_le (Finset.mem_range.mp hi) hlen) hw
-  rw [posAtK, posAtW0, Bool.rec_eq, Bool.rec_eq, Sieve.testBitK_eq_testBit,
-    Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero, Nat.add_eq, hb, Nat.add_comm i k]
-
-/-- The scan of the shifted segment is the windowed fold of the positions. -/
-public theorem pos_shift (g lo len : ℕ) :
-    sumB (posAtK (Nat.shiftLeft g lo)) lo len 1 = sumB (posAtW0 g lo) 0 len 1 := by
-  rw [sumB_eq_sum, sumB_eq_sum]
-  refine Finset.sum_congr rfl fun i _ ↦ ?_
-  rw [Nat.mul_one, Nat.add_zero, Nat.add_comm i lo, posAtK, posAtW0, Bool.rec_eq, Bool.rec_eq,
-    Sieve.testBitK_eq_testBit, Sieve.testBitK_eq_testBit, Nat.add_eq]
-  simp [Nat.testBit_shiftLeft]
+  rw [posAtW0, posAtW0, Bool.rec_eq, Bool.rec_eq, Sieve.testBitK_eq_testBit,
+    Sieve.testBitK_eq_testBit, Nat.mul_one, Nat.add_zero, Nat.add_eq, Nat.add_eq, hb,
+    Nat.add_comm i k, Nat.add_assoc]
 
 /-- Each offset in a window of `len` positions is at most `3 * len + 1`. -/
 public theorem offAtW_le (w lo len i : ℕ) (hi : i < len) :

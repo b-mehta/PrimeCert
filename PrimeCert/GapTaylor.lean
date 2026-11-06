@@ -120,19 +120,20 @@ public theorem primeRecipRange_of_window_walk {w lo len S o A C D Vlo Vhi Q Cw :
 /-- The enclosure of a whole segment from the joined walks. `C` is the count and `D` the total of
 the positions counted from the segment's own start, which is what the per-batch walks add up to.
 Every other hypothesis is a comparison of literals. -/
-public theorem primeRecipRange_of_window_walk0 {w lo len S o A C D Vlo Vhi Q Cw : ℕ}
+public theorem primeRecipRange_of_window_walk0 {w lo len S o A C D E Vlo Vhi Q Cw : ℕ}
     (hlo : 1 ≤ lo) (hS : Nat.blt 0 S = true) (ho : Sieve.value lo = o)
     (hbit : ∀ t, lo ≤ t → t < lo + len →
       ((Nat.shiftLeft w lo).testBit t ↔ (Sieve.value t).Prime))
     (hC : sumB (bitAtW w) 0 len 1 = C)
     (hD : sumB (posAtW0 w lo) 0 len 1 = D)
+    (hE : Nat.ble (3 * D + C) (E + 3 * (lo * C)) = true)
     (hVhi : Nat.ble (o * C + 3 * D + C) (Vhi + 3 * (lo * C)) = true)
     (hVlo : Nat.ble (Vlo + C + 3 * (lo * C)) (o * C + 3 * D) = true)
-    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D + C) + (3 * len + 1) * (3 * D + C)) Q = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * E + (3 * len + 1) * E) Q = true)
     (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
     (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
     PrimeRecipRange (Sieve.value lo) (Sieve.value (lo + len)) A Cw S := by
-  rw [Nat.ble_eq] at hVhi hVlo hQb
+  rw [Nat.ble_eq] at hE hVhi hVlo hQb
   subst ho
   have hge : ∀ i < len, Sieve.value lo ≤ Sieve.value (lo + i) := fun i _ ↦
     Sieve.value_strictMono.monotone (Nat.le_add_right lo i)
@@ -150,18 +151,18 @@ public theorem primeRecipRange_of_window_walk0 {w lo len S o A C D Vlo Vhi Q Cw 
   refine primeRecipRange_of_taylor_bounded hlo hS rfl hbit hCs ?_ ?_ ?_ hAb hUb
   · omega
   · omega
-  · have hoff : sumB (offAtW w lo (Sieve.value lo)) 0 len 1 ≤ 3 * D + C := by omega
-    have h1 : sumB (osqAtW w lo (Sieve.value lo)) 0 len 1 ≤ (3 * len + 1) * (3 * D + C) :=
+  · have hoff : sumB (offAtW w lo (Sieve.value lo)) 0 len 1 ≤ E := by omega
+    have h1 : sumB (osqAtW w lo (Sieve.value lo)) 0 len 1 ≤ (3 * len + 1) * E :=
       hsq.trans (Nat.mul_le_mul_left _ hoff)
     have h2 : 2 * Sieve.value lo * sumB (offAtW w lo (Sieve.value lo)) 0 len 1
-        ≤ 2 * Sieve.value lo * (3 * D + C) := Nat.mul_le_mul_left _ hoff
+        ≤ 2 * Sieve.value lo * E := Nat.mul_le_mul_left _ hoff
     omega
 
 /-- One sieved segment enclosed from the joined walks, the counterpart of
 `primeRecipRange_segment` for a run in which the kernel never divides. `C` is the count and `D`
 the total of the positions counted from the segment's start; the rest are comparisons of
 literals. -/
-public theorem primeRecipRange_segment_walk {B a W S g o A C D Vlo Vhi Q Cw : ℕ}
+public theorem primeRecipRange_segment_walk {B a W S g o A C D E Vlo Vhi Q Cw : ℕ}
     (ha : a % 6 = 1 ∨ a % 6 = 5) (ha5 : 5 ≤ a) (hBa : B < a)
     (hS : Nat.blt 0 S = true) (ho : Sieve.value (Sieve.index a) = o)
     (htop : Sieve.value (Sieve.index a + W - 1) < B ^ 2)
@@ -171,9 +172,10 @@ public theorem primeRecipRange_segment_walk {B a W S g o A C D Vlo Vhi Q Cw : �
       (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) → g.testBit j = true)
     (hC : sumB (bitAtW g) 0 W 1 = C)
     (hD : sumB (posAtW0 g (Sieve.index a)) 0 W 1 = D)
+    (hE : Nat.ble (3 * D + C) (E + 3 * (Sieve.index a * C)) = true)
     (hVhi : Nat.ble (o * C + 3 * D + C) (Vhi + 3 * (Sieve.index a * C)) = true)
     (hVlo : Nat.ble (Vlo + C + 3 * (Sieve.index a * C)) (o * C + 3 * D) = true)
-    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D + C) + (3 * W + 1) * (3 * D + C)) Q = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * E + (3 * W + 1) * E) Q = true)
     (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
     (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
     PrimeRecipRange a (Sieve.value (Sieve.index a + W)) A Cw S := by
@@ -200,13 +202,13 @@ public theorem primeRecipRange_segment_walk {B a W S g o A C D Vlo Vhi Q Cw : �
   have h1 : 1 ≤ Sieve.index a := by
     rw [Sieve.index]
     omega
-  have := primeRecipRange_of_window_walk0 h1 hS ho hbit hC hD hVhi hVlo hQb hAb hUb
+  have := primeRecipRange_of_window_walk0 h1 hS ho hbit hC hD hE hVhi hVlo hQb hAb hUb
   rwa [hlo] at this
 
 /-- Everything the segment command's output needs for a run that never divides, in one
 application: the base sieve, the run equation, the numeric side conditions as literals, and the
 two folds the walks produce. The counterpart of `primeRecipRange_of_segRun`. -/
-public theorem primeRecipRange_of_segRun_walk {s B a W S g o A C D Vlo Vhi Q Cw lo next : ℕ}
+public theorem primeRecipRange_of_segRun_walk {s B a W S g o A C D E Vlo Vhi Q Cw lo next : ℕ}
     (hs : Sieve.IsSieve B s)
     (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
     (ha5 : Nat.ble 5 a = true) (hW : Nat.blt (W - 1) (2 ^ 32) = true)
@@ -219,9 +221,10 @@ public theorem primeRecipRange_of_segRun_walk {s B a W S g o A C D Vlo Vhi Q Cw 
     (hseg : Sieve.segRun s a W B = g)
     (hC : sumB (bitAtW g) 0 W 1 = C)
     (hD : sumB (posAtW0 g lo) 0 W 1 = D)
+    (hE : Nat.ble (3 * D + C) (E + 3 * (lo * C)) = true)
     (hVhi : Nat.ble (o * C + 3 * D + C) (Vhi + 3 * (lo * C)) = true)
     (hVlo : Nat.ble (Vlo + C + 3 * (lo * C)) (o * C + 3 * D) = true)
-    (hQb : Nat.ble (o ^ 2 * C + 2 * o * (3 * D + C) + (3 * W + 1) * (3 * D + C)) Q = true)
+    (hQb : Nat.ble (o ^ 2 * C + 2 * o * E + (3 * W + 1) * E) Q = true)
     (hAb : Nat.ble (A * o ^ 2 + Vhi * S) (2 * o * C * S) = true)
     (hUb : Nat.ble (3 * o ^ 2 * C * S + Q * S) ((A + Cw) * o ^ 3 + 3 * o * Vlo * S) = true) :
     PrimeRecipRange a next A Cw S := by
@@ -237,6 +240,6 @@ public theorem primeRecipRange_of_segRun_walk {s B a W S g o A C D Vlo Vhi Q Cw 
   rw [Sieve.SegmentComplete] at hcomplete'
   rw [hseg] at hsound' hcomplete'
   exact primeRecipRange_segment_walk ha ha5 (by omega) hS hov htop
-    (fun j hj h ↦ hsound' j hj h) hcomplete' hC hD hVhi hVlo hQb hAb hUb
+    (fun j hj h ↦ hsound' j hj h) hcomplete' hC hD hE hVhi hVlo hQb hAb hUb
 
 end PrimeCert
