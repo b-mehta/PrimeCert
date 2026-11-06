@@ -17,6 +17,8 @@ import Mathlib.Tactic.Ring
 explicit list.
 -/
 
+open Internal
+
 public theorem List.rec_and {α : Type*} (f : α → Bool) (b : Bool) (l : List α) :
     List.rec b (fun hd _ ih ↦ (f hd).and' ih) l = true ↔ b = true ∧ ∀ x ∈ l, f x := by
   induction l with

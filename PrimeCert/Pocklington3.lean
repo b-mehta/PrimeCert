@@ -20,6 +20,8 @@ an additional divisibility sieve up to a small bound `m` and a non-square check 
 (where `R = (N-1)/F` and `R = 2·F·s + r`).
 -/
 
+open Internal
+
 /-- `Nat.modEq_iff_exists_eq_add` reshaped into the `k * b + q = p` form that
 `pocklington3_test` consumes directly. -/
 theorem Nat.modEq_iff_exists_mul_add' {p q b : ℕ} (hqp : q ≤ p) :
