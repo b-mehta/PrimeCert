@@ -586,6 +586,116 @@ than the eight bits a gap field holds"
   let root ← joinNodes parent fE nodes
   return (root.tot, mkConst root.name)
 
+/-- The gaps of a window packed eight bits apart, with the count and the value the position walk
+reaches. `gapData` with the position added in place of the scaled reciprocal, so the walk never
+divides. -/
+meta def gapPosData (w len : Nat) : Nat × Nat × Nat := Id.run do
+  let P := 1 <<< (len + 1)
+  let Q := 1 <<< 32
+  let mut G := 0
+  let mut c := 0
+  let mut prev := 0
+  for j in [0:len] do
+    if w.testBit j then
+      G := G ||| ((j + 1 - prev) <<< (8 * c))
+      prev := j + 1
+      c := c + 1
+  let mut pos := 0
+  let mut bits := 0
+  let mut acc := 0
+  for i in [0:c] do
+    pos := pos + ((G >>> (8 * i)) &&& 255)
+    bits := bits ||| (1 <<< pos)
+    acc := acc + pos
+  return (G, c, bits + P * (pos + Q * acc))
+
+/-- Emit the batches of a segment as position walks: per batch one kernel check of the walk, the
+count and the rebased total of the positions as equations, and each batch's equation against the
+segment literal. Returns the count and the position total over the whole segment with their
+proofs. `bridge lo n w name` is the count's equation from the window theorem `name`, as for
+`emitGapRun`. -/
+meta def emitGapPosRun (parent : Name) (gE : Expr) (loBase : Nat)
+    (bridge : Nat → Nat → Nat → Name → Expr)
+    (wins : Array WindowBatch) (winNames : Array Name) : MetaM (Nat × Expr × Nat × Expr) := do
+  let env ← getEnv
+  let oneE := mkRawNatLit 1
+  let zeroE := mkRawNatLit 0
+  let qE := mkRawNatLit (1 <<< 32)
+  let fE8 := mkRawNatLit 8
+  let mE := mkRawNatLit 255
+  let fPos := mkApp (mkConst ``posAtK) gE
+  let fBit := mkApp (mkConst ``bitAtW) gE
+  let mut posNodes : Array RunNode := #[]
+  let mut bitNodes : Array RunNode := #[]
+  for k in [0:wins.size] do
+    let wb := wins[k]!
+    let lok := loBase + wb.lo
+    if widestGap wb.w wb.len ≥ 256 then
+      throwError "run_harmonic_segment: a gap of {widestGap wb.w wb.len} positions needs more \
+than the eight bits a gap field holds"
+    let (G, c, R) := gapPosData wb.w wb.len
+    let P := 1 <<< (wb.len + 1)
+    let PQ := P * (1 <<< 32)
+    let D := R / PQ
+    let D0 := lok * c + D - c
+    let pE := mkRawNatLit P
+    let pqE := mkRawNatLit PQ
+    let pbE := mkRawNatLit (wb.len + 1)
+    let gGE := mkRawNatLit G
+    let cE := mkRawNatLit c
+    let rE := mkRawNatLit R
+    let wE := mkRawNatLit wb.w
+    let lenE := mkRawNatLit wb.len
+    let walkName := mkPrivateName env (parent ++ Name.mkSimple s!"walk_{k}")
+    addHarmonicThm walkName
+      (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
+        (mkAppN (mkConst ``gapFoldPosK) #[pE, qE, pqE, fE8, mE, gGE, cE]) rE))
+      Lean.reflBoolTrue
+    let args := #[pE, qE, pqE, pbE, fE8, mE, gGE, cE, wE, lenE]
+    let dName := mkPrivateName env (parent ++ Name.mkSimple s!"pos_{k}")
+    addHarmonicThm dName
+      (mkNatEq (mkAppN (mkConst ``sumB)
+        #[mkApp (mkConst ``posAtW1) wE, zeroE, lenE, oneE]) (mkRawNatLit D))
+      (mkAppN (mkConst ``gapFoldPosK_pos_lit)
+        (args ++ #[rE, mkRawNatLit D, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst walkName,
+          Lean.reflBoolTrue, Lean.reflBoolTrue]))
+    let cName := mkPrivateName env (parent ++ Name.mkSimple s!"count_{k}")
+    addHarmonicThm cName
+      (mkNatEq (mkAppN (mkConst ``sumB)
+        #[mkApp (mkConst ``bitAtW) wE, zeroE, lenE, oneE]) cE)
+      (mkAppN (mkConst ``sumB_bitAtW_eq_gaps)
+        (args ++ #[Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]))
+    let d0Name := mkPrivateName env (parent ++ Name.mkSimple s!"rebased_{k}")
+    addHarmonicThm d0Name
+      (mkNatEq (mkAppN (mkConst ``sumB)
+        #[mkApp2 (mkConst ``posAtW0) wE (mkRawNatLit lok), zeroE, lenE, oneE]) (mkRawNatLit D0))
+      (mkAppN (mkConst ``posAtW0_lit)
+        #[wE, mkRawNatLit lok, lenE, cE, mkRawNatLit D, mkRawNatLit D0,
+          mkConst cName, mkConst dName, Lean.reflBoolTrue])
+    let segName := mkPrivateName env (parent ++ Name.mkSimple s!"seg_{k}")
+    addHarmonicThm segName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[fPos, mkRawNatLit wb.lo, lenE, oneE]) (mkRawNatLit D0))
+      (mkAppN (mkConst ``sumB_windowEqG)
+        #[fPos, mkApp2 (mkConst ``posAtW0) wE (mkRawNatLit lok), mkRawNatLit wb.lo, lenE,
+          mkRawNatLit D0,
+          mkAppN (mkConst ``posW_window)
+            #[gE, mkRawNatLit wb.lo, lenE, wE, lenE,
+              mkApp (mkConst ``Nat.le_refl) lenE, Lean.reflBoolTrue],
+          mkConst d0Name])
+    posNodes := posNodes.push { lo := wb.lo, len := wb.len, tot := D0, name := segName }
+    let cSegName := mkPrivateName env (parent ++ Name.mkSimple s!"cseg_{k}")
+    addHarmonicThm cSegName
+      (mkNatEq (mkAppN (mkConst ``sumB) #[fBit, mkRawNatLit wb.lo, lenE, oneE]) cE)
+      (mkAppN (mkConst ``sumB_windowEqG)
+        #[fBit, mkApp (mkConst ``bitAtW) wE, mkRawNatLit wb.lo, lenE, cE,
+          bridge wb.lo wb.len wb.w winNames[k]!, mkConst cName])
+    bitNodes := bitNodes.push { lo := wb.lo, len := wb.len, tot := c, name := cSegName }
+  let posRoot ← joinNodes (parent ++ Name.mkSimple "pos") fPos posNodes
+  let bitRoot ← joinNodes (parent ++ Name.mkSimple "count") fBit bitNodes
+  return (bitRoot.tot, mkConst bitRoot.name, posRoot.tot, mkConst posRoot.name)
+
 /-- Emit one equation per batch `a … b - 1` of one fold, each reading its own window, then join
 them in a balanced tree, so that every declaration joins exactly two adjacent ranges. Returns the
 total and a proof of `sumB fE lo n 1 = <total>`, where `lo` is the first position of batch `a` and
