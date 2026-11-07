@@ -88,9 +88,12 @@ for round in $(seq 1 "$rounds"); do
     cpu=$(grep -E 'User time|System time' "$tim" | awk '{s += $NF} END {printf "%.1f", s}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
     nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
+    # The emitter's own report of how long it spent sorting batches into slices, which is the part
+    # of the non-kernel remainder that the compiled twins are responsible for.
+    sortms=$(grep -oE 'stripeSort total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s}')
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
-      "elab command ${elab}s | addDecl ${addd}s | typechecking ${typec}s |" \
+      "elab command ${elab}s | addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
       "wall $wall | processor ${cpu}s | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
       "batch lemma count $nsteps"
   done
