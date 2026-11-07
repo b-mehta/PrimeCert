@@ -5227,20 +5227,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         -- end; mode 43 derives the two this band actually has.
         let nrec := if mode == 43 then 2 else 8
         let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for j in [0:stepN] do
-          if (cVal >>> j) &&& 1 = 1 then
-            let p := value (start + j)
-            for w in [0:nrec] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        let asm := treeAsmN sVal lo wm1 start stepN W nrec
         let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
         let treeE := mkAppN (mkConst (if mode == 43 then ``treeBatch2K else ``treeBatchK))
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
@@ -5334,23 +5321,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       if mode == 41 then
-        -- The kernel finds the places itself, so the emitter owes it only the answer. Built a
-        -- slice at a time, for the reason `stripeSort` is: joining a bit into a segment-wide
-        -- number touches the whole width every time.
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for i in [0:stepN] do
-          if (cVal >>> i) &&& 1 = 1 then
-            let p := value (start + i)
-            for w in [0:8] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        -- The kernel finds the places itself, so the emitter owes it only the answer.
+        let asm := treeAsmN sVal lo wm1 start stepN W 8
         let treeE := mkAppN (mkConst ``treeBatchK)
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
@@ -5450,20 +5422,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       if mode == 44 then
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for j in [0:stepN] do
-          if (cVal >>> j) &&& 1 = 1 then
-            let p := value (start + j)
-            for w in [0:4] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        let asm := treeAsmN sVal lo wm1 start stepN W 4
         let treeE := mkAppN (mkConst ``treeBatch4K)
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
