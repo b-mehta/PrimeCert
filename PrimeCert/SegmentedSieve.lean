@@ -4617,16 +4617,29 @@ meta def initSeg (W : Nat) : Nat := (1 <<< W) - 1
 
 meta def firstLoc (A lo m : Nat) : Nat := (A + m - lo % m) % m
 
+/-- Which of the low `len` bits of `c` are set, read a word at a time. Shifting a `len`-bit number
+down by one copies the whole number, so a scan that steps one bit at a time rebuilds `c` once per
+position; peeling 64 bits at a time leaves the bit tests inside a single word. -/
+meta def setBitsLow (c len : Nat) : Array Nat := Id.run do
+  let mut out : Array Nat := #[]
+  let mut rest := c &&& ((1 <<< len) - 1)
+  for w in [0:(len + 63) / 64] do
+    let word := rest &&& 0xFFFFFFFFFFFFFFFF
+    if word ≠ 0 then
+      for b in [0:64] do
+        if (word >>> b) &&& 1 = 1 then
+          out := out.push (64 * w + b)
+    rest := rest >>> 64
+  return out
+
 meta def segMark (seg p lo Wm1 : Nat) : Nat :=
   seg - (seg &&& buildMask p Wm1 (firstLoc (index (p * 5)) lo (p * 2))
     (firstLoc (index (p * 7)) lo (p * 2)) 32)
 
 meta def segLoop (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
   let mut b := seg
-  for i in [0:fuel] do
-    let j := start + i
-    if s &&& (1 <<< j) ≠ 0 then
-      b := segMark b (value j) lo Wm1
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMark b (value (start + i)) lo Wm1
   return b
 
 /-- Twin of `seedK`. -/
@@ -4673,17 +4686,16 @@ meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Na
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
   let mut slotAsm : Array Nat := Array.replicate np 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
-  for i in [0:len] do
-    if (c >>> i) &&& 1 = 1 then
-      let p := value (start + i)
-      for w in [0:nrec] do
-        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-          else firstLoc (index (p * 7)) lo (p * 2)
-        let X := base + (w >>> 1) * (p * 2)
-        let k := if X ≤ Wm1 then X >>> 17 else np
-        slots := slots.modify k (·.push (8 * i + w))
-        if X ≤ Wm1 then
-          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 131071)))
+  for i in setBitsLow c len do
+    let p := value (start + i)
+    for w in [0:nrec] do
+      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+        else firstLoc (index (p * 7)) lo (p * 2)
+      let X := base + (w >>> 1) * (p * 2)
+      let k := if X ≤ Wm1 then X >>> 17 else np
+      slots := slots.modify k (·.push (8 * i + w))
+      if X ≤ Wm1 then
+        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 131071)))
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 131072))
@@ -4716,17 +4728,16 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
   -- into a slice touches 65536 bits where joining it into the whole mask touches `W`.
   let mut slotAsm : Array Nat := Array.replicate np 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
-  for i in [0:len] do
-    if (c >>> i) &&& 1 = 1 then
-      let p := value (start + i)
-      for w in [0:nrec] do
-        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-          else firstLoc (index (p * 7)) lo (p * 2)
-        let X := base + (w >>> 1) * (p * 2)
-        let k := if X ≤ Wm1 then X >>> 16 else np
-        slots := slots.modify k (·.push (8 * i + w))
-        if X ≤ Wm1 then
-          slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 65535)))
+  for i in setBitsLow c len do
+    let p := value (start + i)
+    for w in [0:nrec] do
+      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
+        else firstLoc (index (p * 7)) lo (p * 2)
+      let X := base + (w >>> 1) * (p * 2)
+      let k := if X ≤ Wm1 then X >>> 16 else np
+      slots := slots.modify k (·.push (8 * i + w))
+      if X ≤ Wm1 then
+        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 65535)))
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
@@ -4751,14 +4762,11 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
 /-- Twin of `segLoopStripeK`. -/
 meta def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
-  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
-  for i in [0:fuel] do
-    if c &&& 1 = 1 then
-      let p := value (start + i)
-      for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
-        if base ≤ X && X - base ≤ 65535 then
-          a := a ||| (1 <<< (X - base))
-    c := c >>> 1
+  for i in setBitsLow (s >>> start) fuel do
+    let p := value (start + i)
+    for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
+      if base ≤ X && X - base ≤ 65535 then
+        a := a ||| (1 <<< (X - base))
   return a
 
 /-- Twin of `treeBatch2K`: the mask a batch of the widest band assembles. Built one slice at a
@@ -4766,14 +4774,12 @@ time and joined at the end, for the reason `stripeSort` is, since joining a bit 
 segment-wide accumulator rebuilds the whole number per record. -/
 meta def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let c := (s >>> start) &&& ((1 <<< len) - 1)
   let mut slotAsm : Array Nat := Array.replicate nsl 0
-  for j in [0:len] do
-    if (c >>> j) &&& 1 = 1 then
-      let p := value (start + j)
-      for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
-        if X ≤ Wm1 then
-          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+  for j in setBitsLow (s >>> start) len do
+    let p := value (start + j)
+    for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
+      if X ≤ Wm1 then
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
   let mut asm := 0
   for k in [0:nsl] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
@@ -4783,18 +4789,16 @@ meta def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
 `nrec` strikes. Built one 65536-bit slice at a time and joined at the end. -/
 meta def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let c := (s >>> start) &&& ((1 <<< len) - 1)
   let mut slotAsm : Array Nat := Array.replicate nsl 0
-  for j in [0:len] do
-    if (c >>> j) &&& 1 = 1 then
-      let p := value (start + j)
-      let d := p * 2
-      for w in [0:nrec] do
-        let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo d
-          else firstLoc (index (p * 7)) lo d
-        let X := base + (w >>> 1) * d
-        if X ≤ Wm1 then
-          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+  for j in setBitsLow (s >>> start) len do
+    let p := value (start + j)
+    let d := p * 2
+    for w in [0:nrec] do
+      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo d
+        else firstLoc (index (p * 7)) lo d
+      let X := base + (w >>> 1) * d
+      if X ≤ Wm1 then
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
   let mut asm := 0
   for k in [0:nsl] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
@@ -4810,11 +4814,8 @@ meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
 /-- Twin of `segLoopSRK`. -/
 meta def segLoopR (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
   let mut b := seg
-  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
-  for i in [0:fuel] do
-    if c &&& 1 = 1 then
-      b := segMarkR b (value (start + i)) lo Wm1
-    c := c >>> 1
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMarkR b (value (start + i)) lo Wm1
   return b
 
 /-- Twin of `segMarkNK`. -/
@@ -4827,24 +4828,18 @@ meta def segMarkN (seg p lo Wm1 n : Nat) : Nat :=
 /-- Twin of `segLoopSNK`, reading the base primes from the batch's own slice. -/
 meta def segLoopN (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
   let mut b := seg
-  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
-  for i in [0:fuel] do
-    if c &&& 1 = 1 then
-      b := segMarkN b (value (start + i)) lo Wm1 n
-    c := c >>> 1
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMarkN b (value (start + i)) lo Wm1 n
   return b
 
 /-- Twin of `segAccLoopK`, joining the batch's masks into the running accumulator. -/
 meta def segAccLoopC (s lo Wm1 n acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
-  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
-  for i in [0:fuel] do
-    if c &&& 1 = 1 then
-      let p := value (start + i)
-      let A := firstLoc (index (p * 5)) lo (p * 2)
-      let B := firstLoc (index (p * 7)) lo (p * 2)
-      a := a ||| buildMaskC p Wm1 A B n
-    c := c >>> 1
+  for i in setBitsLow (s >>> start) fuel do
+    let p := value (start + i)
+    let A := firstLoc (index (p * 5)) lo (p * 2)
+    let B := firstLoc (index (p * 7)) lo (p * 2)
+    a := a ||| buildMaskC p Wm1 A B n
   return a
 
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
@@ -4852,11 +4847,8 @@ Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoo
 of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
 meta def segLoopC (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
   let mut b := seg
-  let mut c := (s >>> start) &&& ((1 <<< fuel) - 1)
-  for i in [0:fuel] do
-    if c &&& 1 = 1 then
-      b := segMarkC b (value (start + i)) lo Wm1 n
-    c := c >>> 1
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMarkC b (value (start + i)) lo Wm1 n
   return b
 
 /-! ## The `run_segment` command -/
