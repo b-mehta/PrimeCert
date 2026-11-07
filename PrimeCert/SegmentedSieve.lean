@@ -4892,6 +4892,15 @@ meta def batchLenWide (start : Nat) : Nat :=
   else if start < 700000 then 768
   else 1536
 
+/-- `batchLen` with longer batches over the two middle bands, which hold the divisors striking the
+window four or eight times and span wheel indices of about 174762 to 699050. The shorter tiers
+there were set when four files shared a runner; two files now hold 7.67 GB summed. -/
+meta def batchLenMid (start : Nat) : Nat :=
+  if start < 20000 then 256
+  else if start < 174762 then 512
+  else if start < 700000 then 4096
+  else 3072
+
 /-- Add a theorem declaration with the given statement and proof term. -/
 meta def addSegThm (name : Name) (type value : Expr) : MetaM Unit :=
   addDecl <| Declaration.thmDecl { name, levelParams := [], type, value }
@@ -4982,9 +4991,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 56 then throwError "run_segment_variant: mode {mode} is not 0 to 56"
+  if mode > 57 then throwError "run_segment_variant: mode {mode} is not 0 to 57"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
-        || mode == 45 || mode == 53 || mode == 54 || mode == 55)
+        || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5017,7 +5026,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 56 is mode 28 with every batch settled by the marked shape, whose mask is built by
   -- doubling rather than by sorting the batch's strikes into records.
   let marked := mode == 56
-  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked
+  -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
+  let midLong := mode == 57
+  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -5625,7 +5636,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     let mut sortNanos : Nat := 0
     while start ≤ fuel do
       let owed := fuel + 1 - start
-      let stepN := Nat.min (if start < 700000 then batchLen start else step0) owed
+      let stepN := Nat.min
+        (if start < 700000 then (if midLong then batchLenMid start else batchLen start)
+          else step0) owed
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let cE := mkRawNatLit cVal
