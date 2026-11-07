@@ -99,9 +99,54 @@ meta def runLeafProbe (start count len b : Nat) : MetaM Unit := do
   logInfo s!"run_leaf_probe: {count} leaves of {len} positions from {start}, \
 first {b} primes removed"
 
+/-- The same leaves, each answered by walking the gaps between survivors rather than folding over
+every position. The statement is the one `gapFoldK` proves, as the production path emits it. -/
+meta def runLeafWalk (start count len b : Nat) : MetaM Unit := do
+  let S := 10 ^ 20
+  let primes := firstPrimes b
+  let ns ← getCurrNamespace
+  let P := 1 <<< (len + 1)
+  let Q := 1 <<< 32
+  let mut lo := start
+  for k in [0:count] do
+    let (w, _) := leafWindow primes lo len S
+    -- the walk counts positions from one, so it reads the window against `lo - 1`
+    let mut G := 0
+    let mut c := 0
+    let mut prev := 0
+    for j in [0:len] do
+      if (w >>> j) % 2 == 1 then
+        G := G ||| ((j + 1 - prev) <<< (8 * c))
+        prev := j + 1
+        c := c + 1
+    let mut pos := 0
+    let mut bits := 0
+    let mut acc := 0
+    for i in [0:c] do
+      pos := pos + ((G >>> (8 * i)) &&& 255)
+      bits := bits ||| (1 <<< pos)
+      acc := acc + S / leafValue (lo - 1 + pos)
+    let R := bits + P * (pos + Q * acc)
+    let name := ns ++ Name.mkSimple s!"leaf_{k}"
+    addLeafThm name
+      (mkBoolTrue (mkApp2 (mkConst ``Nat.beq)
+        (mkAppN (mkConst ``gapFoldK)
+          #[mkRawNatLit P, mkRawNatLit Q, mkRawNatLit (P * Q), mkRawNatLit 8, mkRawNatLit 255,
+            mkRawNatLit G, mkRawNatLit (lo - 1), mkRawNatLit S, mkRawNatLit c])
+        (mkRawNatLit R)))
+      Lean.reflBoolTrue
+    lo := lo + len
+  logInfo s!"run_leaf_walk: {count} leaves of {len} positions from {start}, \
+first {b} primes removed"
+
 /-- `run_leaf_probe start count length b`; see `runLeafProbe`. -/
 elab "run_leaf_probe" sStx:num cStx:num lStx:num bStx:num : command =>
   liftTermElabM <|
     runLeafProbe sStx.getNat cStx.getNat lStx.getNat bStx.getNat
+
+/-- `run_leaf_walk start count length b`; see `runLeafWalk`. -/
+elab "run_leaf_walk" sStx:num cStx:num lStx:num bStx:num : command =>
+  liftTermElabM <|
+    runLeafWalk sStx.getNat cStx.getNat lStx.getNat bStx.getNat
 
 end PrimeCert
