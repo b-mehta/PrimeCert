@@ -537,7 +537,8 @@ meta def widestGap (w len : Nat) : Nat := Id.run do
 and one of the rebuilt window, and chain them exactly as `emitWindowRun` does. -/
 meta def emitGapRun (parent : Name) (fE : Expr) (loBase S : Nat)
     (bridge : Nat → Nat → Nat → Name → Expr)
-    (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat) : MetaM (Nat × Expr) := do
+    (wins : Array WindowBatch) (winNames : Array Name) (a b : Nat)
+    (inlineBatch : Bool := false) : MetaM (Nat × Expr) := do
   let env ← getEnv
   let oneE := mkRawNatLit 1
   let zeroE := mkRawNatLit 0
@@ -567,22 +568,27 @@ than the eight bits a gap field holds"
         (mkAppN (mkConst ``gapFoldK) #[pE, qE, pqE, fE8, mE, gE, loBE, SE, cE]) rE))
       Lean.reflBoolTrue
     let gw := mkApp3 (mkConst ``recipAtW) (mkRawNatLit wb.w) (mkRawNatLit lok) SE
-    let batchName := mkPrivateName env (parent ++ Name.mkSimple s!"batch_{k}")
-    addHarmonicThm batchName
-      (mkNatEq (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t))
-      (mkAppN (mkConst ``gapFoldK_div_lit)
+    let batchProof :=
+      mkAppN (mkConst ``gapFoldK_div_lit)
         #[pE, qE, pqE, pbE, fE8, mE, gE, loBE, mkRawNatLit lok, SE, cE, mkRawNatLit wb.w,
           mkRawNatLit wb.len, rE, mkRawNatLit t,
           Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
           Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst rName,
-          Lean.reflBoolTrue, Lean.reflBoolTrue])
+          Lean.reflBoolTrue, Lean.reflBoolTrue]
+    -- the batch equation is used once, by the equation below, so naming it costs a declaration
+    let batchTerm ← if inlineBatch then pure batchProof else do
+      let batchName := mkPrivateName env (parent ++ Name.mkSimple s!"batch_{k}")
+      addHarmonicThm batchName
+        (mkNatEq (mkAppN (mkConst ``sumB) #[gw, zeroE, mkRawNatLit wb.len, oneE]) (mkRawNatLit t))
+        batchProof
+      pure (mkConst batchName)
     let hb := bridge wb.lo wb.len wb.w winNames[k]!
     let eqName := mkPrivateName env (parent ++ Name.mkSimple s!"eq_{k}")
     addHarmonicThm eqName
       (mkNatEq (mkAppN (mkConst ``sumB) #[fE, mkRawNatLit wb.lo, mkRawNatLit wb.len, oneE])
         (mkRawNatLit t))
       (mkAppN (mkConst ``sumB_windowEqG)
-        #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, mkConst batchName])
+        #[fE, gw, mkRawNatLit wb.lo, mkRawNatLit wb.len, mkRawNatLit t, hb, batchTerm])
     nodes := nodes.push { lo := wb.lo, len := wb.len, tot := t, name := eqName }
   let root ← joinNodes parent fE nodes
   return (root.tot, mkConst root.name)
@@ -1055,8 +1061,10 @@ meta def emitWindowedFoldOver (parent : Name) (fE : Expr) (gE : Nat → Nat → 
 /-- `emitWindowedFoldOver` with every batch of the reciprocal fold walked by its gaps. -/
 meta def emitGapFoldOver (parent : Name) (fE : Expr) (loBase S : Nat)
     (bridge : Nat → Nat → Nat → Name → Expr)
-    (batches : Array WindowBatch) (winNames : Array Name) : MetaM (Nat × Name) := do
-  let (tot, proof) ← emitGapRun parent fE loBase S bridge batches winNames 0 batches.size
+    (batches : Array WindowBatch) (winNames : Array Name)
+    (inlineBatch : Bool := false) : MetaM (Nat × Name) := do
+  let (tot, proof) ←
+    emitGapRun parent fE loBase S bridge batches winNames 0 batches.size inlineBatch
   let lo := batches[0]!.lo
   let n := windowSpan batches 0 batches.size
   addHarmonicThm parent (mkNatEq (mkSumB fE lo n 1) (mkRawNatLit tot)) proof
@@ -1445,12 +1453,12 @@ so the lower end of the expansion is negative"
       #[gE, mkRawNatLit k, mkRawNatLit n, mkRawNatLit w, mkConst nm]
   -- form 15 walks the gaps between the primes of a batch rather than all of its positions
   let recipName := base ++ Name.mkSimple "recip"
-  let (A, aName) ← if form == 15 then
-      emitGapFoldOver recipName fRecip lo S bRecip wins winNames
+  let (A, aName) ← if form == 15 || form == 17 then
+      emitGapFoldOver recipName fRecip lo S bRecip wins winNames (form == 17)
     else
       emitWindowedFoldOver recipName fRecip gRecip bRecip (·.recip) wins winNames
   -- forms 7 and 15 skip the count fold and take the window's width as the count instead
-  let single := form == 7 || form == 15
+  let single := form == 7 || form == 15 || form == 17
   let (C, cName) ← if single then pure (W, Name.anonymous) else
     emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
       (fun wb : WindowBatch ↦ wb.count) wins winNames
