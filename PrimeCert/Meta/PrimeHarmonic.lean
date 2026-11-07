@@ -590,7 +590,7 @@ than the eight bits a gap field holds"
 /-- The gaps of a window packed eight bits apart, with the count and the value the position walk
 reaches. `gapData` with the position added in place of the scaled reciprocal, so the walk never
 divides. -/
-meta def gapPosData (w len : Nat) : Nat × Nat × Nat := Id.run do
+meta def gapPosData (w lo len : Nat) : Nat × Nat × Nat := Id.run do
   let P := 1 <<< (len + 1)
   let Q := 1 <<< 32
   let mut G := 0
@@ -607,7 +607,7 @@ meta def gapPosData (w len : Nat) : Nat × Nat × Nat := Id.run do
   for i in [0:c] do
     pos := pos + ((G >>> (8 * i)) &&& 255)
     bits := bits ||| (1 <<< pos)
-    acc := acc + pos
+    acc := acc + lo + pos
   return (G, c, bits + P * (pos + Q * acc))
 
 /-- Emit the batches of a segment as position walks: per batch one kernel check of the walk, the
@@ -634,11 +634,10 @@ meta def emitGapPosRun (parent : Name) (gE : Expr) (loBase : Nat)
     if widestGap wb.w wb.len ≥ 256 then
       throwError "run_harmonic_segment: a gap of {widestGap wb.w wb.len} positions needs more \
 than the eight bits a gap field holds"
-    let (G, c, R) := gapPosData wb.w wb.len
+    let (G, c, R) := gapPosData wb.w (lok - 1) wb.len
     let P := 1 <<< (wb.len + 1)
     let PQ := P * (1 <<< 32)
-    let D := R / PQ
-    let D0 := lok * c + D - c
+    let D0 := R / PQ
     let pE := mkRawNatLit P
     let pqE := mkRawNatLit PQ
     let pbE := mkRawNatLit (wb.len + 1)
@@ -647,34 +646,29 @@ than the eight bits a gap field holds"
     let rE := mkRawNatLit R
     let wE := mkRawNatLit wb.w
     let lenE := mkRawNatLit wb.len
+    let loE := mkRawNatLit (lok - 1)
     let walkName := mkPrivateName env (parent ++ Name.mkSimple s!"walk_{k}")
     addHarmonicThm walkName
       (mkEqTrue (mkApp2 (mkConst ``Nat.beq)
-        (mkAppN (mkConst ``gapFoldPosK) #[pE, qE, pqE, fE8, mE, gGE, cE]) rE))
+        (mkAppN (mkConst ``gapFoldPosK0) #[pE, qE, pqE, fE8, mE, gGE, loE, cE]) rE))
       Lean.reflBoolTrue
-    let args := #[pE, qE, pqE, pbE, fE8, mE, gGE, cE, wE, lenE]
-    let dName := mkPrivateName env (parent ++ Name.mkSimple s!"pos_{k}")
-    addHarmonicThm dName
+    let args := #[pE, qE, pqE, pbE, fE8, mE, gGE, loE, cE, wE, lenE]
+    let d0Name := mkPrivateName env (parent ++ Name.mkSimple s!"pos_{k}")
+    addHarmonicThm d0Name
       (mkNatEq (mkAppN (mkConst ``sumB)
-        #[mkApp (mkConst ``posAtW1) wE, zeroE, lenE, oneE]) (mkRawNatLit D))
-      (mkAppN (mkConst ``gapFoldPosK_pos_lit)
-        (args ++ #[rE, mkRawNatLit D, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
-          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst walkName,
-          Lean.reflBoolTrue, Lean.reflBoolTrue]))
+        #[mkApp2 (mkConst ``posAtW0) wE (mkRawNatLit lok), zeroE, lenE, oneE]) (mkRawNatLit D0))
+      (mkAppN (mkConst ``gapFoldPosK0_pos_lit)
+        #[pE, qE, pqE, pbE, fE8, mE, gGE, loE, mkRawNatLit lok, cE, wE, lenE, rE,
+          mkRawNatLit D0, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          mkConst walkName, Lean.reflBoolTrue, Lean.reflBoolTrue])
     let cName := mkPrivateName env (parent ++ Name.mkSimple s!"count_{k}")
     addHarmonicThm cName
       (mkNatEq (mkAppN (mkConst ``sumB)
         #[mkApp (mkConst ``bitAtW) wE, zeroE, lenE, oneE]) cE)
-      (mkAppN (mkConst ``sumB_bitAtW_eq_gaps)
+      (mkAppN (mkConst ``sumB_bitAtW_eq_gaps0)
         (args ++ #[Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
           Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue]))
-    let d0Name := mkPrivateName env (parent ++ Name.mkSimple s!"rebased_{k}")
-    addHarmonicThm d0Name
-      (mkNatEq (mkAppN (mkConst ``sumB)
-        #[mkApp2 (mkConst ``posAtW0) wE (mkRawNatLit lok), zeroE, lenE, oneE]) (mkRawNatLit D0))
-      (mkAppN (mkConst ``posAtW0_lit)
-        #[wE, mkRawNatLit lok, lenE, cE, mkRawNatLit D, mkRawNatLit D0,
-          mkConst cName, mkConst dName, Lean.reflBoolTrue])
     let segName := mkPrivateName env (parent ++ Name.mkSimple s!"seg_{k}")
     addHarmonicThm segName
       (mkNatEq (mkAppN (mkConst ``sumB) #[fPos, mkRawNatLit wb.lo, lenE, oneE]) (mkRawNatLit D0))
