@@ -23,12 +23,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Word assembly against slice assembly, both arms on this runner
+      - name: Check a full window still emits literals the kernel accepts
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          chmod +x PrimeCertTest/SegTune/pair-commits.sh
-          PrimeCertTest/SegTune/pair-commits.sh f13243d5bfddb8dc07d70666f94e67dedc0d65b9 \
-            d92791d M2_MidLong
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 M2_MidLong
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
