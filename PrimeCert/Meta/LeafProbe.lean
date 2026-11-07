@@ -139,6 +139,63 @@ meta def runLeafWalk (start count len b : Nat) : MetaM Unit := do
   logInfo s!"run_leaf_walk: {count} leaves of {len} positions from {start}, \
 first {b} primes removed"
 
+/-- The walked leaves again, with the whole span sieved once and the windows cut from it, which
+is what a run does. Against `runLeafWalk`, which sieves a fresh window for each leaf, the
+difference is what per-leaf sieving costs. -/
+meta def runLeafWalkShared (start count len b : Nat) : MetaM Unit := do
+  let S := 10 ^ 20
+  let primes := firstPrimes b
+  let ns ← getCurrNamespace
+  let P := 1 <<< (len + 1)
+  let Q := 1 <<< 32
+  let span := count * len
+  -- one sieve over the whole span
+  let first := leafValue start
+  let last := leafValue (start + span - 1)
+  let mut live := Array.replicate span true
+  for p in primes do
+    if p > 3 then
+      let mut m := ((first + p - 1) / p) * p
+      while m ≤ last do
+        let r := m % 6
+        if r == 1 || r == 5 then
+          let k := if r == 1 then 2 * ((m - 1) / 6) else 2 * ((m - 5) / 6) + 1
+          live := live.set! (k - start) false
+        m := m + p
+  for k in [0:count] do
+    let lo := start + k * len
+    let mut G := 0
+    let mut c := 0
+    let mut prev := 0
+    for j in [0:len] do
+      if live[k * len + j]! then
+        G := G ||| ((j + 1 - prev) <<< (8 * c))
+        prev := j + 1
+        c := c + 1
+    let mut pos := 0
+    let mut bits := 0
+    let mut acc := 0
+    for i in [0:c] do
+      pos := pos + ((G >>> (8 * i)) &&& 255)
+      bits := bits ||| (1 <<< pos)
+      acc := acc + S / leafValue (lo - 1 + pos)
+    let R := bits + P * (pos + Q * acc)
+    let name := ns ++ Name.mkSimple s!"leaf_{k}"
+    addLeafThm name
+      (mkBoolTrue (mkApp2 (mkConst ``Nat.beq)
+        (mkAppN (mkConst ``gapFoldK)
+          #[mkRawNatLit P, mkRawNatLit Q, mkRawNatLit (P * Q), mkRawNatLit 8, mkRawNatLit 255,
+            mkRawNatLit G, mkRawNatLit (lo - 1), mkRawNatLit S, mkRawNatLit c])
+        (mkRawNatLit R)))
+      Lean.reflBoolTrue
+  logInfo s!"run_leaf_walk_shared: {count} leaves of {len} positions from {start}, \
+one sieve over {span} positions, first {b} primes removed"
+
+/-- `run_leaf_walk_shared start count length b`; see `runLeafWalkShared`. -/
+elab "run_leaf_walk_shared" sStx:num cStx:num lStx:num bStx:num : command =>
+  liftTermElabM <|
+    runLeafWalkShared sStx.getNat cStx.getNat lStx.getNat bStx.getNat
+
 /-- `run_leaf_probe start count length b`; see `runLeafProbe`. -/
 elab "run_leaf_probe" sStx:num cStx:num lStx:num bStx:num : command =>
   liftTermElabM <|
