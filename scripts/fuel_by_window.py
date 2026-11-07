@@ -42,10 +42,11 @@ SEG = 3 * W                      # integers one window covers
 N = 10**14
 FULL_B = 10**7                   # divisors the top window needs
 
-# Measured seconds for one segment at batch 8192, one file (run 35807524908 and the elaboration
-# split from run 42317946181).
-COST = {"small": 36.3, "eight": 65.0 / 2, "four": 65.0 / 2, "wide": 76.3}
-OTHER = 38.0                     # non-kernel elaboration, independent of the divisor count
+# Measured seconds for one segment at batch 8192, one file, with the two middle bands in batches
+# of 4096 (run 42389213113, means of three rounds): small divisors 53.96, middle bands 42.69,
+# widest band 69.99, kernel 168.23, processor 209.6, so the non-kernel remainder is 41.4.
+COST = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
+OTHER = 41.4                     # non-kernel elaboration, independent of the divisor count
 
 EDGES = {
     "small": (2, WM1 // 8),
