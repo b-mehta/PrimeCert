@@ -108,6 +108,7 @@ def main() -> None:
                 "proved to be a leaf of anything; the file is for timing.",
                 "-/",
                 "",
+                "set_option linter.all false",
                 "set_option linter.style.longLine false",
                 "",
                 f"namespace PrimeCert.LeafProbe.{name}",
@@ -121,7 +122,9 @@ def main() -> None:
                 lines += [
                     f"/-- {bin(w).count('1')} survivors of {length} positions from {lo}. -/",
                     f"public theorem leaf_{r} : "
-                    f"Nat.beq (sumB (recipAtW {w} {lo} {SCALE}) 0 {length} 1) {total} = true := by",
+                    f"Nat.beq (sumB (recipAtW (nat_lit {w}) (nat_lit {lo}) (nat_lit {SCALE})) "
+                    f"(nat_lit 0) (nat_lit {length}) (nat_lit 1)) (nat_lit {total}) "
+                    f"= true := by",
                     "  quickRfl",
                     "",
                 ]
