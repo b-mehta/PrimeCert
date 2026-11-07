@@ -4617,6 +4617,24 @@ meta def initSeg (W : Nat) : Nat := (1 <<< W) - 1
 
 meta def firstLoc (A lo m : Nat) : Nat := (A + m - lo % m) % m
 
+/-- The number whose 64-bit words are `ws`, least significant first. Neighbouring halves are merged
+in rounds rather than joined one word at a time into a running accumulator, which would rebuild the
+whole number once per word. -/
+meta def natOfWords (ws : Array Nat) : Nat := Id.run do
+  let mut cur := ws
+  let mut width := 64
+  for _ in [0:40] do
+    if cur.size ≤ 1 then
+      break
+    let mut nxt : Array Nat := Array.emptyWithCapacity ((cur.size + 1) / 2)
+    for i in [0:(cur.size + 1) / 2] do
+      let lo := cur[2 * i]!
+      let hi := if 2 * i + 1 < cur.size then cur[2 * i + 1]! else 0
+      nxt := nxt.push (lo ||| (hi <<< width))
+    cur := nxt
+    width := width * 2
+  return if h : 0 < cur.size then cur[0] else 0
+
 /-- Which of the low `len` bits of `c` are set, read a word at a time. Shifting a `len`-bit number
 down by one copies the whole number, so a scan that steps one bit at a time rebuilds `c` once per
 position; peeling 64 bits at a time leaves the bit tests inside a single word. -/
@@ -4684,7 +4702,9 @@ the slice the low 17, and a window of `W` positions holds `W / 131072` of them. 
 meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 131072
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  -- The assembled mask is held as 64-bit words and joined once at the end: setting a bit in a word
+  -- touches that word alone, where joining it into a slice-wide number rebuilds the slice.
+  let mut words : Array Nat := Array.replicate (np * 2048) 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := value (start + i)
@@ -4695,10 +4715,8 @@ meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Na
       let k := if X ≤ Wm1 then X >>> 17 else np
       slots := slots.modify k (·.push (8 * i + w))
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 131071)))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 131072))
+        words := words.modify (X >>> 6) (· ||| (1 <<< (X &&& 63)))
+  let asm := natOfWords words
   let mut seen := 0
   for w in [0:nrec] do
     seen := seen ||| (c <<< (w * len))
@@ -4724,9 +4742,9 @@ its quadruple does not. -/
 meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  -- The assembled mask is built one slice at a time rather than one bit at a time: joining a bit
-  -- into a slice touches 65536 bits where joining it into the whole mask touches `W`.
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  -- The assembled mask is held as 64-bit words and joined once at the end: setting a bit in a word
+  -- touches that word alone, where joining it into a slice-wide number rebuilds the slice.
+  let mut words : Array Nat := Array.replicate (np * 1024) 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := value (start + i)
@@ -4737,10 +4755,8 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
       let k := if X ≤ Wm1 then X >>> 16 else np
       slots := slots.modify k (·.push (8 * i + w))
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 65535)))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        words := words.modify (X >>> 6) (· ||| (1 <<< (X &&& 63)))
+  let asm := natOfWords words
   -- A tally bit is set exactly when the slice names that position, once per strike, so the whole
   -- tally is the slice itself shifted `nrec` times rather than a bit set per record.
   let mut seen := 0
@@ -4774,22 +4790,19 @@ time and joined at the end, for the reason `stripeSort` is, since joining a bit 
 segment-wide accumulator rebuilds the whole number per record. -/
 meta def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  let mut words : Array Nat := Array.replicate (nsl * 1024) 0
   for j in setBitsLow (s >>> start) len do
     let p := value (start + j)
     for X in [firstLoc (index (p * 5)) lo (p * 2), firstLoc (index (p * 7)) lo (p * 2)] do
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-  let mut asm := 0
-  for k in [0:nsl] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  return asm
+        words := words.modify (X >>> 6) (· ||| (1 <<< (X &&& 63)))
+  return natOfWords words
 
 /-- Twin of `treeBatch4K` and `treeBatchK`: the mask a batch assembles when each divisor places
 `nrec` strikes. Built one 65536-bit slice at a time and joined at the end. -/
 meta def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  let mut words : Array Nat := Array.replicate (nsl * 1024) 0
   for j in setBitsLow (s >>> start) len do
     let p := value (start + j)
     let d := p * 2
@@ -4798,11 +4811,8 @@ meta def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
         else firstLoc (index (p * 7)) lo d
       let X := base + (w >>> 1) * d
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-  let mut asm := 0
-  for k in [0:nsl] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  return asm
+        words := words.modify (X >>> 6) (· ||| (1 <<< (X &&& 63)))
+  return natOfWords words
 
 /-- Twin of `segMarkRK`. -/
 meta def segMarkR (seg p lo Wm1 : Nat) : Nat :=
@@ -5227,20 +5237,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         -- end; mode 43 derives the two this band actually has.
         let nrec := if mode == 43 then 2 else 8
         let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for j in [0:stepN] do
-          if (cVal >>> j) &&& 1 = 1 then
-            let p := value (start + j)
-            for w in [0:nrec] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        let asm := treeAsmN sVal lo wm1 start stepN W nrec
         let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
         let treeE := mkAppN (mkConst (if mode == 43 then ``treeBatch2K else ``treeBatchK))
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
@@ -5334,23 +5331,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       if mode == 41 then
-        -- The kernel finds the places itself, so the emitter owes it only the answer. Built a
-        -- slice at a time, for the reason `stripeSort` is: joining a bit into a segment-wide
-        -- number touches the whole width every time.
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for i in [0:stepN] do
-          if (cVal >>> i) &&& 1 = 1 then
-            let p := value (start + i)
-            for w in [0:8] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        -- The kernel finds the places itself, so the emitter owes it only the answer.
+        let asm := treeAsmN sVal lo wm1 start stepN W 8
         let treeE := mkAppN (mkConst ``treeBatchK)
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
@@ -5450,20 +5432,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       if mode == 44 then
-        let nsl := W / 65536
-        let mut slotAsm : Array Nat := Array.replicate nsl 0
-        for j in [0:stepN] do
-          if (cVal >>> j) &&& 1 = 1 then
-            let p := value (start + j)
-            for w in [0:4] do
-              let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-                else firstLoc (index (p * 7)) lo (p * 2)
-              let X := base + (w >>> 1) * (p * 2)
-              if X ≤ wm1 then
-                slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-        let mut asm := 0
-        for k in [0:nsl] do
-          asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+        let asm := treeAsmN sVal lo wm1 start stepN W 4
         let treeE := mkAppN (mkConst ``treeBatch4K)
           #[mkRawNatLit cVal, loE, wE, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue treeE (mkRawNatLit asm)) Lean.reflBoolTrue
