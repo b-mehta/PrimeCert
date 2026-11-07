@@ -302,6 +302,23 @@ public theorem le_offAtW_of_walk0 {w lo len C D : ℕ}
   rw [hC, hD] at h2
   omega
 
+/-- `gapFoldPosK` adding `lo` with each position, so its total is already counted from the
+segment's start and the emitter needs no separate rebasing statement. -/
+@[expose] public noncomputable def gapFoldPosK0 (P Q PQ F M G lo c : ℕ) : ℕ :=
+  c.rec (nat_lit 0) fun i st ↦
+    Nat.add
+      (Nat.lor (Nat.mod st P)
+        (Nat.shiftLeft (nat_lit 1)
+          (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))
+      (Nat.mul P
+        (Nat.add
+          (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))
+          (Nat.mul Q
+            (Nat.add (Nat.div st PQ)
+              (Nat.add lo
+                (Nat.add (Nat.mod (Nat.div st P) Q)
+                  (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)))))))
+
 /-- The position reached after `c` gaps, in the operations the kernel reads. -/
 @[expose] public noncomputable def gapWalkK (F M G c : ℕ) : ℕ :=
   c.rec (nat_lit 0) fun i p ↦ Nat.add p (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)
@@ -353,6 +370,26 @@ def gapStep (P Q PQ F M G lo S i st : ℕ) : ℕ :=
                   (Nat.add (Nat.mod (Nat.div st P) Q)
                     (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)))))))))
 
+/-- The rebased walk's total after `i` gaps. -/
+def gapPosTot0 (F M G lo : ℕ) : ℕ → ℕ
+  | 0 => 0
+  | i + 1 => gapPosTot0 F M G lo i + (lo + gapPos F M G (i + 1))
+
+/-- One step of `gapFoldPosK0` on the packed state `st`, for the proof to unfold. -/
+def gapPosStep0 (P Q PQ F M G lo i st : ℕ) : ℕ :=
+  Nat.add
+    (Nat.lor (Nat.mod st P)
+      (Nat.shiftLeft (nat_lit 1)
+        (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))))
+    (Nat.mul P
+      (Nat.add
+        (Nat.add (Nat.mod (Nat.div st P) Q) (Nat.land (Nat.shiftRight G (Nat.mul F i)) M))
+        (Nat.mul Q
+          (Nat.add (Nat.div st PQ)
+            (Nat.add lo
+              (Nat.add (Nat.mod (Nat.div st P) Q)
+                (Nat.land (Nat.shiftRight G (Nat.mul F i)) M)))))))
+
 /-- One step of `gapFoldPosK` on the packed state `st`, for the proof to unfold. -/
 def gapPosStep (P Q PQ F M G i st : ℕ) : ℕ :=
   Nat.add
@@ -375,6 +412,11 @@ theorem gapFoldK_succ (P Q PQ F M G lo S c : ℕ) :
 theorem gapFoldPosK_succ (P Q PQ F M G c : ℕ) :
     gapFoldPosK P Q PQ F M G (c + 1)
       = gapPosStep P Q PQ F M G c (gapFoldPosK P Q PQ F M G c) :=
+  rfl
+
+theorem gapFoldPosK0_succ (P Q PQ F M G lo c : ℕ) :
+    gapFoldPosK0 P Q PQ F M G lo (c + 1)
+      = gapPosStep0 P Q PQ F M G lo c (gapFoldPosK0 P Q PQ F M G lo c) :=
   rfl
 
 theorem gapWalkK_succ (F M G c : ℕ) :
@@ -494,6 +536,33 @@ theorem gapFoldPosK_eq (P Q PQ F M G : ℕ) {Pb c : ℕ} (hP : P = 2 ^ Pb) (hPQ 
       Nat.add_mul_div_left _ _ hP0, Nat.div_eq_of_lt hW, Nat.zero_add, Nat.add_mul_mod_self_left,
       Nat.mod_eq_of_lt hQ', Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ', Nat.zero_add]
     simp only [gapWin, gapPos, gapPosTot, gapAt]
+
+theorem gapFoldPosK0_eq (P Q PQ F M G lo : ℕ) {Pb c : ℕ} (hP : P = 2 ^ Pb) (hPQ : PQ = P * Q)
+    (hQ : gapPos F M G c < Q) (hPb : gapPos F M G c < Pb) :
+    gapFoldPosK0 P Q PQ F M G lo c
+      = gapWin F M G c + P * (gapPos F M G c + Q * gapPosTot0 F M G lo c) := by
+  induction c with
+  | zero => simp [gapFoldPosK0, gapWin, gapPos, gapPosTot0]
+  | succ c ih =>
+    have hmono := gapPos_monotone F M G (Nat.le_succ c)
+    have hQ' := hmono.trans_lt hQ
+    have hW := gapWin_lt F M G (hmono.trans_lt hPb)
+    rw [← hP] at hW
+    have hQ0 : 0 < Q := by omega
+    have hP0 : 0 < P := by omega
+    rw [gapFoldPosK0_succ, ih hQ' (hmono.trans_lt hPb), gapPosStep0]
+    simp only [Nat.add_eq, Nat.mul_eq, Nat.mod_eq_mod, Nat.div_eq_div, Nat.lor_eq, Nat.land_eq,
+      Nat.shiftLeft_eq', Nat.shiftRight_eq', Nat.one_shiftLeft]
+    rw [hPQ, ← Nat.div_div_eq_div_mul, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hW,
+      Nat.add_mul_div_left _ _ hP0, Nat.div_eq_of_lt hW, Nat.zero_add, Nat.add_mul_mod_self_left,
+      Nat.mod_eq_of_lt hQ', Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ', Nat.zero_add]
+    simp only [gapWin, gapPos, gapPosTot0, gapAt]
+
+theorem gapPosTot0_eq_sum (F M G lo c : ℕ) :
+    gapPosTot0 F M G lo c = ∑ i ∈ range c, (lo + gapPos F M G (i + 1)) := by
+  induction c with
+  | zero => rfl
+  | succ c ih => rw [gapPosTot0, ih, Finset.sum_range_succ]
 
 theorem gapPosTot_eq_sum (F M G c : ℕ) :
     gapPosTot F M G c = ∑ i ∈ range c, gapPos F M G (i + 1) := by
@@ -656,6 +725,93 @@ public theorem gapFoldPosK_pos (P Q PQ Pb F M G c w B : ℕ)
   have e1 := Finset.sum_image (f := fun k ↦ k) hinj
   have e2 := Finset.sum_image (f := fun k ↦ k) hinj2
   rw [← e1, hset, e2]
+
+/-- The rebased walk's total is the segment-counted fold of positions, so the emitter states it
+in one declaration rather than walking and then rebasing. -/
+public theorem gapFoldPosK0_pos (P Q PQ Pb F M G lo c w B : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (htie : Nat.beq (Nat.mod (gapFoldPosK0 P Q PQ F M G lo c) P)
+      (Nat.shiftLeft w (nat_lit 1)) = true) :
+    Nat.div (gapFoldPosK0 P Q PQ F M G lo c) PQ = sumB (posAtW0 w (lo + 1)) 0 B 1 := by
+  rw [Nat.beq_eq] at hP hPQ htie
+  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
+  rw [Nat.blt_eq, Nat.pow_eq] at hw
+  rw [Nat.pow_eq] at hP
+  rw [Nat.mul_eq] at hPQ
+  rw [gapsPosK_eq] at hgaps
+  have hdec := gapFoldPosK0_eq P Q PQ F M G lo hP hPQ hQ hPb
+  have hW := gapWin_lt F M G hPb
+  rw [← hP] at hW
+  have hQ0 : 0 < Q := by omega
+  have hP0 : 0 < P := by omega
+  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hW]
+    at htie
+  rw [Nat.div_eq_div, hdec, hPQ, ← Nat.div_div_eq_div_mul, Nat.add_mul_div_left _ _ hP0,
+    Nat.div_eq_of_lt hW, Nat.zero_add, Nat.add_mul_div_left _ _ hQ0, Nat.div_eq_of_lt hQ,
+    Nat.zero_add, gapPosTot0_eq_sum, sumB_eq_sum]
+  have hR : ∀ n, posAtW0 w (lo + 1) (n * 1 + 0)
+      = if w.testBit n = true then lo + (n + 1) else 0 := by
+    intro n
+    rw [posAtW0, Bool.rec_eq, Sieve.testBitK_eq_testBit, Nat.add_eq, Nat.mul_one, Nat.add_zero,
+      Nat.add_assoc, Nat.add_comm 1 n]
+  simp only [hR]
+  rw [← Finset.sum_filter]
+  have hinj : ∀ x ∈ range c, ∀ y ∈ range c,
+      gapPos F M G (x + 1) = gapPos F M G (y + 1) → x = y := by
+    intro x hx y hy hxy
+    rw [Finset.mem_range] at hx hy
+    by_contra hne
+    rcases Nat.lt_or_gt_of_ne hne with h | h
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hy).ne
+    · exact absurd hxy (gapPos_lt hgaps (Nat.succ_lt_succ h) hx).ne'
+  have hinj2 : ∀ x ∈ (range B).filter (fun n ↦ w.testBit n = true),
+      ∀ y ∈ (range B).filter (fun n ↦ w.testBit n = true), x + 1 = y + 1 → x = y :=
+    fun x _ y _ h ↦ Nat.succ_injective h
+  have hset : (range c).image (fun i ↦ gapPos F M G (i + 1))
+      = ((range B).filter (fun n ↦ w.testBit n = true)).image (fun n ↦ n + 1) := by
+    ext k
+    simp only [Finset.mem_image, Finset.mem_filter, Finset.mem_range]
+    have hk : (gapWin F M G c).testBit k = (w <<< 1).testBit k := by rw [htie]
+    rw [Nat.testBit_shiftLeft] at hk
+    constructor
+    · rintro ⟨i, hi, rfl⟩
+      have h1 : (gapWin F M G c).testBit (gapPos F M G (i + 1)) = true :=
+        (gapWin_testBit F M G c _).mpr ⟨i + 1, Nat.succ_pos i, hi, rfl⟩
+      rw [hk, Bool.and_eq_true, decide_eq_true_iff] at h1
+      refine ⟨gapPos F M G (i + 1) - 1, ⟨?_, h1.2⟩, by omega⟩
+      by_contra hB
+      have h2 := h1.2
+      rw [Nat.testBit_lt_two_pow
+        (hw.trans_le (Nat.pow_le_pow_right Nat.two_pos (not_lt.mp hB)))] at h2
+      exact absurd h2 Bool.false_ne_true
+    · rintro ⟨n, ⟨_, hbit⟩, rfl⟩
+      have h1 : (gapWin F M G c).testBit (n + 1) = true := by
+        rw [hk, Bool.and_eq_true, decide_eq_true_iff, Nat.add_sub_cancel]
+        exact ⟨by omega, hbit⟩
+      obtain ⟨j, hj0, hjc, hjk⟩ := (gapWin_testBit F M G c (n + 1)).mp h1
+      refine ⟨j - 1, by omega, ?_⟩
+      rw [Nat.sub_add_cancel hj0]
+      exact hjk
+  have e1 := Finset.sum_image (f := fun k ↦ lo + k) hinj
+  have e2 := Finset.sum_image (f := fun k ↦ lo + k) hinj2
+  rw [← e1, hset, e2]
+
+/-- `gapFoldPosK0_pos` with the walk's value as its own literal. -/
+public theorem gapFoldPosK0_pos_lit (P Q PQ Pb F M G lo lo1 c w B R A : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (hlo : Nat.beq (Nat.add lo (nat_lit 1)) lo1 = true)
+    (hR : Nat.beq (gapFoldPosK0 P Q PQ F M G lo c) R = true)
+    (htie : Nat.beq (Nat.mod R P) (Nat.shiftLeft w (nat_lit 1)) = true)
+    (hA : Nat.beq (Nat.div R PQ) A = true) :
+    sumB (posAtW0 w lo1) (nat_lit 0) B (nat_lit 1) = A := by
+  rw [Nat.beq_eq] at hlo hR hA
+  subst hlo hR hA
+  rw [Nat.add_eq]
+  exact (gapFoldPosK0_pos P Q PQ Pb F M G lo c w B hP hPQ hQ hPb hgaps hw htie).symm
 
 /-- The count the enclosure needs is the walk's own number of gaps, under the hypotheses that
 already tie the walk to the window. So one walk yields both literals and no second fold is run. -/
