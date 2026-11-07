@@ -815,25 +815,10 @@ public theorem gapFoldPosK0_pos_lit (P Q PQ Pb F M G lo lo1 c w B R A : ℕ)
 
 /-- The count the enclosure needs is the walk's own number of gaps, under the hypotheses that
 already tie the walk to the window. So one walk yields both literals and no second fold is run. -/
-public theorem sumB_bitAtW_eq_gaps (P Q PQ Pb F M G c w B : ℕ)
-    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
-    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
-    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
-    (htie : Nat.beq (Nat.mod (gapFoldPosK P Q PQ F M G c) P)
-      (Nat.shiftLeft w (nat_lit 1)) = true) :
+private theorem bitAtW_count_of_win {F M G c w B : ℕ}
+    (hgaps : ∀ i < c, 0 < gapAt F M G i) (hw : w < 2 ^ B)
+    (htie : gapWin F M G c = w <<< 1) :
     sumB (bitAtW w) 0 B 1 = c := by
-  rw [Nat.beq_eq] at hP hPQ htie
-  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
-  rw [Nat.blt_eq, Nat.pow_eq] at hw
-  rw [Nat.pow_eq] at hP
-  rw [Nat.mul_eq] at hPQ
-  rw [gapsPosK_eq] at hgaps
-  have hdec := gapFoldPosK_eq P Q PQ F M G hP hPQ hQ hPb
-  have hWlt := gapWin_lt F M G hPb
-  rw [← hP] at hWlt
-  have hP0 : 0 < P := by omega
-  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left,
-    Nat.mod_eq_of_lt hWlt] at htie
   rw [sumB_eq_sum]
   have hR : ∀ n, bitAtW w (n * 1 + 0) = if w.testBit n = true then 1 else 0 := by
     intro n
@@ -882,6 +867,49 @@ public theorem sumB_bitAtW_eq_gaps (P Q PQ Pb F M G c w B : ℕ)
       = ((range B).filter (fun n ↦ w.testBit n = true)).card :=
     Finset.card_image_of_injOn hinj2
   rw [← e2, ← hset, e1]
+
+/-- The count the enclosure needs is the walk's own number of gaps, for the walk that adds the
+position. One walk yields both literals and no second fold is run. -/
+public theorem sumB_bitAtW_eq_gaps (P Q PQ Pb F M G c w B : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (htie : Nat.beq (Nat.mod (gapFoldPosK P Q PQ F M G c) P)
+      (Nat.shiftLeft w (nat_lit 1)) = true) :
+    sumB (bitAtW w) 0 B 1 = c := by
+  rw [Nat.beq_eq] at hP hPQ htie
+  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
+  rw [Nat.blt_eq, Nat.pow_eq] at hw
+  rw [Nat.pow_eq] at hP
+  rw [Nat.mul_eq] at hPQ
+  rw [gapsPosK_eq] at hgaps
+  have hdec := gapFoldPosK_eq P Q PQ F M G hP hPQ hQ hPb
+  have hWlt := gapWin_lt F M G hPb
+  rw [← hP] at hWlt
+  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left,
+    Nat.mod_eq_of_lt hWlt] at htie
+  exact bitAtW_count_of_win hgaps hw htie
+
+/-- The same count, for the walk that adds the segment-counted position. -/
+public theorem sumB_bitAtW_eq_gaps0 (P Q PQ Pb F M G lo c w B : ℕ)
+    (hP : Nat.beq P (Nat.pow (nat_lit 2) Pb) = true) (hPQ : Nat.beq PQ (Nat.mul P Q) = true)
+    (hQ : Nat.blt (gapWalkK F M G c) Q = true) (hPb : Nat.blt (gapWalkK F M G c) Pb = true)
+    (hgaps : gapsPosK F M G c = true) (hw : Nat.blt w (Nat.pow (nat_lit 2) B) = true)
+    (htie : Nat.beq (Nat.mod (gapFoldPosK0 P Q PQ F M G lo c) P)
+      (Nat.shiftLeft w (nat_lit 1)) = true) :
+    sumB (bitAtW w) 0 B 1 = c := by
+  rw [Nat.beq_eq] at hP hPQ htie
+  rw [Nat.blt_eq, gapWalkK_eq] at hQ hPb
+  rw [Nat.blt_eq, Nat.pow_eq] at hw
+  rw [Nat.pow_eq] at hP
+  rw [Nat.mul_eq] at hPQ
+  rw [gapsPosK_eq] at hgaps
+  have hdec := gapFoldPosK0_eq P Q PQ F M G lo hP hPQ hQ hPb
+  have hWlt := gapWin_lt F M G hPb
+  rw [← hP] at hWlt
+  rw [Nat.mod_eq_mod, Nat.shiftLeft_eq', hdec, Nat.add_mul_mod_self_left,
+    Nat.mod_eq_of_lt hWlt] at htie
+  exact bitAtW_count_of_win hgaps hw htie
 
 /-- `gapFoldPosK_pos` with the walk's value `R` as its own literal, the shape the emitter needs:
 one kernel check of the walk, one of the tie to the window, and the division of `R` by the two
