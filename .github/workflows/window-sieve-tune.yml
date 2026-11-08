@@ -1,9 +1,6 @@
 name: Window sieve tuning
 
 on:
-  push:
-    branches:
-      - 'ci/window-sieve-tune'
   workflow_dispatch:
 
 jobs:
