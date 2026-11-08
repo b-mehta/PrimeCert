@@ -28,4 +28,10 @@ run_phi_expand 1000 13 20
 set_option maxRecDepth 100000 in
 run_phi_expand 1000 23 20
 
+/-! With a cut, a branch whose height falls below it stops and waits for a leaf from the sieve
+side. Nothing supplies those here, so the command reports the demand rather than closing. -/
+
+set_option maxRecDepth 100000 in
+run_phi_expand 1000 23 20 100
+
 end PrimeCert.PhiExpandTest
