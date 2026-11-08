@@ -1086,9 +1086,22 @@ public theorem recipBits_eq (w lo S n : ℕ) (hw : Nat.blt w (Nat.shiftLeft (nat
     recipBits lo S (popK n w) w = sumB (recipAtW w lo S) (nat_lit 0) n (nat_lit 1) := by
   sorry
 
+/-- The number of set bits of `w` below position `n`, one position at a time. -/
+public def popRec (w : ℕ) : ℕ → ℕ
+  | 0 => 0
+  | n + 1 => bitAtW w n + popRec w n
+
+/-- The count fold is that one-position-at-a-time recursion. -/
+public theorem sumB_bitAtW_eq_popRec (w n : ℕ) :
+    sumB (bitAtW w) (nat_lit 0) n (nat_lit 1) = popRec w n := by
+  induction n with
+  | zero => rfl
+  | succ k ih => simpa [sumB_succ, popRec] using congrArg (bitAtW w k + ·) ih
+
 /-- The popcount agrees with the count fold. -/
 public theorem popK_eq (w n : ℕ) (hw : Nat.blt w (Nat.shiftLeft (nat_lit 1) n) = true) :
     popK n w = sumB (bitAtW w) (nat_lit 0) n (nat_lit 1) := by
+  rw [sumB_bitAtW_eq_popRec]
   sorry
 
 /-- The count fold of a whole segment from one kernel-checked popcount. -/
@@ -1096,7 +1109,8 @@ public theorem count_of_popK (g W C : ℕ)
     (hw : Nat.blt g (Nat.shiftLeft (nat_lit 1) W) = true)
     (h : Nat.beq (popK W g) C = true) :
     sumB (bitAtW g) (nat_lit 0) W (nat_lit 1) = C := by
-  sorry
+  rw [← popK_eq g W hw]
+  exact Nat.eq_of_beq_eq_true h
 
 /-- `sumB_windowEqR` reading a set-bit fold's certificate. -/
 public theorem sumB_windowEqRBits (f : ℕ → ℕ) (w lo S start len t : ℕ)
@@ -1104,6 +1118,7 @@ public theorem sumB_windowEqRBits (f : ℕ → ℕ) (w lo S start len t : ℕ)
     (hb : sumB f start len (nat_lit 1) = sumB (recipAtW w lo S) (nat_lit 0) len (nat_lit 1))
     (h : Nat.beq (recipBits lo S (popK len w) w) t = true) :
     sumB f start len (nat_lit 1) = t := by
-  sorry
+  rw [hb, ← recipBits_eq w lo S len hw]
+  exact Nat.eq_of_beq_eq_true h
 
 end PrimeCert
