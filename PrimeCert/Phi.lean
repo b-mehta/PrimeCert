@@ -654,6 +654,18 @@ public theorem segRun_continue {s a W B B' d : ℕ}
   rw [Nat.beq_eq] at hd
   rw [Sieve.segRun_eq, Sieve.segRun_eq, ← hd, Sieve.segLoopK_add]
 
+/-- One rung of a shared sweep: given the run at `B` as a literal, the run at the next bound is
+the literal the extra steps reduce to. The kernel pays only those steps, so a ladder of rungs
+sieves once for every bound rather than once per bound. -/
+public theorem segRun_rung {s a W B B' d lit lit' : ℕ}
+    (hd : Nat.beq (Sieve.index B + d) (Sieve.index B') = true)
+    (hprev : Sieve.segRun s a W B = lit)
+    (hstep : Nat.beq (Sieve.segLoopK s (Sieve.index a) (W - 1) lit (1 + Sieve.index B) d) lit'
+      = true) :
+    Sieve.segRun s a W B' = lit' := by
+  rw [segRun_continue hd, hprev]
+  exact Nat.eq_of_beq_eq_true hstep
+
 /-- Everything a segment run's output supplies for a sieved leaf, in one application: the base
 sieve, the equation the segment command emits, the numeric side conditions as `Bool` literals, and
 the two folds over the segment literal. -/
