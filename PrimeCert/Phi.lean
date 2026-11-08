@@ -643,6 +643,17 @@ public theorem sievedRecipRange_segment {B a W S g A C : ℕ}
   have h := sievedRecipRange_of hB3 hS hbit hA' hC'
   rwa [hlo] at h
 
+/-- A run at a higher bound continues from the run at a lower one: the fuel of `segRun` counts
+base positions, so raising the bound adds steps rather than starting again. One sweep therefore
+serves every bound in rising order, which is what a leaf wanting its own bound needs. -/
+public theorem segRun_continue {s a W B B' d : ℕ}
+    (hd : Nat.beq (Sieve.index B + d) (Sieve.index B') = true) :
+    Sieve.segRun s a W B'
+      = Sieve.segLoopK s (Sieve.index a) (W - 1) (Sieve.segRun s a W B)
+          (1 + Sieve.index B) d := by
+  rw [Nat.beq_eq] at hd
+  rw [Sieve.segRun_eq, Sieve.segRun_eq, ← hd, Sieve.segLoopK_add]
+
 /-- Everything a segment run's output supplies for a sieved leaf, in one application: the base
 sieve, the equation the segment command emits, the numeric side conditions as `Bool` literals, and
 the two folds over the segment literal. -/
