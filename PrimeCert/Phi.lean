@@ -270,6 +270,45 @@ public theorem PhiVal.ofRange {t B B' : ℕ} {v : ℚ} (h : B' ≤ B)
     (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) (hv : PhiVal t B' v) : PhiVal t B v :=
   .leaf ((phiB_of_no_primes h hno).trans hv.sound)
 
+/-! ### The same derivation, carrying enclosures
+
+An emitted leaf is an interval, not a rational, so a derivation that can actually be built from a
+sweep has to carry intervals. The branch subtracts, so its bounds cross: the lower bound of a
+split takes the lower bound of the left branch against the UPPER bound of the right. -/
+
+/-- An enclosure of `phiB t B` derived by the recurrence. This is the form a certificate takes,
+since every leaf a sweep answers is an interval. -/
+public inductive PhiEnc : ℕ → ℕ → ℚ → ℚ → Prop
+  | leaf {t B : ℕ} {lo hi : ℚ} (h : phiB t B ∈ Set.Icc lo hi) : PhiEnc t B lo hi
+  | comp {t B : ℕ} {lo hi : ℚ} (h : ¬ (B + 1).Prime) (hv : PhiEnc t B lo hi) :
+      PhiEnc t (B + 1) lo hi
+  | split {t p : ℕ} {lo₁ hi₁ lo₂ hi₂ : ℚ} (hp : p.Prime)
+      (h₁ : PhiEnc t (p - 1) lo₁ hi₁) (h₂ : PhiEnc (t / p) (p - 1) lo₂ hi₂) :
+      PhiEnc t p (lo₁ - (p : ℚ)⁻¹ * hi₂) (hi₁ - (p : ℚ)⁻¹ * lo₂)
+
+/-- A derivation encloses what it claims to. -/
+public theorem PhiEnc.sound {t B : ℕ} {lo hi : ℚ} (h : PhiEnc t B lo hi) :
+    phiB t B ∈ Set.Icc lo hi := by
+  induction h with
+  | leaf h => exact h
+  | comp h _ ih => rwa [phiB_succ_not_prime h]
+  | @split t p lo₁ hi₁ lo₂ hi₂ hp h₁ h₂ ih₁ ih₂ =>
+    rw [Set.mem_Icc] at ih₁ ih₂ ⊢
+    rw [phiB_succ_prime hp]
+    have hppos : (0 : ℚ) < (p : ℚ)⁻¹ := inv_pos.mpr (by exact_mod_cast hp.pos)
+    have hup := mul_le_mul_of_nonneg_left ih₂.2 hppos.le
+    have hdown := mul_le_mul_of_nonneg_left ih₂.1 hppos.le
+    exact ⟨by linarith [ih₁.1], by linarith [ih₁.2]⟩
+
+/-- An exactly known value is the interval of zero width. -/
+public theorem PhiEnc.ofEq {t B : ℕ} {v : ℚ} (h : phiB t B = v) : PhiEnc t B v v :=
+  .leaf (by rw [h]; exact ⟨le_rfl, le_rfl⟩)
+
+/-- A derivation crosses a whole prime gap in one step. -/
+public theorem PhiEnc.ofRange {t B B' : ℕ} {lo hi : ℚ} (h : B' ≤ B)
+    (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) (hv : PhiEnc t B' lo hi) : PhiEnc t B lo hi :=
+  .leaf (by rw [phiB_of_no_primes h hno]; exact hv.sound)
+
 /-- The branch that has sieved everything away. -/
 public theorem PhiVal.zero (B : ℕ) : PhiVal 0 B 0 := .leaf (phiB_zero B)
 
@@ -390,6 +429,13 @@ public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ 
   rw [phiB_eq_one_add_filter ht hB, Set.mem_Icc]
   simp only [SievedRecipRange, Set.mem_Icc] at hr
   exact ⟨add_le_add le_rfl hr.1, add_le_add le_rfl hr.2⟩
+
+/-- A leaf answered by a sweep: the range enclosure of its whole height becomes a derivation, so
+a truncated branch and an expanded one carry the same kind of object. -/
+public theorem PhiEnc.ofSweep {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
+    (hr : SievedRecipRange 5 (t + 1) B A C S) :
+    PhiEnc t B (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) :=
+  .leaf (phiB_mem_Icc_of_range ht hB hr)
 
 /-- A run whose windows end exactly at `t` gives the value as `1` plus its own scan. -/
 public theorem phiB_eq_one_add_recipSum {s B t len : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
