@@ -297,4 +297,19 @@ public theorem mem_phiSet_iff_testBit {s B a W t j : ℕ}
   · intro hbit
     exact ⟨hle, hpos, fun q hq hqp ↦ hsound j hj (by rw [hbit]) q hq hqp⟩
 
+/-- A run's scan sums the reciprocals of exactly the numbers in its range with no prime factor at
+or below the bound. A branch truncated before the bound reaches 1 is answered by this, where the
+sieve is stopped at `B` rather than carried to the square root. The bound must reach 3 so that the
+survivors are coprime to 6 and the wheel can name them. -/
+public theorem recipSum_eq_phiSum {s B lo len : ℕ} (hB : 3 ≤ B)
+    (hbit : ∀ j, lo ≤ j → j < lo + len →
+      (s.testBit j ↔ ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value j)) :
+    recipSum s lo len 1
+      = ∑ n ∈ (Finset.Ico (Sieve.value lo) (Sieve.value (lo + len))).filter
+          (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n), (n : ℚ)⁻¹ :=
+  recipSum_eq_filterSum_range hbit fun n _ _ hn ↦ by
+    have h2 : n % 2 ≠ 0 := fun h ↦ hn 2 (by omega) Nat.prime_two (Nat.dvd_of_mod_eq_zero h)
+    have h3 : n % 3 ≠ 0 := fun h ↦ hn 3 (by omega) Nat.prime_three (Nat.dvd_of_mod_eq_zero h)
+    omega
+
 end PrimeCert
