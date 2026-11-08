@@ -8,6 +8,7 @@ module
 import Lean.Elab.Command
 public meta import PrimeCert.PrimeHarmonic
 public meta import PrimeCert.GapFold
+public meta import PrimeCert.Phi
 public meta import PrimeCert.GapTaylor
 public meta import PrimeCert.Meta.SieveCache
 public meta import PrimeCert.SegmentedSieve
@@ -499,6 +500,12 @@ mask for each prime; `3` and `11` drop the primes whose starting positions miss 
 the doubling at the window's width, skip the masks that meet nothing, and read each batch's own
 slice of the base sieve. -/
 meta def segmentMode : IO.Ref Nat := unsafe unsafeBaseIO (IO.mkRef 20)
+
+/-- Whether a segment is stated as an enclosure of its sieved sum, `SievedRecipRange`, rather than
+of the sum over its primes. The sieved statement holds for a window at any height above the bound,
+so it is the one a leaf of the identity's expansion uses, where the bound stops well below the
+window's square root. -/
+meta def sievedLeaf : IO.Ref Bool := unsafe unsafeBaseIO (IO.mkRef false)
 
 /-- The gaps of a window, packed eight bits apart, with the count and the value the gap walk
 reaches. Positions count from one, so the first gap is at least one and the rebuilt window sits
@@ -1195,7 +1202,8 @@ meta def runHarmonicSegment (a W B scaleExp batch len : Nat) : MetaM Unit := do
     throwError "run_harmonic_segment: {a} is not a wheel value"
   let top := twinValue (lo + W - 1)
   let next := twinValue (lo + W)
-  if top ≥ B * B then
+  let sieved ← sievedLeaf.get
+  if top ≥ B * B && !sieved then
     throwError "run_harmonic_segment: the window reaches {top}, at or above {B * B}"
   let batch := Nat.max 1 batch
   let S := 10 ^ scaleExp
@@ -1458,7 +1466,7 @@ so the lower end of the expansion is negative"
     else
       emitWindowedFoldOver recipName fRecip gRecip bRecip (·.recip) wins winNames
   -- forms 7 and 15 skip the count fold and take the window's width as the count instead
-  let single := form == 7 || form == 15 || form == 17
+  let single := (form == 7 || form == 15 || form == 17) && !sieved
   let (C, cName) ← if single then pure (W, Name.anonymous) else
     emitWindowedFoldOver (base ++ Name.mkSimple "count") fCount gCount bCount
       (fun wb : WindowBatch ↦ wb.count) wins winNames
@@ -1470,7 +1478,25 @@ so the lower end of the expansion is negative"
     | some (_, cb) => if single then mkConst cName else mkAppN (mkConst cb)
         #[gE, mkRawNatLit 0, mkRawNatLit W, mkRawNatLit 1, mkRawNatLit C, mkConst cName]
     | none => mkConst cName
-  let iccName := `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+  let iccName := if sieved
+    then `PrimeCert ++ Name.mkSimple s!"sievedRecipRange_{a}_{W}_{B}_{scaleExp}"
+    else `PrimeCert ++ Name.mkSimple s!"primeRecipRange_{a}_{W}_{B}_{scaleExp}"
+  if sieved then
+    addHarmonicThm iccName
+      (mkAppN (mkConst ``SievedRecipRange)
+        #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit B, mkRawNatLit A, mkRawNatLit C, SE])
+      (mkAppN (mkConst ``sievedRecipRange_of_segRun)
+        #[mkConst cache.litName, mkRawNatLit B, mkRawNatLit a, mkRawNatLit W, SE, gE,
+          mkRawNatLit A, mkRawNatLit C, loE, mkRawNatLit next,
+          mkAppN (mkConst ``Sieve.IsSieve.monoB)
+            #[mkRawNatLit cache.hi, mkRawNatLit B, mkConst cache.litName,
+              mkConst cache.isSieveName, Lean.reflBoolTrue],
+          mkMod6Proof a r, mkMod6Proof B rB, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
+          mkConst segEqI, aProof, cProof])
+    logInfo s!"run_harmonic_segment {a}: {W} positions up to {top}, {wins.size} windows of \
+{batch}, divisors to {B}, sieved sum; A = {A}, C = {C}"
+    return
   addHarmonicThm iccName
     (mkAppN (mkConst ``PrimeRecipRange)
       #[mkRawNatLit a, mkRawNatLit next, mkRawNatLit A, mkRawNatLit C, SE])
@@ -1619,6 +1645,17 @@ the primes up to `B` and encloses the sum of the reciprocals of its primes at sc
 elab "run_harmonic_segment" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num : command =>
   liftTermElabM <|
     runHarmonicSegment aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat lStx.getNat
+
+/-- `run_sieved_segment a W B e batch len` states the same window as `run_harmonic_segment` as an
+enclosure of its sieved sum, `SievedRecipRange a next B A C S`, which holds with the window at any
+height above `B`. This is the statement a leaf of the identity's expansion carries. -/
+elab "run_sieved_segment" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num : command =>
+  liftTermElabM <| do
+    sievedLeaf.set true
+    try
+      runHarmonicSegment aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat lStx.getNat
+    finally
+      sievedLeaf.set false
 
 /-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
 `∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/
