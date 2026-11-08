@@ -437,6 +437,25 @@ public theorem PhiEnc.ofSweep {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
     PhiEnc t B (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) :=
   .leaf (phiB_mem_Icc_of_range ht hB hr)
 
+/-- The sweep leaf in the same scaled form as the branch, so a derivation is integer literals
+throughout. The surviving `1` becomes the scale itself. -/
+public theorem phiB_mem_Icc_of_range_scaled {t B A C S L U : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
+    (hS : Nat.blt 0 S = true) (hr : SievedRecipRange 5 (t + 1) B A C S)
+    (hL : Nat.beq (S + A) L = true) (hU : Nat.beq (S + A + C) U = true) :
+    phiB t B ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S) := by
+  rw [Nat.blt_eq] at hS
+  rw [Nat.beq_eq] at hL hU
+  subst hL
+  subst hU
+  have hSne : (S : ℚ) ≠ 0 := by
+    have : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+    exact ne_of_gt this
+  have h := phiB_mem_Icc_of_range ht hB hr
+  push_cast
+  rw [show ((S : ℚ) + A) / S = 1 + (A : ℚ) / S by field_simp,
+    show ((S : ℚ) + A + C) / S = 1 + ((A : ℚ) + C) / S by field_simp; ring]
+  exact h
+
 /-- The branch, with both ends as scaled integer literals rather than rationals, which is how the
 rest of the project states an enclosure. The division by `p` is supplied by the emitter as two
 quotients: `Qhi` sits above the right branch's upper end over `p`, `Qlo` below its lower end, and
