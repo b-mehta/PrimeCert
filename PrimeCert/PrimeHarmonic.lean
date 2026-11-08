@@ -316,15 +316,17 @@ theorem recipSum_eq_Icc_range (s lo len : ℕ) :
   refine Finset.sum_congr rfl fun i _ ↦ ?_
   rw [Nat.mul_one, Nat.add_comm]
 
-/-- The scan of the positions `lo … lo + len - 1` sums the reciprocals of exactly the primes
-between the numbers at its two ends, given that the bit at each position of the scan says whether
-its number is prime. The sieve range uses this with `lo = 1`; a segment above the sieve uses it
-with the segment's own first position. -/
-public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo)
-    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime)) :
+/-- The scan of the positions `lo … lo + len - 1` sums the reciprocals of exactly the numbers
+between its two ends whose bit is set, for whatever property those bits record. The wheel only
+reaches numbers coprime to 6, so the property must force that, which is the last hypothesis.
+Primality is the case the sieve run uses; a sieve stopped at a lower bound records "no prime
+factor at or below it" instead, and lands here just as well. -/
+public theorem recipSum_eq_filterSum_range {s lo len : ℕ} {P : ℕ → Prop} [DecidablePred P]
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ P (Sieve.value t)))
+    (hmod : ∀ p, Sieve.value lo ≤ p → p < Sieve.value (lo + len) → P p →
+      p % 6 = 1 ∨ p % 6 = 5) :
     recipSum s lo len 1
-      = ∑ p ∈ (Finset.Ico (Sieve.value lo) (Sieve.value (lo + len))).filter Nat.Prime,
-          (p : ℚ)⁻¹ := by
+      = ∑ p ∈ (Finset.Ico (Sieve.value lo) (Sieve.value (lo + len))).filter P, (p : ℚ)⁻¹ := by
   rw [recipSum_eq_Icc_range, ← Finset.sum_filter]
   refine Finset.sum_nbij' (i := Sieve.value) (j := Sieve.index) ?_ ?_ ?_ ?_ ?_
   · intro t ht
@@ -334,10 +336,8 @@ public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo)
     exact (hbit t h1 h2).mp hbit'
   · intro p hp
     simp only [Finset.mem_filter, Finset.mem_Ico] at hp ⊢
-    obtain ⟨⟨hlow, hhigh⟩, hprime⟩ := hp
-    have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
-    have hc : p % 6 = 1 ∨ p % 6 = 5 := hprime.mod_six_eq_one_or_five (by omega) (by omega)
-    have hv : Sieve.value (Sieve.index p) = p := Sieve.value_index hc
+    obtain ⟨⟨hlow, hhigh⟩, hP⟩ := hp
+    have hv : Sieve.value (Sieve.index p) = p := Sieve.value_index (hmod p hlow hhigh hP)
     have h1 : lo ≤ Sieve.index p := by
       by_contra hcon
       have : Sieve.value (Sieve.index p) < Sieve.value lo :=
@@ -350,15 +350,27 @@ public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo)
       omega
     refine ⟨⟨h1, h2⟩, (hbit _ h1 h2).mpr ?_⟩
     rw [hv]
-    exact hprime
+    exact hP
   · intro t _
     exact Sieve.index_value t
   · intro p hp
     simp only [Finset.mem_filter, Finset.mem_Ico] at hp
-    have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
-    exact Sieve.value_index (hp.2.mod_six_eq_one_or_five (by omega) (by omega))
+    exact Sieve.value_index (hmod p hp.1.1 hp.1.2 hp.2)
   · intro t _
     rfl
+
+/-- The scan of the positions `lo … lo + len - 1` sums the reciprocals of exactly the primes
+between the numbers at its two ends, given that the bit at each position of the scan says whether
+its number is prime. The sieve range uses this with `lo = 1`; a segment above the sieve uses it
+with the segment's own first position. -/
+public theorem recipSum_eq_primeSum_range {s lo len : ℕ} (hlo : 1 ≤ lo)
+    (hbit : ∀ t, lo ≤ t → t < lo + len → (s.testBit t ↔ (Sieve.value t).Prime)) :
+    recipSum s lo len 1
+      = ∑ p ∈ (Finset.Ico (Sieve.value lo) (Sieve.value (lo + len))).filter Nat.Prime,
+          (p : ℚ)⁻¹ :=
+  recipSum_eq_filterSum_range hbit fun p hp _ hprime ↦ by
+    have h5 : 5 ≤ Sieve.value lo := Sieve.five_le_value (by omega)
+    exact hprime.mod_six_eq_one_or_five (by omega) (by omega)
 
 /-- The unit-step scan of the positions `1 … len` of a sieve for `N` sums the reciprocals of
 exactly the primes between `5` and `N`, provided `len` is the last position inside `N`. -/
