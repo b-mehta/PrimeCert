@@ -43,4 +43,14 @@ public theorem phiB_ten_three_of_lt_sq : phiB 10 3 = 47 / 35 := by
   rw [phiB_of_lt_sq (by norm_num) (by norm_num)]
   norm_num [Finset.sum_filter, Finset.sum_range_succ]
 
+/-- Two windows of a sweep joined into one leaf value, which is the shape a sweep produces: each
+window enclosed on its own, the totals and counts added as literals, and the value read at the
+end. Stated with the windows as hypotheses, as `Combine.lean` does for the record. -/
+public theorem phiB_of_two_ranges {t B b A₁ C₁ A₂ C₂ A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
+    (h5b : Nat.ble 5 b = true) (hbt : Nat.ble b (t + 1) = true)
+    (h₁ : SievedRecipRange 5 b B A₁ C₁ S) (h₂ : SievedRecipRange b (t + 1) B A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
+    phiB t B ∈ Set.Icc (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) :=
+  phiB_mem_Icc_of_range ht hB (sievedRecipRange_add h5b hbt h₁ h₂ hA hC)
+
 end PrimeCert
