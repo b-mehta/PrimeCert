@@ -746,6 +746,26 @@ public theorem sievedRecipRange_of_two_icc {N B A₁ C₁ A₂ C₂ L C S : ℕ}
   · linarith [h₁.1, h₂.2]
   · linarith [h₁.2, h₂.1]
 
+/-- A range may be carried up over a stretch holding no survivor, which is how a leaf whose height
+falls between two wheel values is answered: the numbers in between are divisible by 2 or by 3. -/
+public theorem sievedRecipRange_extend {a b b' B A C S : ℕ} (hb : b ≤ b')
+    (hno : ∀ n, b ≤ n → n < b' → ∃ q, q ≤ B ∧ q.Prime ∧ q ∣ n)
+    (h : SievedRecipRange a b B A C S) : SievedRecipRange a b' B A C S := by
+  have hset : (Finset.Ico a b').filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n)
+      = (Finset.Ico a b).filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n) := by
+    ext n
+    simp only [mem_filter, Finset.mem_Ico]
+    constructor
+    · rintro ⟨⟨hna, hnb'⟩, hsv⟩
+      refine ⟨⟨hna, ?_⟩, hsv⟩
+      by_contra hc
+      obtain ⟨q, hq, hqp, hqd⟩ := hno n (by omega) hnb'
+      exact hsv q hq hqp hqd
+    · rintro ⟨⟨hna, hnb⟩, hsv⟩
+      exact ⟨⟨hna, by omega⟩, hsv⟩
+  rw [SievedRecipRange, hset]
+  exact h
+
 /-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
 is added back here. -/
 public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
