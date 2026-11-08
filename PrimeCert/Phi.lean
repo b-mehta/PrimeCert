@@ -8,6 +8,7 @@ module
 public import PrimeCert.PrimeHarmonic
 
 import Mathlib.Algebra.BigOperators.Field
+import Mathlib.Tactic.Linarith
 import Mathlib.Algebra.Order.Field.Rat
 import Mathlib.Tactic.FieldSimp
 import Mathlib.Tactic.Ring
@@ -335,6 +336,60 @@ public theorem recipSum_eq_phiSum {s B lo len : ℕ} (hB : 3 ≤ B)
     have h2 : n % 2 ≠ 0 := fun h ↦ hn 2 (by omega) Nat.prime_two (Nat.dvd_of_mod_eq_zero h)
     have h3 : n % 3 ≠ 0 := fun h ↦ hn 3 (by omega) Nat.prime_three (Nat.dvd_of_mod_eq_zero h)
     omega
+
+/-! ## Ranges of the sieved sum, which a sweep accumulates
+
+A leaf is answered at a point of a sweep rather than by a run of its own, so what it needs is a
+prefix of the sieved sum: windows enclosed one at a time and added along the sweep, with each leaf
+reading the total where its own height falls. This mirrors `PrimeRecipRange` and its addition,
+with the sieve stopped at `B` instead of carried to the square root. -/
+
+/-- The sum of the reciprocals of the numbers in `a … b - 1` with no prime factor at or below `B`
+lies in the interval of width `C / S` above `A / S`. -/
+@[expose] public noncomputable def SievedRecipRange (a b B A C S : ℕ) : Prop :=
+  ∑ n ∈ (Finset.Ico a b).filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n), (n : ℚ)⁻¹ ∈
+    Set.Icc ((A : ℚ) / S) (((A : ℚ) + (C : ℚ)) / S)
+
+/-- A scan of one window encloses the sieved sum over the numbers it covers. -/
+public theorem sievedRecipRange_of {s S B lo len A C : ℕ} (hB : 3 ≤ B)
+    (hS : Nat.blt 0 S = true)
+    (hbit : ∀ j, lo ≤ j → j < lo + len →
+      (s.testBit j ↔ ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value j))
+    (hA : sumB (recipAtK s S) lo len 1 = A) (hC : sumB (bitAtK s) lo len 1 = C) :
+    SievedRecipRange (Sieve.value lo) (Sieve.value (lo + len)) B A C S := by
+  rw [Nat.blt_eq] at hS
+  have hmem := recipSum_mem_Icc (S := S) s lo len 1 (by omega)
+  rw [recipSum_eq_phiSum hB hbit, hA, hC] at hmem
+  exact hmem
+
+/-- Two neighbouring ranges add, with the two totals and the two counts added as literals. This is
+the step a sweep takes between leaves. -/
+public theorem sievedRecipRange_add {a b c B A₁ C₁ A₂ C₂ A C S : ℕ}
+    (hab : Nat.ble a b = true) (hbc : Nat.ble b c = true)
+    (h₁ : SievedRecipRange a b B A₁ C₁ S) (h₂ : SievedRecipRange b c B A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true) :
+    SievedRecipRange a c B A C S := by
+  rw [Nat.beq_eq] at hA hC
+  rw [Nat.ble_eq] at hab hbc
+  rw [SievedRecipRange, Finset.sum_filter] at h₁ h₂ ⊢
+  rw [← Finset.sum_Ico_consecutive _ hab hbc]
+  obtain ⟨hlo₁, hhi₁⟩ := h₁
+  obtain ⟨hlo₂, hhi₂⟩ := h₂
+  subst hA
+  subst hC
+  simp only [Nat.add_eq]
+  push_cast
+  simp only [add_div] at hhi₁ hhi₂ ⊢
+  exact ⟨by linarith, by linarith⟩
+
+/-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
+is added back here. -/
+public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
+    (hr : SievedRecipRange 5 (t + 1) B A C S) :
+    phiB t B ∈ Set.Icc (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) := by
+  rw [phiB_eq_one_add_filter ht hB, Set.mem_Icc]
+  simp only [SievedRecipRange, Set.mem_Icc] at hr
+  exact ⟨add_le_add le_rfl hr.1, add_le_add le_rfl hr.2⟩
 
 /-- A run whose windows end exactly at `t` gives the value as `1` plus its own scan. -/
 public theorem phiB_eq_one_add_recipSum {s B t len : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
