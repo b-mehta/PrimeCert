@@ -339,6 +339,11 @@ public theorem isSieve_of_sieveK_eq {n sqrtN lit : ℕ} (hEq : sieveK n sqrtN = 
     IsSieve n lit := by
   grind [IsSieve, sieveK_testBit_iff, le_index_of_value_le, index, Nat.ble_eq, Nat.div_eq_div]
 
+/-- A sieve for `n` decides primality for every smaller bound, so one cached sieve serves a window
+at whatever divisor bound that window needs. -/
+public theorem IsSieve.mono {n m lit : ℕ} (h : IsSieve n lit) (hm : m ≤ n) : IsSieve m lit :=
+  fun t ht hv => h t ht (hv.trans hm)
+
 /-- Read a prime off a sieve: a set bit at index `t` with `valueK t = p` makes `p` prime. -/
 public theorem IsSieve.prime {n lit t p : ℕ} (h : IsSieve n lit) (h1 : Nat.ble 1 t)
     (h4 : p.ble n) (hbit : testBitK lit t) (hp : (valueK t).beq p) :
