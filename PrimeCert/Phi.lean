@@ -900,6 +900,31 @@ public theorem phiEnclosure_split {t p S L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ} 
     PhiEnclosure t p L U S :=
   phiB_mem_Icc_split hp hS h₁ h₂ hhi hlo hL hU
 
+/-- The branch at a prime, with the primality itself a `Bool` literal the kernel checks: a number
+at least 2 whose least factor is itself. This is the form an emitter can produce. -/
+public theorem phiEnclosure_split_of_minFac {t p S L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ}
+    (hp2 : Nat.ble 2 p = true) (hpm : Nat.beq (Nat.minFac p) p = true)
+    (hS : Nat.blt 0 S = true)
+    (h₁ : PhiEnclosure t (p - 1) L₁ U₁ S) (h₂ : PhiEnclosure (t / p) (p - 1) L₂ U₂ S)
+    (hhi : Nat.ble U₂ (Qhi * p) = true) (hlo : Nat.ble (Qlo * p) L₂ = true)
+    (hL : Nat.beq (L + Qhi) L₁ = true) (hU : Nat.beq (U + Qlo) U₁ = true) :
+    PhiEnclosure t p L U S := by
+  rw [Nat.ble_eq] at hp2
+  rw [Nat.beq_eq] at hpm
+  exact phiEnclosure_split ((Nat.prime_def_minFac).mpr ⟨hp2, hpm⟩) hS h₁ h₂ hhi hlo hL hU
+
+/-- Stepping the bound past one composite, with the compositeness a `Bool` literal: a number
+whose least factor is smaller than itself. -/
+public theorem phiEnclosure_step_of_minFac {t B lo hi S : ℕ}
+    (hBm : Nat.blt (Nat.minFac (B + 1)) (B + 1) = true)
+    (hv : PhiEnclosure t B lo hi S) : PhiEnclosure t (B + 1) lo hi S := by
+  rw [PhiEnclosure, phiB_succ_not_prime]
+  · exact hv
+  · rw [Nat.blt_eq] at hBm
+    intro hpr
+    have := (Nat.prime_def_minFac).mp hpr
+    omega
+
 /-- The harmonic leaf, from the fold of the rounded reciprocals. -/
 public theorem phiEnclosure_of_fold {t S A C : ℕ} (hS : Nat.blt 0 S = true)
     (hA : sumB (recipPlain S) 1 t 1 = A) (hC : Nat.beq t C = true) :
