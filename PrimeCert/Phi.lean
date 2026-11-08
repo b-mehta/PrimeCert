@@ -599,6 +599,21 @@ public theorem sievedRecipRange_of_segRun {s B a W S g A C lo next : ℕ} (hs : 
   rw [hseg] at hsound' hcomplete'
   exact sievedRecipRange_segment ha hB3 hS (fun j hj h ↦ hsound' j hj h) hcomplete' hA hC
 
+/-- Nothing at or below the bound survives it, since such a number is divisible by itself. A
+leaf's range therefore starts at `B + 1`, and this supplies the stretch beneath it. -/
+public theorem sievedRecipRange_below {b B S : ℕ} (hb : b ≤ B + 1) :
+    SievedRecipRange 5 b B 0 0 S := by
+  have hset : (Finset.Ico 5 b).filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n) = ∅ := by
+    rw [Finset.filter_eq_empty_iff]
+    intro n hn
+    simp only [Finset.mem_Ico] at hn
+    intro hsv
+    have hn1 : n ≠ 1 := by omega
+    exact hsv n.minFac (le_trans (Nat.minFac_le (by omega)) (by omega)) (Nat.minFac_prime hn1)
+      (Nat.minFac_dvd n)
+  rw [SievedRecipRange, hset]
+  simp
+
 /-- Below the square of the bound a survivor is prime, so a proved range of primes serves as a
 range of survivors. A leaf's range splits here: the part under `B ^ 2` reuses the enclosures the
 prime run already produces, and the part above it comes from `sievedRecipRange_of_segRun`. -/
