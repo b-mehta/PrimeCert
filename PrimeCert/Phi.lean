@@ -572,6 +572,33 @@ public theorem sievedRecipRange_segment {B a W S g A C : ℕ}
   have h := sievedRecipRange_of hB3 hS hbit hA' hC'
   rwa [hlo] at h
 
+/-- Everything a segment run's output supplies for a sieved leaf, in one application: the base
+sieve, the equation the segment command emits, the numeric side conditions as `Bool` literals, and
+the two folds over the segment literal. -/
+public theorem sievedRecipRange_of_segRun {s B a W S g A C lo next : ℕ} (hs : Sieve.IsSieve B s)
+    (ha : Nat.mod a 6 = 1 ∨ Nat.mod a 6 = 5) (hB6 : Nat.mod B 6 = 1 ∨ Nat.mod B 6 = 5)
+    (hW : Nat.blt (W - 1) (2 ^ 32) = true)
+    (hB3 : Nat.ble 3 B = true) (h7B : Nat.ble (7 * B) a = true)
+    (hS : Nat.blt 0 S = true)
+    (hlo : Nat.beq (Sieve.index a) lo = true)
+    (htv : Nat.beq (Sieve.value (lo + W)) next = true)
+    (hseg : Sieve.segRun s a W B = g)
+    (hA : sumB (recipAtW g lo S) 0 W 1 = A)
+    (hC : sumB (bitAtW g) 0 W 1 = C) :
+    SievedRecipRange a next B A C S := by
+  rw [Nat.beq_eq] at hlo htv
+  subst hlo
+  subst htv
+  rw [Nat.ble_eq] at hB3 h7B
+  rw [Nat.blt_eq] at hW
+  rw [Sieve.segRun_eq] at hseg
+  have hsound' := Sieve.segmentSound_of hs ha hW (by omega) h7B
+  have hcomplete' := Sieve.segmentComplete_of hs hB6 hW h7B
+  rw [Sieve.SegmentSound] at hsound'
+  rw [Sieve.SegmentComplete] at hcomplete'
+  rw [hseg] at hsound' hcomplete'
+  exact sievedRecipRange_segment ha hB3 hS (fun j hj h ↦ hsound' j hj h) hcomplete' hA hC
+
 /-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
 is added back here. -/
 public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
