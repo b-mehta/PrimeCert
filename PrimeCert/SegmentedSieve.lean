@@ -3425,6 +3425,47 @@ theorem testBit_treeDiv2K {t : Lvl7} {lo Wm1 p j : Nat} (hW : Wm1 < 4194304) :
   unfold treeDiv2K
   rw [testBit_putK hW, testBit_putK hW]
 
+/-- A strike past the window's end leaves the tree alone. -/
+theorem putK_eq_self {t : Lvl7} {Wm1 s : Nat} (h : Nat.blt Wm1 s = true) : putK t Wm1 s = t := by
+  unfold putK
+  rw [h]
+
+/-- A divisor whose two strikes both pass the window's end leaves the tree alone. Of the 508968
+divisors of the widest band, the ones in this position carry no information for the batch. -/
+theorem treeDiv2K_eq_self {t : Lvl7} {lo Wm1 p : Nat}
+    (hA : Nat.blt Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) = true)
+    (hB : Nat.blt Wm1 (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) = true) :
+    treeDiv2K t lo Wm1 p = t := by
+  unfold treeDiv2K
+  rw [putK_eq_self hB, putK_eq_self hA]
+
+/-- Loop recurrence for the widest band's fold, in the `Bool.rec` form the definition uses. -/
+theorem treeFold2K_succ {c lo Wm1 start len : Nat} :
+    treeFold2K c lo Wm1 start (len + 1)
+      = (testBitK c len).rec (treeFold2K c lo Wm1 start len)
+          (treeDiv2K (treeFold2K c lo Wm1 start len) lo Wm1 (valueK (start.add len))) := rfl
+
+/-- Two batches assemble the same tree when they name the same divisors at every position whose
+divisor strikes inside the window, so a batch may leave out the divisors that strike nowhere.
+
+The hypothesis at a left-out position names the same two `firstLocK` values that `treeDiv2K`
+applies there, so a batch filtered this way still carries them. -/
+theorem treeFold2K_congr {c d lo Wm1 start : Nat} : ∀ {len : Nat},
+    (∀ i, i < len → testBitK c i = testBitK d i
+      ∨ (Nat.blt Wm1 (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo
+            ((valueK (start.add i)).mul 2)) = true
+        ∧ Nat.blt Wm1 (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo
+            ((valueK (start.add i)).mul 2)) = true)) →
+    treeFold2K c lo Wm1 start len = treeFold2K d lo Wm1 start len
+  | 0, _ => rfl
+  | n + 1, h => by
+    rw [treeFold2K_succ, treeFold2K_succ,
+      treeFold2K_congr (fun i hi => h i (Nat.lt_succ_of_lt hi))]
+    rcases h n (Nat.lt_succ_self n) with heq | ⟨hA, hB⟩
+    · rw [heq]
+    · rw [treeDiv2K_eq_self hA hB]
+      cases testBitK c n <;> cases testBitK d n <;> rfl
+
 /-- Joining nothing to nothing gives nothing, at any width. -/
 theorem lor_shift_zero {w : Nat} : (0 : Nat).lor ((0 : Nat).shiftLeft w) = 0 := by
   have h0 : (0 : Nat).shiftLeft w = 0 <<< w := rfl
