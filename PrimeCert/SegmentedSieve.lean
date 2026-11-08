@@ -2978,13 +2978,13 @@ The kernel checks each batch equation, so a twin that disagreed would make `run_
 
 meta def initSeg (W : Nat) : Nat := (1 <<< W) - 1
 
-meta def firstLoc (A lo m : Nat) : Nat := (A + m * (lo / m + 1) - lo) % m
+public meta def firstLoc (A lo m : Nat) : Nat := (A + m * (lo / m + 1) - lo) % m
 
-meta def segMark (seg p lo Wm1 : Nat) : Nat :=
+public meta def segMark (seg p lo Wm1 : Nat) : Nat :=
   seg - (seg &&& buildMask p Wm1 (firstLoc (index (p * 5)) lo (p * 2))
     (firstLoc (index (p * 7)) lo (p * 2)) 32)
 
-meta def segLoop (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
+public meta def segLoop (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
   let mut b := seg
   for i in [0:fuel] do
     let j := start + i
