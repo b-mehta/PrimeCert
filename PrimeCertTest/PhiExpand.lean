@@ -19,4 +19,13 @@ namespace PrimeCert.PhiExpandTest
 set_option maxRecDepth 100000 in
 run_phi_expand 1000 7 20
 
+/-! The same height at higher bounds, to show how the node count grows while the expansion runs
+to the bottom with no cut. -/
+
+set_option maxRecDepth 100000 in
+run_phi_expand 1000 13 20
+
+set_option maxRecDepth 100000 in
+run_phi_expand 1000 23 20
+
 end PrimeCert.PhiExpandTest

@@ -59,10 +59,10 @@ meta def addNodeThm (name : Name) (type value : Expr) : MetaM Unit :=
 
 /-- Walk the recurrence from `(t, B)` and emit a declaration for every node, returning the one
 at the root. Nodes already emitted are reused. -/
-meta partial def emitNode (S : Nat) (ns : Name) (seen : IO.Ref (Std.HashMap (Nat × Nat) Node))
-    (t B : Nat) : MetaM Node := do
+meta partial def emitNode (S : Nat) (ns : Name) (tag : String)
+    (seen : IO.Ref (Std.HashMap (Nat × Nat) Node)) (t B : Nat) : MetaM Node := do
   if let some n := (← seen.get)[(t, B)]? then return n
-  let name := ns ++ Name.mkSimple s!"phiNode_{t}_{B}"
+  let name := ns ++ Name.mkSimple s!"phiNode_{tag}_{t}_{B}"
   let SE := mkRawNatLit S
   let node ← do
     if t == 0 then
@@ -84,15 +84,15 @@ meta partial def emitNode (S : Nat) (ns : Name) (seen : IO.Ref (Std.HashMap (Nat
             Lean.reflBoolTrue])
       pure { lo := a, hi := a + t, name }
     else if leastFactor B < B then
-      let child ← emitNode S ns seen t (B - 1)
+      let child ← emitNode S ns tag seen t (B - 1)
       addNodeThm name (mkNodeType t B child.lo child.hi S)
         (mkAppN (mkConst ``phiEnclosure_step_of_minFac)
           #[mkRawNatLit t, mkRawNatLit (B - 1), mkRawNatLit child.lo, mkRawNatLit child.hi, SE,
             Lean.reflBoolTrue, mkConst child.name])
       pure { lo := child.lo, hi := child.hi, name }
     else
-      let left ← emitNode S ns seen t (B - 1)
-      let right ← emitNode S ns seen (t / B) (B - 1)
+      let left ← emitNode S ns tag seen t (B - 1)
+      let right ← emitNode S ns tag seen (t / B) (B - 1)
       let qhi := (right.hi + B - 1) / B
       let qlo := right.lo / B
       if left.lo < qhi then
@@ -117,7 +117,7 @@ meta def runPhiExpand (x B scaleExp : Nat) : MetaM Unit := do
   let S := 10 ^ scaleExp
   let ns ← getCurrNamespace
   let seen ← IO.mkRef {}
-  let root ← emitNode S ns seen x B
+  let root ← emitNode S ns s!"{x}_{B}_{scaleExp}" seen x B
   let count := (← seen.get).size
   logInfo s!"run_phi_expand: phiB {x} {B} in [{root.lo}, {root.hi}] over {S}, \
 {count} nodes, root {root.name}"
