@@ -1570,6 +1570,75 @@ meta def joinRanges (parent : Name) (SE : Expr) (nodes : Array RangeNode) : Meta
     level := level + 1
   return cur[0]!
 
+/-- Join neighbouring enclosures of sieved sums in a tree, as `joinRanges` does for enclosures of
+sums over primes. The bound `BE` is the same at every node, since the sieve is one sieve. -/
+meta def joinSievedRanges (parent : Name) (BE SE : Expr) (nodes : Array RangeNode) :
+    MetaM RangeNode := do
+  if nodes.isEmpty then
+    throwError "joinSievedRanges: no ranges to join"
+  let env ← getEnv
+  let mut cur := nodes
+  let mut level := 0
+  while cur.size > 1 do
+    let mut next : Array RangeNode := #[]
+    let mut i := 0
+    while i < cur.size do
+      if i + 1 < cur.size then
+        let x := cur[i]!
+        let y := cur[i + 1]!
+        if x.hi != y.lo then
+          throwError "joinSievedRanges: {x.hi} and {y.lo} are not neighbours"
+        let tot := x.tot + y.tot
+        let cnt := x.cnt + y.cnt
+        let nm := mkPrivateName env (parent ++ Name.mkSimple s!"node_{level}_{i}")
+        addHarmonicThm nm
+          (mkAppN (mkConst ``SievedRecipRange)
+            #[mkRawNatLit x.lo, mkRawNatLit y.hi, BE, mkRawNatLit tot, mkRawNatLit cnt, SE])
+          (mkAppN (mkConst ``sievedRecipRange_add)
+            #[mkRawNatLit x.lo, mkRawNatLit x.hi, mkRawNatLit y.hi, BE, mkRawNatLit x.tot,
+              mkRawNatLit x.cnt, mkRawNatLit y.tot, mkRawNatLit y.cnt, mkRawNatLit tot,
+              mkRawNatLit cnt, SE, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst x.name,
+              mkConst y.name, Lean.reflBoolTrue, Lean.reflBoolTrue])
+        next := next.push { lo := x.lo, hi := y.hi, tot, cnt, name := nm }
+        i := i + 2
+      else
+        next := next.push cur[i]!
+        i := i + 1
+    cur := next
+    level := level + 1
+  return cur[0]!
+
+/-- Join the `n` windows of `W` positions from `a`, each already stated by `run_sieved_segment`,
+into one enclosure of the sieved sum they cover. -/
+meta def runSievedJoin (a W B scaleExp n : Nat) : MetaM Unit := do
+  if n == 0 then
+    throwError "run_sieved_join: there are no windows to join"
+  let env ← getEnv
+  let SE := mkRawNatLit (10 ^ scaleExp)
+  let BE := mkRawNatLit B
+  let mut nodes : Array RangeNode := #[]
+  let mut start := a
+  for _ in [0:n] do
+    let nm := `PrimeCert ++ Name.mkSimple s!"sievedRecipRange_{start}_{W}_{B}_{scaleExp}"
+    let some info := env.find? nm
+      | throwError "run_sieved_join: no enclosure {nm}; \
+run `run_sieved_segment {start} {W} {B} {scaleExp} …` above this command"
+    let some args := info.type.getAppArgs[0:6] |>.toArray.mapM Expr.rawNatLit?
+      | throwError "run_sieved_join: the enclosure {nm} does not carry six numerals"
+    nodes := nodes.push
+      { lo := args[0]!, hi := args[1]!, tot := args[3]!, cnt := args[4]!, name := nm }
+    start := nextSegmentStart start W
+  let base := `PrimeCert ++ Name.mkSimple s!"sievedJoin_{a}_{W}_{B}_{scaleExp}_{n}"
+  let root ← joinSievedRanges base BE SE nodes
+  let nm := `PrimeCert ++ Name.mkSimple s!"sievedRange_{a}_{root.hi}_{B}_{scaleExp}"
+  addHarmonicThm nm
+    (mkAppN (mkConst ``SievedRecipRange)
+      #[mkRawNatLit root.lo, mkRawNatLit root.hi, BE, mkRawNatLit root.tot,
+        mkRawNatLit root.cnt, SE])
+    (mkConst root.name)
+  logInfo s!"run_sieved_join: {n} windows cover {root.lo} to {root.hi - 1}; \
+A = {root.tot}, C = {root.cnt}"
+
 /-- Join the `n` windows of `W` positions from `a`, each already summed by
 `run_harmonic_segment`, into one enclosure of the sum over the primes they cover. -/
 meta def runHarmonicJoin (a W B scaleExp n : Nat) : MetaM Unit := do
@@ -1656,6 +1725,12 @@ elab "run_sieved_segment" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num 
       runHarmonicSegment aStx.getNat wStx.getNat bStx.getNat eStx.getNat cStx.getNat lStx.getNat
     finally
       sievedLeaf.set false
+
+/-- `run_sieved_join a W B e n` joins the `n` windows of `W` positions from `a` that
+`run_sieved_segment` stated, into one enclosure of the sieved sum they cover. -/
+elab "run_sieved_join" aStx:num wStx:num bStx:num eStx:num nStx:num : command =>
+  liftTermElabM <|
+    runSievedJoin aStx.getNat wStx.getNat bStx.getNat eStx.getNat nStx.getNat
 
 /-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
 `∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/
