@@ -79,4 +79,26 @@ public theorem phiB_routes_agree {t B : ℕ} (ht : 0 < t) (hB : t < (B + 1) * (B
       = 1 + ∑ p ∈ (Finset.Icc (B + 1) t).filter Nat.Prime, (p : ℚ)⁻¹ :=
   (phiB_of_lt_sq ht hB).symm.trans (phiB_eq_one_add_primeSum ht hB)
 
+/-- A leaf assembled from the three stretches its range falls into: nothing survives at or below
+the bound `B`, the stretch from `B + 1` to `m` is a proved range of primes read as survivors since
+it lies under `B * B`, and the stretch from `m` to `t + 1` is a sieved segment. The totals and
+counts add as literals and the value is read at the end. -/
+public theorem phiB_of_low_and_high {t B m A₁ C₁ A₂ C₂ A C S L U : ℕ}
+    (ht : 0 < t) (hB : 3 ≤ B) (hB1 : 1 ≤ B) (hS : Nat.blt 0 S = true)
+    (hBm : B < B + 1) (hmsq : m ≤ B * B)
+    (h5B : Nat.ble 5 (B + 1) = true) (hBm' : Nat.ble (B + 1) m = true)
+    (h5m : Nat.ble 5 m = true) (hmt : Nat.ble m (t + 1) = true)
+    (hlow : PrimeRecipRange (B + 1) m A₁ C₁ S)
+    (hhigh : SievedRecipRange m (t + 1) B A₂ C₂ S)
+    (hA : Nat.beq (Nat.add A₁ A₂) A = true) (hC : Nat.beq (Nat.add C₁ C₂) C = true)
+    (hL : Nat.beq (S + A) L = true) (hU : Nat.beq (S + A + C) U = true) :
+    phiB t B ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S) :=
+  phiB_mem_Icc_of_range_scaled ht hB hS
+    (sievedRecipRange_add h5m hmt
+      (sievedRecipRange_add (A := A₁) (C := C₁) h5B hBm' (sievedRecipRange_below le_rfl)
+        (sievedRecipRange_of_primeRecipRange hB1 hBm hmsq hlow)
+        (by simp) (by simp))
+      hhigh hA hC)
+    hL hU
+
 end PrimeCert
