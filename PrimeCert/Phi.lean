@@ -885,6 +885,13 @@ public theorem phiEnclosure_one {t B S : ℕ} (ht : 0 < t) (h : t ≤ B)
     (hS : Nat.blt 0 S = true) : PhiEnclosure t B S S S :=
   phiB_one_mem_Icc ht h hS
 
+/-- The branch whose bound has overtaken its height, with both conditions as `Bool` literals. -/
+public theorem phiEnclosure_one_of_ble {t B S : ℕ} (ht : Nat.blt 0 t = true)
+    (h : Nat.ble t B = true) (hS : Nat.blt 0 S = true) : PhiEnclosure t B S S S := by
+  rw [Nat.blt_eq] at ht
+  rw [Nat.ble_eq] at h
+  exact phiEnclosure_one ht h hS
+
 /-- Stepping the bound across a stretch with no prime in it. -/
 public theorem phiEnclosure_of_no_primes {t B B' lo hi S : ℕ} (h : B' ≤ B)
     (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) (hv : PhiEnclosure t B' lo hi S) :
