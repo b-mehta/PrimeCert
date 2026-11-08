@@ -42,11 +42,16 @@ SEG = 3 * W                      # integers one window covers
 N = 10**14
 FULL_B = 10**7                   # divisors the top window needs
 
-# Measured seconds for one segment at batch 8192, one file, with the two middle bands in batches
-# of 4096 (run 42389213113, means of three rounds): small divisors 53.96, middle bands 42.69,
-# widest band 69.99, kernel 168.23, processor 209.6, so the non-kernel remainder is 41.4.
-COST = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
-OTHER = 41.4                     # non-kernel elaboration, independent of the divisor count
+# Measured seconds for one window at batch 8192, two windows sharing a runner, which is the shape
+# a real run uses (run 42463567277, three rounds, group wall 149 s for two windows at the default
+# tiers). The band split is taken from the one-file run 42389213113 in the same proportions:
+# small divisors, the two middle bands, the widest band, and the non-kernel remainder.
+_SPLIT = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
+_OTHER_SPLIT = 41.4
+_PAIRED = 149.0 / 2              # seconds of runner time one window takes, two to a runner
+_SCALE = _PAIRED / (sum(_SPLIT.values()) + _OTHER_SPLIT)
+COST = {k: v * _SCALE for k, v in _SPLIT.items()}
+OTHER = _OTHER_SPLIT * _SCALE    # non-kernel elaboration, independent of the divisor count
 
 EDGES = {
     "small": (2, WM1 // 8),
@@ -71,28 +76,31 @@ def window_cost(bound: int) -> float:
     return total
 
 
-def main() -> None:
-    top = window_cost(FULL_B)
-    print(f"primes per band: {PI}")
-    print(f"a window at the top of the range: {top:.1f} s")
-
-    # Sample windows uniformly across the range and average; the cost only depends on sqrt of the
-    # window's top, so sampling the window index is sampling the range.
-    windows = N // SEG
+def range_cost(n: int) -> tuple[int, float, float]:
+    """Windows, mean seconds of runner time per window, and total runner-years, for 1..n."""
+    windows = max(1, n // SEG)
     samples = 20000
     acc = 0.0
     for k in range(samples):
-        x = (k + 0.5) / samples * N
+        x = (k + 0.5) / samples * n
         acc += window_cost(int(x ** 0.5))
     mean = acc / samples
-    print(f"mean over every window of 1..1e14: {mean:.1f} s")
-    print(f"ratio mean/top: {mean / top:.4f}")
-    print(f"windows in 1..1e14: {windows}")
+    return windows, mean, windows * mean / 3600 / 24 / 365
 
-    years = windows * top / 2 / 3600 / 24 / 365
-    print(f"\nat the top rate everywhere, two windows a runner: {years:.1f} runner-years")
-    print(f"at the per-window rate:                           "
-          f"{windows * mean / 2 / 3600 / 24 / 365:.1f} runner-years")
+
+def main() -> None:
+    top = window_cost(FULL_B)
+    print(f"primes per band: {PI}")
+    print(f"one window at the top of 1..1e14: {top:.1f} s of runner time")
+    print()
+    # A GitHub job runs at most six hours and takes two windows at once, so it carries
+    # 2 * 21600 / mean windows.
+    print("  N        windows      s/window   runner-years   six-hour jobs")
+    for e in (11, 12, 13, 14):
+        n = 10 ** e
+        windows, mean, years = range_cost(n)
+        jobs = windows * mean / 2 / 21600
+        print(f"  1e{e:<6} {windows:>10}   {mean:>8.1f}   {years:>12.2f}   {jobs:>13.0f}")
 
 
 if __name__ == "__main__":
