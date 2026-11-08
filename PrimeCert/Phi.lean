@@ -156,6 +156,49 @@ public theorem phiB_succ_prime {t p : ℕ} (hp : p.Prime) :
     Finset.mul_sum]
   ring
 
+/-- The survivors whose least prime factor is `p` are `p` times the survivors below `t / p` that
+have no factor under `p`. Classifying by least prime factor is what turns the sieved sum into the
+identity's one-step expansion. -/
+theorem phiSet_filter_minFac {t B p : ℕ} (hp : p.Prime) (hB : B < p) :
+    ((phiSet t B).filter fun n ↦ n.minFac = p)
+      = (phiSet (t / p) (p - 1)).image (fun m ↦ p * m) := by
+  have hp0 : 0 < p := hp.pos
+  ext n
+  simp only [mem_filter, mem_phiSet, mem_image]
+  constructor
+  · rintro ⟨⟨hnt, hn0, hq⟩, hmin⟩
+    have hdvd : p ∣ n := hmin ▸ Nat.minFac_dvd n
+    obtain ⟨m, rfl⟩ := hdvd
+    have hm0 : 0 < m := by
+      rcases Nat.eq_zero_or_pos m with rfl | h
+      · simp at hn0
+      · exact h
+    refine ⟨m, ⟨?_, hm0, ?_⟩, rfl⟩
+    · exact (Nat.le_div_iff_mul_le hp0).mpr (by rw [Nat.mul_comm] at hnt; exact hnt)
+    · intro q hq' hqp hqm
+      have : (p * m).minFac ≤ q := Nat.minFac_le_of_dvd hqp.two_le (hqm.mul_left p)
+      omega
+  · rintro ⟨m, ⟨hmt, hm0, hq⟩, rfl⟩
+    have hle : p * m ≤ t := by
+      rw [Nat.mul_comm]
+      exact Nat.mul_le_of_le_div p m t hmt
+    have hne : p * m ≠ 1 := by
+      have h2 : 2 * 1 ≤ p * m := Nat.mul_le_mul hp.two_le hm0
+      omega
+    have hmin : (p * m).minFac = p := by
+      have hup : (p * m).minFac ≤ p := Nat.minFac_le_of_dvd hp.two_le ⟨m, rfl⟩
+      by_contra hneq
+      have hlt : (p * m).minFac < p := lt_of_le_of_ne hup hneq
+      have hpr : (p * m).minFac.Prime := Nat.minFac_prime hne
+      rcases (Nat.Prime.dvd_mul hpr).mp (Nat.minFac_dvd (p * m)) with h | h
+      · have := (Nat.prime_dvd_prime_iff_eq hpr hp).mp h
+        omega
+      · exact hq _ (by omega) hpr h
+    refine ⟨⟨hle, Nat.mul_pos hp0 hm0, ?_⟩, hmin⟩
+    intro q hq' hqp hqd
+    have : (p * m).minFac ≤ q := Nat.minFac_le_of_dvd hqp.two_le hqd
+    omega
+
 /-! ## Where the sieved sum becomes a sum over primes
 
 A survivor that is composite needs two factors above the bound, so below `(B+1)^2` there are none
