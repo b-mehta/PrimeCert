@@ -49,6 +49,12 @@ theorem phiSet_one (t : ℕ) : phiSet t 1 = (range (t + 1)).filter fun n ↦ 0 <
   have := hp.two_le
   omega
 
+/-- At bound `1` nothing has been sieved out, so the value is the plain harmonic sum. This is the
+leaf every branch of a full expansion ends at. -/
+public theorem phiB_one (t : ℕ) :
+    phiB t 1 = ∑ n ∈ (range (t + 1)).filter (fun n ↦ 0 < n), (n : ℚ)⁻¹ := by
+  rw [phiB, phiSet_one]
+
 /-- Once the bound reaches `t` only `1` survives, which is where the recursion bottoms out and
 where the identity's trailing `- 1` comes from. -/
 public theorem phiB_of_le {t B : ℕ} (ht : 0 < t) (h : t ≤ B) : phiB t B = 1 := by
