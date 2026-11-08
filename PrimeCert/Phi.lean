@@ -456,6 +456,30 @@ public theorem phiB_mem_Icc_of_range_scaled {t B A C S L U : ℕ} (ht : 0 < t) (
     show ((S : ℚ) + A + C) / S = 1 + ((A : ℚ) + C) / S by field_simp; ring]
   exact h
 
+/-- Crossing a prime gap keeps the enclosure, so a derivation stays on the scale throughout. -/
+public theorem phiB_mem_Icc_of_no_primes {t B B' L U S : ℕ} (h : B' ≤ B)
+    (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime)
+    (hv : phiB t B' ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S)) :
+    phiB t B ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S) := by
+  rw [phiB_of_no_primes h hno]
+  exact hv
+
+/-- A branch sieved away, on the scale. -/
+public theorem phiB_zero_mem_Icc (B S : ℕ) :
+    phiB 0 B ∈ Set.Icc ((0 : ℚ) / S) ((0 : ℚ) / S) := by
+  rw [phiB_zero]
+  simp
+
+/-- A branch whose bound has overtaken its height, on the scale: the value is the scale itself. -/
+public theorem phiB_one_mem_Icc {t B S : ℕ} (ht : 0 < t) (h : t ≤ B) (hS : Nat.blt 0 S = true) :
+    phiB t B ∈ Set.Icc ((S : ℚ) / S) ((S : ℚ) / S) := by
+  rw [Nat.blt_eq] at hS
+  have hSne : (S : ℚ) ≠ 0 := by
+    have : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+    exact ne_of_gt this
+  rw [phiB_of_le ht h, div_self hSne]
+  exact ⟨le_rfl, le_rfl⟩
+
 /-- The branch, with both ends as scaled integer literals rather than rationals, which is how the
 rest of the project states an enclosure. The division by `p` is supplied by the emitter as two
 quotients: `Qhi` sits above the right branch's upper end over `p`, `Qlo` below its lower end, and
