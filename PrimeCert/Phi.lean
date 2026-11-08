@@ -867,6 +867,49 @@ public theorem phiB_mem_Icc_split {t p S L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ} 
   simp only [add_div] at h₁
   exact ⟨by linarith [h₁.1], by linarith [h₁.2]⟩
 
+/-! ## One emitted node
+
+An expansion is emitted node by node, so the statement a node carries is named, in the shape the
+rest of the project uses: scaled integer ends over one scale. -/
+
+/-- `phiB t B` lies in the interval whose ends are `lo / S` and `hi / S`. -/
+@[expose] public noncomputable def PhiEnclosure (t B lo hi S : ℕ) : Prop :=
+  phiB t B ∈ Set.Icc ((lo : ℚ) / S) ((hi : ℚ) / S)
+
+/-- A branch sieved away. -/
+public theorem phiEnclosure_zero (B S : ℕ) : PhiEnclosure 0 B 0 0 S :=
+  phiB_zero_mem_Icc B S
+
+/-- A branch whose bound has overtaken its height: the value is the scale itself. -/
+public theorem phiEnclosure_one {t B S : ℕ} (ht : 0 < t) (h : t ≤ B)
+    (hS : Nat.blt 0 S = true) : PhiEnclosure t B S S S :=
+  phiB_one_mem_Icc ht h hS
+
+/-- Stepping the bound across a stretch with no prime in it. -/
+public theorem phiEnclosure_of_no_primes {t B B' lo hi S : ℕ} (h : B' ≤ B)
+    (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) (hv : PhiEnclosure t B' lo hi S) :
+    PhiEnclosure t B lo hi S :=
+  phiB_mem_Icc_of_no_primes h hno hv
+
+/-- The branch at a prime, both ends scaled integers. -/
+public theorem phiEnclosure_split {t p S L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ} (hp : p.Prime)
+    (hS : Nat.blt 0 S = true)
+    (h₁ : PhiEnclosure t (p - 1) L₁ U₁ S) (h₂ : PhiEnclosure (t / p) (p - 1) L₂ U₂ S)
+    (hhi : Nat.ble U₂ (Qhi * p) = true) (hlo : Nat.ble (Qlo * p) L₂ = true)
+    (hL : Nat.beq (L + Qhi) L₁ = true) (hU : Nat.beq (U + Qlo) U₁ = true) :
+    PhiEnclosure t p L U S :=
+  phiB_mem_Icc_split hp hS h₁ h₂ hhi hlo hL hU
+
+/-- The harmonic leaf, from the fold of the rounded reciprocals. -/
+public theorem phiEnclosure_of_fold {t S A C : ℕ} (hS : Nat.blt 0 S = true)
+    (hA : sumB (recipPlain S) 1 t 1 = A) (hC : Nat.beq t C = true) :
+    PhiEnclosure t 1 A (A + C) S := by
+  have h := phiB_one_mem_Icc_of_fold hS hA hC
+  rw [PhiEnclosure, Set.mem_Icc]
+  rw [Set.mem_Icc] at h
+  push_cast
+  exact h
+
 /-- A run whose windows end exactly at `t` gives the value as `1` plus its own scan. -/
 public theorem phiB_eq_one_add_recipSum {s B t len : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
     (hbit : ∀ j, 1 ≤ j → j < 1 + len →
