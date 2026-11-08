@@ -297,6 +297,30 @@ public theorem mem_phiSet_iff_testBit {s B a W t j : ℕ}
   · intro hbit
     exact ⟨hle, hpos, fun q hq hqp ↦ hsound j hj (by rw [hbit]) q hq hqp⟩
 
+/-- Once the bound reaches 3 the only survivor below 5 is `1`, so the value is `1` plus the
+survivors from 5 upward, which is the range a run's windows cover between them. -/
+public theorem phiB_eq_one_add_filter {t B : ℕ} (ht : 0 < t) (hB : 3 ≤ B) :
+    phiB t B
+      = 1 + ∑ n ∈ (Finset.Ico 5 (t + 1)).filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n),
+          (n : ℚ)⁻¹ := by
+  have hset : phiSet t B
+      = insert 1 ((Finset.Ico 5 (t + 1)).filter fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n) := by
+    ext n
+    simp only [mem_phiSet, mem_insert, mem_filter, Finset.mem_Ico, Nat.lt_succ_iff]
+    constructor
+    · rintro ⟨hnt, hn0, hq⟩
+      rcases Nat.lt_or_ge n 5 with hlt | hge
+      · have h2 : n % 2 ≠ 0 := fun h ↦ hq 2 (by omega) Nat.prime_two (Nat.dvd_of_mod_eq_zero h)
+        have h3 : n % 3 ≠ 0 := fun h ↦ hq 3 (by omega) Nat.prime_three (Nat.dvd_of_mod_eq_zero h)
+        left
+        omega
+      · exact Or.inr ⟨⟨hge, hnt⟩, hq⟩
+    · rintro (rfl | ⟨⟨h5, hnt⟩, hq⟩)
+      · exact ⟨ht, one_pos, fun q _ hqp hdvd ↦ hqp.one_lt.ne' (Nat.dvd_one.mp hdvd)⟩
+      · exact ⟨hnt, by omega, hq⟩
+  rw [phiB, hset, Finset.sum_insert (by simp)]
+  norm_num
+
 /-- A run's scan sums the reciprocals of exactly the numbers in its range with no prime factor at
 or below the bound. A branch truncated before the bound reaches 1 is answered by this, where the
 sieve is stopped at `B` rather than carried to the square root. The bound must reach 3 so that the
