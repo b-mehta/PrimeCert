@@ -336,4 +336,28 @@ public theorem recipSum_eq_phiSum {s B lo len : ℕ} (hB : 3 ≤ B)
     have h3 : n % 3 ≠ 0 := fun h ↦ hn 3 (by omega) Nat.prime_three (Nat.dvd_of_mod_eq_zero h)
     omega
 
+/-- A run whose windows end exactly at `t` gives the value as `1` plus its own scan. -/
+public theorem phiB_eq_one_add_recipSum {s B t len : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
+    (hbit : ∀ j, 1 ≤ j → j < 1 + len →
+      (s.testBit j ↔ ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value j))
+    (hend : Sieve.value (1 + len) = t + 1) :
+    phiB t B = 1 + recipSum s 1 len 1 := by
+  have h5 : Sieve.value 1 = 5 := by rw [Sieve.value]
+  rw [phiB_eq_one_add_filter ht hB, recipSum_eq_phiSum hB hbit, hend, h5]
+
+/-- The same run as a rational enclosure, which is the shape an emitted leaf would carry: the
+total and the count of contributing positions are two literals over one scale. -/
+public theorem phiB_mem_Icc_of_run {s S B t len A C : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
+    (hS : Nat.blt 0 S = true)
+    (hbit : ∀ j, 1 ≤ j → j < 1 + len →
+      (s.testBit j ↔ ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value j))
+    (hend : Sieve.value (1 + len) = t + 1)
+    (hA : sumB (recipAtK s S) 1 len 1 = A) (hC : sumB (bitAtK s) 1 len 1 = C) :
+    phiB t B ∈ Set.Icc (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) := by
+  rw [Nat.blt_eq] at hS
+  rw [phiB_eq_one_add_recipSum hB ht hbit hend, Set.mem_Icc]
+  have hmem := recipSum_mem_Icc (S := S) s 1 len 1 (by omega)
+  rw [hA, hC] at hmem
+  exact ⟨add_le_add le_rfl hmem.1, add_le_add le_rfl hmem.2⟩
+
 end PrimeCert
