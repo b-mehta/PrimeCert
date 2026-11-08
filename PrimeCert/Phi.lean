@@ -213,6 +213,28 @@ public theorem phiB_of_lt_sq {t B : ℕ} (ht : 0 < t) (h : t < (B + 1) * (B + 1)
   rw [phiB, phiSet_of_lt_sq ht h, Finset.sum_insert (by simp [Nat.not_prime_one])]
   norm_num
 
+/-- The survivors counted by `phiB_of_lt_sq` are the primes of a range, which is the shape the
+enclosure machinery already speaks in. -/
+theorem filter_prime_eq_Ico {t B : ℕ} :
+    (range (t + 1)).filter (fun n ↦ n.Prime ∧ B < n)
+      = (Finset.Ico (B + 1) (t + 1)).filter Nat.Prime := by
+  ext n
+  simp only [mem_filter, mem_range, Finset.mem_Ico]
+  constructor
+  · rintro ⟨hn, hp, hB⟩
+    exact ⟨⟨by omega, hn⟩, hp⟩
+  · rintro ⟨⟨hB, hn⟩, hp⟩
+    exact ⟨hn, hp, by omega⟩
+
+/-- A leaf below the square of its bound is answered by the range enclosure the emitter already
+produces: the sum it needs is the prime range `B + 1 … t`, so no second evaluator is wanted. -/
+public theorem phiB_mem_Icc_of_lt_sq {t B A C S : ℕ} (ht : 0 < t) (h : t < (B + 1) * (B + 1))
+    (hr : PrimeRecipRange (B + 1) (t + 1) A C S) :
+    phiB t B ∈ Set.Icc (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) := by
+  rw [phiB_of_lt_sq ht h, filter_prime_eq_Ico, Set.mem_Icc]
+  simp only [PrimeRecipRange, Set.mem_Icc] at hr
+  exact ⟨add_le_add le_rfl hr.1, add_le_add le_rfl hr.2⟩
+
 /-! ## Deriving a value from the recurrence
 
 The two steps above move the bound down one at a time, so a value of `phiB` is reached by a
