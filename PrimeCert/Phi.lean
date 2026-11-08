@@ -29,14 +29,14 @@ namespace PrimeCert
 open Finset
 
 /-- The `n ≤ t`, positive, with no prime factor at or below `B`. -/
-def phiSet (t B : ℕ) : Finset ℕ :=
+public def phiSet (t B : ℕ) : Finset ℕ :=
   (range (t + 1)).filter fun n ↦ 0 < n ∧ ∀ q ≤ B, q.Prime → ¬ q ∣ n
 
 /-- The sum of `1/n` over `phiSet t B`. -/
 public noncomputable def phiB (t B : ℕ) : ℚ :=
   ∑ n ∈ phiSet t B, (n : ℚ)⁻¹
 
-@[simp] theorem mem_phiSet {t B n : ℕ} :
+@[simp] public theorem mem_phiSet {t B n : ℕ} :
     n ∈ phiSet t B ↔ n ≤ t ∧ 0 < n ∧ ∀ q ≤ B, q.Prime → ¬ q ∣ n := by
   simp only [phiSet, mem_filter, mem_range, Nat.lt_succ_iff]
 
@@ -172,5 +172,26 @@ public theorem PhiVal.zero (B : ℕ) : PhiVal 0 B 0 := .leaf (phiB_zero B)
 /-- The branch whose bound has overtaken its height, leaving only `1`. -/
 public theorem PhiVal.one {t B : ℕ} (ht : 0 < t) (h : t ≤ B) : PhiVal t B 1 :=
   .leaf (phiB_of_le ht h)
+
+/-! ## The sieve's window is this set
+
+A segment run's surviving bits are exactly the numbers with no prime factor at or below the base
+bound, which is `phiSet` restricted to the window. Unlike the primality statement this needs no
+relation between the bound and the window's height: soundness and completeness alone give it. -/
+
+/-- A surviving bit of a completed run names a member of `phiSet`, and conversely. -/
+public theorem mem_phiSet_iff_testBit {s B a W t j : ℕ}
+    (hsound : Sieve.SegmentSound s B a W) (hcomplete : Sieve.SegmentComplete s B a W)
+    (hj : j < W) (hle : Sieve.value (Sieve.index a + j) ≤ t) :
+    Sieve.value (Sieve.index a + j) ∈ phiSet t B ↔
+      (Sieve.segLoopK s (Sieve.index a) (W - 1) (Sieve.initSegK W) 1
+        (Sieve.index B)).testBit j = true := by
+  rw [mem_phiSet]
+  have hpos : 0 < Sieve.value (Sieve.index a + j) := by rw [Sieve.value]; omega
+  constructor
+  · rintro ⟨-, -, hq⟩
+    exact hcomplete j hj hq
+  · intro hbit
+    exact ⟨hle, hpos, fun q hq hqp ↦ hsound j hj (by rw [hbit]) q hq hqp⟩
 
 end PrimeCert
