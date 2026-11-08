@@ -54,19 +54,22 @@ meta def cubeRoot (n : Nat) : Nat := Id.run do
 squarefree product `m` of the primes it has been cut by, and may be cut again only by primes below
 the one that made it. It ends as a special leaf when the product passes `y`, and contributes an
 ordinary leaf whenever the product is still at most `y`. -/
-meta partial def leafCounts (y : Nat) (primes : Array Nat) : Nat × Nat := Id.run do
+meta partial def leafCounts (y : Nat) (primes : Array Nat) : Nat × Nat × Nat := Id.run do
   let mut ordinary := 0
   let mut special := 0
+  let mut maxDivisor := 1
   let mut stack : Array (Nat × Nat) := #[(1, primes.size)]
   while stack.size > 0 do
     let (m, hi) := stack.back!
     stack := stack.pop
-    if m ≤ y then ordinary := ordinary + 1
+    if m ≤ y then
+      ordinary := ordinary + 1
+      if m > maxDivisor then maxDivisor := m
     for b in [0:hi] do
       let mp := m * primes[b]!
       if mp > y then special := special + 1
       else stack := stack.push (mp, b)
-  return (ordinary, special)
+  return (ordinary, special, maxDivisor)
 
 /-- Report the leaf counts at the cut `y = x ^ (1/3)`. -/
 meta def runPhiPlan (x : Nat) : MetaM Unit := do
@@ -74,9 +77,10 @@ meta def runPhiPlan (x : Nat) : MetaM Unit := do
     throwError "run_phi_plan: {x} is too small to cut"
   let y := cubeRoot x
   let primes := primesUpTo y
-  let (ordinary, special) := leafCounts y primes
+  let (ordinary, special, maxDivisor) := leafCounts y primes
   logInfo s!"run_phi_plan: x = {x}, y = {y}, a = {primes.size}; \
-ordinary leaves {ordinary}, special leaves {special}, sieve to {x / y}"
+ordinary leaves {ordinary}, special leaves {special}, sieve to {x / y}. \
+Ordinary heights run from {x / maxDivisor} up to {x}, the top one being the branch cut by nothing"
 
 /-- `run_phi_plan x` reports the leaves of the expansion of `x` cut at its cube root. -/
 elab "run_phi_plan" xStx:num : command =>
