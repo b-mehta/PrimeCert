@@ -713,6 +713,39 @@ public theorem sievedRecipRange_of_primeRecipRange {a b B A C S : ℕ} (hB1 : 1 
   rw [SievedRecipRange, ← hset]
   exact h
 
+/-- The primes above `B` and at most `N` are what two runs of the base sieve differ by. -/
+theorem primeSum_Ico_eq_sub {N B : ℕ} (h : B ≤ N) :
+    ∑ p ∈ (Finset.Ico (B + 1) (N + 1)).filter Nat.Prime, (p : ℚ)⁻¹
+      = (∑ p ∈ (Finset.range (N + 1)).filter Nat.Prime, (p : ℚ)⁻¹)
+        - ∑ p ∈ (Finset.range (B + 1)).filter Nat.Prime, (p : ℚ)⁻¹ := by
+  rw [Finset.sum_filter, Finset.sum_filter, Finset.sum_filter, Finset.range_eq_Ico,
+    Finset.range_eq_Ico, eq_sub_iff_add_eq, add_comm]
+  exact Finset.sum_Ico_consecutive _ (Nat.zero_le _) (by omega)
+
+/-- The stretch of survivors between the bound and its square, taken as the difference of two
+enclosures the base run already proves. The lower end subtracts the wider of the two intervals,
+so both subtractions are stated as additions. -/
+public theorem sievedRecipRange_of_two_icc {N B A₁ C₁ A₂ C₂ L C S : ℕ}
+    (hB1 : 1 ≤ B) (hN : B ≤ N) (hsq : N + 1 ≤ B * B)
+    (h₁ : PrimeRecipIcc N A₁ C₁ S) (h₂ : PrimeRecipIcc B A₂ C₂ S)
+    (hL : Nat.beq (L + A₂ + C₂) A₁ = true)
+    (hU : Nat.beq (L + C + A₂) (A₁ + C₁) = true) :
+    SievedRecipRange (B + 1) (N + 1) B L C S := by
+  rw [Nat.beq_eq] at hL hU
+  refine sievedRecipRange_of_primeRecipRange hB1 (by omega) hsq ?_
+  rw [PrimeRecipIcc, Set.mem_Icc] at h₁ h₂
+  rw [PrimeRecipRange, Set.mem_Icc, primeSum_Ico_eq_sub hN]
+  have e₁ : ((L : ℚ) + A₂ + C₂) / S = (A₁ : ℚ) / S := by
+    rw [show ((L : ℚ) + A₂ + C₂) = ((L + A₂ + C₂ : ℕ) : ℚ) by push_cast; ring, hL]
+  have e₂ : ((L : ℚ) + C + A₂) / S = ((A₁ : ℚ) + C₁) / S := by
+    rw [show ((L : ℚ) + C + A₂) = ((L + C + A₂ : ℕ) : ℚ) by push_cast; ring, hU]
+    push_cast
+    ring
+  simp only [add_div] at h₁ h₂ e₁ e₂ ⊢
+  constructor
+  · linarith [h₁.1, h₂.2]
+  · linarith [h₁.2, h₂.1]
+
 /-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
 is added back here. -/
 public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
