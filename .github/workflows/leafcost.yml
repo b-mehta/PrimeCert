@@ -1,9 +1,6 @@
 name: What one special leaf costs, and what the division costs
 
 on:
-  push:
-    branches:
-      - 'ci/leafcost'
   workflow_dispatch:
 
 jobs:
