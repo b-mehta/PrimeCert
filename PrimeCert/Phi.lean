@@ -149,6 +149,64 @@ public theorem phiB_succ_prime {t p : ℕ} (hp : p.Prime) :
     Finset.mul_sum]
   ring
 
+/-! ## Where the sieved sum becomes a sum over primes
+
+A survivor that is composite needs two factors above the bound, so below `(B+1)^2` there are none
+and the sieve has left exactly `1` and the primes above `B`. This is the step that turns `phiB`
+back into the quantity being computed. -/
+
+/-- Below `(B + 1) ^ 2` the only survivors are `1` and the primes above `B`. -/
+public theorem phiSet_of_lt_sq {t B : ℕ} (ht : 0 < t) (h : t < (B + 1) * (B + 1)) :
+    phiSet t B = insert 1 ((range (t + 1)).filter fun n ↦ n.Prime ∧ B < n) := by
+  ext n
+  simp only [mem_phiSet, mem_insert, mem_filter, mem_range, Nat.lt_succ_iff]
+  constructor
+  · rintro ⟨hnt, hn0, hq⟩
+    rcases eq_or_ne n 1 with rfl | hne
+    · exact Or.inl rfl
+    have hp : n.minFac.Prime := Nat.minFac_prime hne
+    have hd : n.minFac ∣ n := Nat.minFac_dvd n
+    have hpB : B < n.minFac := by
+      by_contra hle
+      exact hq n.minFac (by omega) hp hd
+    obtain ⟨m, hm⟩ := hd
+    have hm0 : 0 < m := by
+      rcases Nat.eq_zero_or_pos m with rfl | hpos
+      · rw [Nat.mul_zero] at hm
+        omega
+      · exact hpos
+    have hm1 : m = 1 := by
+      by_contra hmne
+      have hr : m.minFac.Prime := Nat.minFac_prime hmne
+      have hrd : m.minFac ∣ n := by
+        rw [hm]
+        exact (Nat.minFac_dvd m).mul_left _
+      have hrB : B < m.minFac := by
+        by_contra hle
+        exact hq m.minFac (by omega) hr hrd
+      have hrm : m.minFac ≤ m := Nat.minFac_le hm0
+      have hle : (B + 1) * (B + 1) ≤ n := by
+        rw [hm]
+        exact Nat.mul_le_mul (by omega) (by omega)
+      exact absurd (hle.trans hnt) (Nat.not_le.mpr h)
+    rw [hm1, Nat.mul_one] at hm
+    refine Or.inr ⟨hnt, ?_, ?_⟩
+    · rw [hm]
+      exact hp
+    · rw [hm]
+      exact hpB
+  · rintro (rfl | ⟨hnt, hp, hB⟩)
+    · exact ⟨ht, one_pos, fun q _ hqp hdvd ↦ hqp.one_lt.ne' (Nat.dvd_one.mp hdvd)⟩
+    · refine ⟨hnt, hp.pos, fun q hq hqp hdvd ↦ ?_⟩
+      have := (Nat.prime_dvd_prime_iff_eq hqp hp).mp hdvd
+      omega
+
+/-- Below `(B + 1) ^ 2` the sieved sum is `1` plus the reciprocals of the primes above `B`. -/
+public theorem phiB_of_lt_sq {t B : ℕ} (ht : 0 < t) (h : t < (B + 1) * (B + 1)) :
+    phiB t B = 1 + ∑ p ∈ (range (t + 1)).filter (fun n ↦ n.Prime ∧ B < n), (p : ℚ)⁻¹ := by
+  rw [phiB, phiSet_of_lt_sq ht h, Finset.sum_insert (by simp [Nat.not_prime_one])]
+  norm_num
+
 /-! ## Deriving a value from the recurrence
 
 The two steps above move the bound down one at a time, so a value of `phiB` is reached by a
