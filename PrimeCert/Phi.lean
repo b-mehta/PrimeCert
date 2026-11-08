@@ -599,6 +599,34 @@ public theorem sievedRecipRange_of_segRun {s B a W S g A C lo next : ℕ} (hs : 
   rw [hseg] at hsound' hcomplete'
   exact sievedRecipRange_segment ha hB3 hS (fun j hj h ↦ hsound' j hj h) hcomplete' hA hC
 
+/-- Below the square of the bound a survivor is prime, so a proved range of primes serves as a
+range of survivors. A leaf's range splits here: the part under `B ^ 2` reuses the enclosures the
+prime run already produces, and the part above it comes from `sievedRecipRange_of_segRun`. -/
+public theorem sievedRecipRange_of_primeRecipRange {a b B A C S : ℕ} (hB1 : 1 ≤ B) (hBa : B < a)
+    (hb : b ≤ B * B) (h : PrimeRecipRange a b A C S) : SievedRecipRange a b B A C S := by
+  have hset : (Finset.Ico a b).filter Nat.Prime
+      = (Finset.Ico a b).filter (fun n ↦ ∀ q ≤ B, q.Prime → ¬ q ∣ n) := by
+    ext n
+    simp only [mem_filter, Finset.mem_Ico]
+    refine and_congr_right fun hn ↦ ⟨fun hpr q hq hqp hqd ↦ ?_, fun hsv ↦ ?_⟩
+    · have := (Nat.prime_dvd_prime_iff_eq hqp hpr).mp hqd
+      omega
+    · by_contra hnp
+      have hn1 : n ≠ 1 := by omega
+      have hmf : n.minFac.Prime := Nat.minFac_prime hn1
+      have hsq : n.minFac * n.minFac ≤ n := by
+        have h2 : n.minFac ^ 2 ≤ n := Nat.minFac_sq_le_self (by omega) hnp
+        rwa [pow_two] at h2
+      have hlt : n.minFac ≤ B := by
+        by_contra hc
+        have hc' : B + 1 ≤ n.minFac := by omega
+        have h1 : (B + 1) * (B + 1) ≤ n.minFac * n.minFac := Nat.mul_le_mul hc' hc'
+        have h2 : (B + 1) * (B + 1) = B * B + 2 * B + 1 := by ring
+        omega
+      exact hsv n.minFac hlt hmf (Nat.minFac_dvd n)
+  rw [SievedRecipRange, ← hset]
+  exact h
+
 /-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
 is added back here. -/
 public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
