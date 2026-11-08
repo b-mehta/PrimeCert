@@ -23,4 +23,25 @@ run_segment_variant 20 100001 1024 33 1536
 set_option maxRecDepth 400000 in
 run_sieved_segment 100001 1024 101 20 256 1536
 
+/-! Four neighbouring windows of the same sieve, joined into one range. The join adds the totals
+and the counts as literals, so the four windows become a single enclosure covering 100001 up to
+the end of the fourth. -/
+
+run_segment_variant 20 103073 1024 33 1536
+
+set_option maxRecDepth 400000 in
+run_sieved_segment 103073 1024 101 20 256 1536
+
+run_segment_variant 20 106145 1024 33 1536
+
+set_option maxRecDepth 400000 in
+run_sieved_segment 106145 1024 101 20 256 1536
+
+run_segment_variant 20 109217 1024 33 1536
+
+set_option maxRecDepth 400000 in
+run_sieved_segment 109217 1024 101 20 256 1536
+
+run_sieved_join 100001 1024 101 20 4
+
 end PrimeCert.SievedLeaf
