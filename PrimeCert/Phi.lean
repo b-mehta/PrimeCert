@@ -137,4 +137,40 @@ public theorem phiB_succ_prime {t p : ℕ} (hp : p.Prime) :
     Finset.mul_sum]
   ring
 
+/-! ## Deriving a value from the recurrence
+
+The two steps above move the bound down one at a time, so a value of `phiB` is reached by a
+derivation: walk the bound down, taking the composite step where nothing happens and the prime step
+where the tree branches, until every branch reaches a bound the value is known at outright. `PhiVal`
+records such a derivation and `PhiVal.sound` reads the value back off it, which is what lets an
+emitted certificate be checked without the checker having to reproduce the search. -/
+
+/-- A derivation of `phiB t B = v` from the recurrence: `leaf` stops at a known value, `comp`
+steps the bound past a composite, and `split` branches at a prime. -/
+public inductive PhiVal : ℕ → ℕ → ℚ → Prop
+  | leaf {t B : ℕ} {v : ℚ} (h : phiB t B = v) : PhiVal t B v
+  | comp {t B : ℕ} {v : ℚ} (h : ¬ (B + 1).Prime) (hv : PhiVal t B v) : PhiVal t (B + 1) v
+  | split {t p : ℕ} {v₁ v₂ : ℚ} (hp : p.Prime) (h₁ : PhiVal t (p - 1) v₁)
+      (h₂ : PhiVal (t / p) (p - 1) v₂) : PhiVal t p (v₁ - (p : ℚ)⁻¹ * v₂)
+
+/-- A derivation names the value it derives. -/
+public theorem PhiVal.sound {t B : ℕ} {v : ℚ} (h : PhiVal t B v) : phiB t B = v := by
+  induction h with
+  | leaf h => exact h
+  | comp h _ ih => rw [phiB_succ_not_prime h, ih]
+  | split hp _ _ ih₁ ih₂ => rw [phiB_succ_prime hp, ih₁, ih₂]
+
+/-- Nothing is left to sum below `1`. -/
+public theorem phiB_zero (B : ℕ) : phiB 0 B = 0 :=
+  Finset.sum_eq_zero fun n hn ↦ by
+    obtain ⟨h₁, h₂, -⟩ := mem_phiSet.mp hn
+    exact absurd h₂ (by omega)
+
+/-- The branch that has sieved everything away. -/
+public theorem PhiVal.zero (B : ℕ) : PhiVal 0 B 0 := .leaf (phiB_zero B)
+
+/-- The branch whose bound has overtaken its height, leaving only `1`. -/
+public theorem PhiVal.one {t B : ℕ} (ht : 0 < t) (h : t ≤ B) : PhiVal t B 1 :=
+  .leaf (phiB_of_le ht h)
+
 end PrimeCert
