@@ -437,6 +437,48 @@ public theorem PhiEnc.ofSweep {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
     PhiEnc t B (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) :=
   .leaf (phiB_mem_Icc_of_range ht hB hr)
 
+/-- The branch, with both ends as scaled integer literals rather than rationals, which is how the
+rest of the project states an enclosure. The division by `p` is supplied by the emitter as two
+quotients: `Qhi` sits above the right branch's upper end over `p`, `Qlo` below its lower end, and
+the two subtractions are stated as additions so nothing truncates. -/
+public theorem phiB_mem_Icc_split {t p S L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ} (hp : p.Prime)
+    (hS : Nat.blt 0 S = true)
+    (h₁ : phiB t (p - 1) ∈ Set.Icc ((L₁ : ℚ) / S) ((U₁ : ℚ) / S))
+    (h₂ : phiB (t / p) (p - 1) ∈ Set.Icc ((L₂ : ℚ) / S) ((U₂ : ℚ) / S))
+    (hhi : Nat.ble U₂ (Qhi * p) = true) (hlo : Nat.ble (Qlo * p) L₂ = true)
+    (hL : Nat.beq (L + Qhi) L₁ = true) (hU : Nat.beq (U + Qlo) U₁ = true) :
+    phiB t p ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S) := by
+  rw [Nat.blt_eq] at hS
+  rw [Nat.ble_eq] at hhi hlo
+  rw [Nat.beq_eq] at hL hU
+  subst hL
+  subst hU
+  rw [Set.mem_Icc] at h₁ h₂ ⊢
+  rw [phiB_succ_prime hp]
+  have hSpos : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+  have hppos : (0 : ℚ) < (p : ℚ) := by exact_mod_cast hp.pos
+  have hpinv : (0 : ℚ) < (p : ℚ)⁻¹ := inv_pos.mpr hppos
+  have hhi' : (U₂ : ℚ) ≤ (Qhi : ℚ) * p := by exact_mod_cast hhi
+  have hlo' : (Qlo : ℚ) * p ≤ (L₂ : ℚ) := by exact_mod_cast hlo
+  have hSinv : (0 : ℚ) ≤ ((S : ℚ))⁻¹ := (inv_pos.mpr hSpos).le
+  have g1 : (p : ℚ)⁻¹ * (U₂ : ℚ) ≤ (Qhi : ℚ) := by
+    have h := mul_le_mul_of_nonneg_left hhi' hpinv.le
+    rwa [show (p : ℚ)⁻¹ * ((Qhi : ℚ) * p) = (Qhi : ℚ) by field_simp] at h
+  have g2 : (Qlo : ℚ) ≤ (p : ℚ)⁻¹ * (L₂ : ℚ) := by
+    have h := mul_le_mul_of_nonneg_left hlo' hpinv.le
+    rwa [show (p : ℚ)⁻¹ * ((Qlo : ℚ) * p) = (Qlo : ℚ) by field_simp] at h
+  have fhi : (p : ℚ)⁻¹ * ((U₂ : ℚ) / S) ≤ (Qhi : ℚ) / S := by
+    rw [div_eq_mul_inv, div_eq_mul_inv, ← mul_assoc]
+    exact mul_le_mul_of_nonneg_right g1 hSinv
+  have flo : (Qlo : ℚ) / S ≤ (p : ℚ)⁻¹ * ((L₂ : ℚ) / S) := by
+    rw [div_eq_mul_inv, div_eq_mul_inv, ← mul_assoc]
+    exact mul_le_mul_of_nonneg_right g2 hSinv
+  have fup := mul_le_mul_of_nonneg_left h₂.2 hpinv.le
+  have fdn := mul_le_mul_of_nonneg_left h₂.1 hpinv.le
+  push_cast at h₁ ⊢
+  simp only [add_div] at h₁
+  exact ⟨by linarith [h₁.1], by linarith [h₁.2]⟩
+
 /-- A run whose windows end exactly at `t` gives the value as `1` plus its own scan. -/
 public theorem phiB_eq_one_add_recipSum {s B t len : ℕ} (hB : 3 ≤ B) (ht : 0 < t)
     (hbit : ∀ j, 1 ≤ j → j < 1 + len →
