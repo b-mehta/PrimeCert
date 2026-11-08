@@ -53,4 +53,22 @@ public theorem phiB_of_two_ranges {t B b A₁ C₁ A₂ C₂ A C S : ℕ} (ht : 
     phiB t B ∈ Set.Icc (1 + (A : ℚ) / S) (1 + ((A : ℚ) + (C : ℚ)) / S) :=
   phiB_mem_Icc_of_range ht hB (sievedRecipRange_add h5b hbt h₁ h₂ hA hC)
 
+/-- One branch over two swept leaves, entirely in scaled integer literals: the two leaves come
+from the sweep, the two quotients carry the division by `p`, and every side condition is a `Bool`
+literal. This is the whole certificate shape for a single split. -/
+public theorem phiB_split_of_two_sweeps {t p S A₁ C₁ A₂ C₂ L₁ U₁ L₂ U₂ Qlo Qhi L U : ℕ}
+    (hp : p.Prime) (hS : Nat.blt 0 S = true)
+    (ht₁ : 0 < t) (ht₂ : 0 < t / p) (hB : 3 ≤ p - 1)
+    (hr₁ : SievedRecipRange 5 (t + 1) (p - 1) A₁ C₁ S)
+    (hr₂ : SievedRecipRange 5 (t / p + 1) (p - 1) A₂ C₂ S)
+    (hL₁ : Nat.beq (S + A₁) L₁ = true) (hU₁ : Nat.beq (S + A₁ + C₁) U₁ = true)
+    (hL₂ : Nat.beq (S + A₂) L₂ = true) (hU₂ : Nat.beq (S + A₂ + C₂) U₂ = true)
+    (hhi : Nat.ble U₂ (Qhi * p) = true) (hlo : Nat.ble (Qlo * p) L₂ = true)
+    (hL : Nat.beq (L + Qhi) L₁ = true) (hU : Nat.beq (U + Qlo) U₁ = true) :
+    phiB t p ∈ Set.Icc ((L : ℚ) / S) ((U : ℚ) / S) :=
+  phiB_mem_Icc_split hp hS
+    (phiB_mem_Icc_of_range_scaled ht₁ hB hS hr₁ hL₁ hU₁)
+    (phiB_mem_Icc_of_range_scaled ht₂ hB hS hr₂ hL₂ hU₂)
+    hhi hlo hL hU
+
 end PrimeCert
