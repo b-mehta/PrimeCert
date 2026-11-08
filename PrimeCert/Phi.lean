@@ -497,6 +497,77 @@ public theorem recipSum_eq_phiSum {s B lo len : ℕ} (hB : 3 ≤ B)
     have h3 : n % 3 ≠ 0 := fun h ↦ hn 3 (by omega) Nat.prime_three (Nat.dvd_of_mod_eq_zero h)
     omega
 
+/-! ## The harmonic leaf at scale
+
+A branch that reaches bound `1` has nothing sieved out, so its value is the plain harmonic sum.
+Folding the rounded-down reciprocals at scale `S` encloses it with one unit of slack per term. -/
+
+/-- The reciprocal of `n` at scale `S`, rounded down: the summand of the plain harmonic fold. -/
+@[expose] public def recipPlain (S n : ℕ) : ℕ := S / n
+
+theorem sumB_succ' (f : ℕ → ℕ) (start len step : ℕ) :
+    sumB f start (len + 1) step = f ((len.mul step).add start) + sumB f start len step := rfl
+
+/-- One term: the rounded reciprocal sits under the true one and within one unit of it. -/
+theorem recipPlain_bounds {S k : ℕ} (hk : 0 < k) :
+    ((recipPlain S k : ℕ) : ℚ) ≤ (S : ℚ) * (k : ℚ)⁻¹ ∧
+      (S : ℚ) * (k : ℚ)⁻¹ ≤ ((recipPlain S k : ℕ) : ℚ) + 1 := by
+  have hkq : (0 : ℚ) < (k : ℚ) := by exact_mod_cast hk
+  have h : S < (S / k + 1) * k := by
+    have h1 := Nat.div_add_mod S k
+    have h2 := Nat.mod_lt S hk
+    nlinarith [h1, h2]
+  constructor
+  · rw [recipPlain, ← div_eq_mul_inv, le_div_iff₀ hkq]
+    exact_mod_cast Nat.div_mul_le_self S k
+  · rw [recipPlain, ← div_eq_mul_inv, div_le_iff₀ hkq]
+    exact_mod_cast h.le
+
+/-- The fold of the rounded reciprocals over `1 … t` encloses the harmonic sum of that range,
+with one unit of slack per term. -/
+theorem sumB_recipPlain_bounds (S t : ℕ) :
+    ((sumB (recipPlain S) 1 t 1 : ℕ) : ℚ) ≤ (S : ℚ) * ∑ n ∈ Finset.Icc 1 t, (n : ℚ)⁻¹ ∧
+      (S : ℚ) * ∑ n ∈ Finset.Icc 1 t, (n : ℚ)⁻¹
+        ≤ ((sumB (recipPlain S) 1 t 1 : ℕ) : ℚ) + t := by
+  induction t with
+  | zero => simp
+  | succ m ih =>
+    obtain ⟨hlo, hhi⟩ := ih
+    obtain ⟨tlo, thi⟩ := recipPlain_bounds (S := S) (k := m + 1) (by omega)
+    have hidx : (m.mul 1).add 1 = m + 1 := by
+      change m * 1 + 1 = m + 1
+      omega
+    rw [Finset.sum_Icc_succ_top (by omega), sumB_succ', hidx]
+    push_cast at tlo thi ⊢
+    rw [mul_add]
+    constructor
+    · linarith
+    · linarith
+
+/-- The harmonic leaf at scale: the value of a branch whose bound has reached `1`, enclosed by the
+fold of the rounded reciprocals with `t` units of slack. -/
+public theorem phiB_one_mem_Icc_of_fold {t S A C : ℕ} (hS : Nat.blt 0 S = true)
+    (hA : sumB (recipPlain S) 1 t 1 = A) (hC : Nat.beq t C = true) :
+    phiB t 1 ∈ Set.Icc ((A : ℚ) / S) (((A : ℚ) + (C : ℚ)) / S) := by
+  rw [Nat.blt_eq] at hS
+  rw [Nat.beq_eq] at hC
+  subst hA
+  subst hC
+  have hSq : (0 : ℚ) < (S : ℚ) := by exact_mod_cast hS
+  have hsum : phiB t 1 = ∑ n ∈ Finset.Icc 1 t, (n : ℚ)⁻¹ := by
+    rw [phiB_one]
+    refine Finset.sum_congr ?_ fun _ _ ↦ rfl
+    ext n
+    simp only [mem_filter, mem_range, Finset.mem_Icc]
+    omega
+  obtain ⟨hlo, hhi⟩ := sumB_recipPlain_bounds S t
+  rw [hsum, Set.mem_Icc]
+  constructor
+  · rw [div_le_iff₀ hSq, mul_comm]
+    exact hlo
+  · rw [le_div_iff₀ hSq, mul_comm]
+    exact hhi
+
 /-! ## Ranges of the sieved sum, which a sweep accumulates
 
 A leaf is answered at a point of a sweep rather than by a run of its own, so what it needs is a
