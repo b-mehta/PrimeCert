@@ -1639,6 +1639,56 @@ run `run_sieved_segment {start} {W} {B} {scaleExp} …` above this command"
   logInfo s!"run_sieved_join: {n} windows cover {root.lo} to {root.hi - 1}; \
 A = {root.tot}, C = {root.cnt}"
 
+/-- Emit the running totals over the `n` windows of `W` positions from `a`: for each `k`, the
+enclosure of the sieved sum from `a` to the end of the `k`-th window. A leaf whose height falls at
+a window's end reads the total there, rather than folding again from `a`. The first running total
+is the first window's own enclosure, so this adds declarations for `k` from two upwards. -/
+meta def runSievedPrefix (a W B scaleExp n : Nat) : MetaM Unit := do
+  if n == 0 then
+    throwError "run_sieved_prefix: there are no windows to accumulate"
+  let env ← getEnv
+  let SE := mkRawNatLit (10 ^ scaleExp)
+  let BE := mkRawNatLit B
+  let mut start := a
+  let mut curName := Name.anonymous
+  let mut curHi := a
+  let mut tot := 0
+  let mut cnt := 0
+  for k in [0:n] do
+    let nm := `PrimeCert ++ Name.mkSimple s!"sievedRecipRange_{start}_{W}_{B}_{scaleExp}"
+    let some info := env.find? nm
+      | throwError "run_sieved_prefix: no enclosure {nm}; \
+run `run_sieved_segment {start} {W} {B} {scaleExp} …` above this command"
+    let some args := info.type.getAppArgs[0:6] |>.toArray.mapM Expr.rawNatLit?
+      | throwError "run_sieved_prefix: the enclosure {nm} does not carry six numerals"
+    let hi := args[1]!
+    let aK := args[3]!
+    let cK := args[4]!
+    if k == 0 then
+      curName := nm
+      curHi := hi
+      tot := aK
+      cnt := cK
+    else
+      let tot' := tot + aK
+      let cnt' := cnt + cK
+      let out := `PrimeCert ++ Name.mkSimple s!"sievedPrefix_{a}_{B}_{scaleExp}_{k + 1}"
+      addHarmonicThm out
+        (mkAppN (mkConst ``SievedRecipRange)
+          #[mkRawNatLit a, mkRawNatLit hi, BE, mkRawNatLit tot', mkRawNatLit cnt', SE])
+        (mkAppN (mkConst ``sievedRecipRange_add)
+          #[mkRawNatLit a, mkRawNatLit curHi, mkRawNatLit hi, BE, mkRawNatLit tot,
+            mkRawNatLit cnt, mkRawNatLit aK, mkRawNatLit cK, mkRawNatLit tot',
+            mkRawNatLit cnt', SE, Lean.reflBoolTrue, Lean.reflBoolTrue, mkConst curName,
+            mkConst nm, Lean.reflBoolTrue, Lean.reflBoolTrue])
+      curName := out
+      curHi := hi
+      tot := tot'
+      cnt := cnt'
+    start := nextSegmentStart start W
+  logInfo s!"run_sieved_prefix: {n} running totals from {a} to {curHi - 1}; \
+A = {tot}, C = {cnt}"
+
 /-- Join the `n` windows of `W` positions from `a`, each already summed by
 `run_harmonic_segment`, into one enclosure of the sum over the primes they cover. -/
 meta def runHarmonicJoin (a W B scaleExp n : Nat) : MetaM Unit := do
@@ -1731,6 +1781,12 @@ elab "run_sieved_segment" aStx:num wStx:num bStx:num eStx:num cStx:num lStx:num 
 elab "run_sieved_join" aStx:num wStx:num bStx:num eStx:num nStx:num : command =>
   liftTermElabM <|
     runSievedJoin aStx.getNat wStx.getNat bStx.getNat eStx.getNat nStx.getNat
+
+/-- `run_sieved_prefix a W B e n` emits the running totals over the `n` windows of `W` positions
+from `a` that `run_sieved_segment` stated (see `runSievedPrefix`). -/
+elab "run_sieved_prefix" aStx:num wStx:num bStx:num eStx:num nStx:num : command =>
+  liftTermElabM <|
+    runSievedPrefix aStx.getNat wStx.getNat bStx.getNat eStx.getNat nStx.getNat
 
 /-- `run_harmonic_part bound e B M i` proves part `i` of `M` of the packed windowed run for
 `∑ p ≤ bound, 1/p` at scale `10 ^ e` with batches of `B` positions (see `runHarmonicPart`). -/

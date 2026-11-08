@@ -44,4 +44,9 @@ run_sieved_segment 109217 1024 101 20 256 1536
 
 run_sieved_join 100001 1024 101 20 4
 
+/-! The same four windows as running totals rather than one join, so a height at any window's end
+has a statement of its own. -/
+
+run_sieved_prefix 100001 1024 101 20 4
+
 end PrimeCert.SievedLeaf
