@@ -79,6 +79,18 @@ public theorem phiB_succ_not_prime {t B : ℕ} (h : ¬ (B + 1).Prime) :
   · have : q = B + 1 := by omega
     exact absurd (this ▸ hp) h
 
+/-- Raising the bound across a stretch containing no prime removes nothing, so a derivation can
+cross a prime gap in one step rather than one step per integer. -/
+public theorem phiB_of_no_primes {t B B' : ℕ} (h : B' ≤ B)
+    (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) : phiB t B = phiB t B' := by
+  revert hno
+  induction B, h using Nat.le_induction with
+  | base => intro _; rfl
+  | succ n hn ih =>
+    intro hno
+    rw [phiB_succ_not_prime (hno (n + 1) (by omega) le_rfl)]
+    exact ih fun q hq hq' ↦ hno q hq (by omega)
+
 /-- The multiples of `p` surviving the bound below `p` are `p` times the survivors below `t / p`.
 This is the step the identity's expansion rests on. -/
 theorem phiSet_filter_dvd {t p : ℕ} (hp : p.Prime) :
@@ -165,6 +177,11 @@ public theorem phiB_zero (B : ℕ) : phiB 0 B = 0 :=
   Finset.sum_eq_zero fun n hn ↦ by
     obtain ⟨h₁, h₂, -⟩ := mem_phiSet.mp hn
     exact absurd h₂ (by omega)
+
+/-- A derivation crosses a whole prime gap in one step. -/
+public theorem PhiVal.ofRange {t B B' : ℕ} {v : ℚ} (h : B' ≤ B)
+    (hno : ∀ q, B' < q → q ≤ B → ¬ q.Prime) (hv : PhiVal t B' v) : PhiVal t B v :=
+  .leaf ((phiB_of_no_primes h hno).trans hv.sound)
 
 /-- The branch that has sieved everything away. -/
 public theorem PhiVal.zero (B : ℕ) : PhiVal 0 B 0 := .leaf (phiB_zero B)
