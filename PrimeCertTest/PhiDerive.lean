@@ -71,4 +71,12 @@ public theorem phiB_split_of_two_sweeps {t p S A₁ C₁ A₂ C₂ L₁ U₁ L�
     (phiB_mem_Icc_of_range_scaled ht₂ hB hS hr₂ hL₂ hU₂)
     hhi hlo hL hU
 
+/-- The two routes to a below-the-square value agree. One counts the survivors directly, the other
+expands by least prime factor and finds every branch already finished; this closes only if they
+reach the same value, so it is a check on the expansion rather than a restatement. -/
+public theorem phiB_routes_agree {t B : ℕ} (ht : 0 < t) (hB : t < (B + 1) * (B + 1)) :
+    (1 : ℚ) + ∑ p ∈ (range (t + 1)).filter (fun n ↦ n.Prime ∧ B < n), (p : ℚ)⁻¹
+      = 1 + ∑ p ∈ (Finset.Icc (B + 1) t).filter Nat.Prime, (p : ℚ)⁻¹ :=
+  (phiB_of_lt_sq ht hB).symm.trans (phiB_eq_one_add_primeSum ht hB)
+
 end PrimeCert
