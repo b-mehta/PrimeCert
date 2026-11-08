@@ -199,6 +199,84 @@ theorem phiSet_filter_minFac {t B p : ℕ} (hp : p.Prime) (hB : B < p) :
     have : (p * m).minFac ≤ q := Nat.minFac_le_of_dvd hqp.two_le hqd
     omega
 
+/-- **The expansion.** Every survivor above `1` has a least prime factor, which lies above `B` and
+at or below `t`, and the survivors sharing one are `p` times the survivors below `t / p` with
+nothing under `p`. So the sieved sum is `1` plus one term per prime in that range, each a copy of
+the same function lower down. Taking `B` to the square root leaves only primes with
+`phiB (t / p) (p - 1) = 1`, which is the plain sum of reciprocals of primes. -/
+public theorem phiB_eq_one_add_sum {t B : ℕ} (ht : 0 < t) :
+    phiB t B = 1 + ∑ p ∈ (Finset.Icc (B + 1) t).filter Nat.Prime,
+      (p : ℚ)⁻¹ * phiB (t / p) (p - 1) := by
+  have h1mem : (1 : ℕ) ∈ phiSet t B :=
+    mem_phiSet.mpr ⟨ht, one_pos, fun q _ hqp hdvd ↦ hqp.one_lt.ne' (Nat.dvd_one.mp hdvd)⟩
+  have hsplit : phiSet t B = insert 1 ((phiSet t B).filter fun n ↦ n ≠ 1) := by
+    ext n
+    simp only [mem_insert, mem_filter]
+    constructor
+    · intro h
+      rcases eq_or_ne n 1 with rfl | hne
+      · exact Or.inl rfl
+      · exact Or.inr ⟨h, hne⟩
+    · rintro (rfl | ⟨h, -⟩)
+      · exact h1mem
+      · exact h
+  have hnot : (1 : ℕ) ∉ (phiSet t B).filter fun n ↦ n ≠ 1 := by simp
+  have hmaps : ∀ n ∈ (phiSet t B).filter (fun n ↦ n ≠ 1),
+      n.minFac ∈ (Finset.Icc (B + 1) t).filter Nat.Prime := by
+    intro n hn
+    simp only [mem_filter, mem_phiSet] at hn
+    obtain ⟨⟨hnt, hn0, hq⟩, hne⟩ := hn
+    have hpr : n.minFac.Prime := Nat.minFac_prime hne
+    simp only [mem_filter, Finset.mem_Icc]
+    refine ⟨⟨?_, (Nat.minFac_le hn0).trans hnt⟩, hpr⟩
+    by_contra hc
+    exact hq n.minFac (by omega) hpr (Nat.minFac_dvd n)
+  have hclass : ∀ p ∈ (Finset.Icc (B + 1) t).filter Nat.Prime,
+      ∑ n ∈ ((phiSet t B).filter fun n ↦ n ≠ 1).filter (fun n ↦ n.minFac = p), ((n : ℚ))⁻¹
+        = (p : ℚ)⁻¹ * phiB (t / p) (p - 1) := by
+    intro p hp
+    simp only [mem_filter, Finset.mem_Icc] at hp
+    obtain ⟨⟨hBp, hpt⟩, hpr⟩ := hp
+    have heq : ((phiSet t B).filter fun n ↦ n ≠ 1).filter (fun n ↦ n.minFac = p)
+        = (phiSet t B).filter (fun n ↦ n.minFac = p) := by
+      ext n
+      simp only [mem_filter]
+      constructor
+      · rintro ⟨⟨h, -⟩, hm⟩
+        exact ⟨h, hm⟩
+      · rintro ⟨h, hm⟩
+        refine ⟨⟨h, ?_⟩, hm⟩
+        rintro rfl
+        rw [Nat.minFac_one] at hm
+        have := hpr.two_le
+        omega
+    rw [heq, phiSet_filter_minFac hpr (by omega),
+      Finset.sum_image (fun a _ b _ hab ↦ Nat.eq_of_mul_eq_mul_left hpr.pos hab), phiB,
+      Finset.mul_sum]
+    refine Finset.sum_congr rfl fun m _ ↦ ?_
+    push_cast
+    rw [mul_inv]
+  rw [phiB, hsplit, Finset.sum_insert hnot,
+    ← Finset.sum_fiberwise_of_maps_to hmaps (fun n ↦ ((n : ℕ) : ℚ)⁻¹),
+    Finset.sum_congr rfl hclass]
+  norm_num
+
+/-- With the bound past the square root every branch of the expansion is already finished, so it
+collapses to the plain sum over primes. `phiB_of_lt_sq` reaches the same value by counting
+survivors instead of expanding, so the two are a check on each other. -/
+public theorem phiB_eq_one_add_primeSum {t B : ℕ} (ht : 0 < t) (hB : t < (B + 1) * (B + 1)) :
+    phiB t B = 1 + ∑ p ∈ (Finset.Icc (B + 1) t).filter Nat.Prime, (p : ℚ)⁻¹ := by
+  rw [phiB_eq_one_add_sum ht]
+  refine congrArg (1 + ·) (Finset.sum_congr rfl fun p hp ↦ ?_)
+  simp only [mem_filter, Finset.mem_Icc] at hp
+  obtain ⟨⟨hBp, hpt⟩, hpr⟩ := hp
+  have hp0 : 0 < p := hpr.pos
+  have hdiv : t / p < p := by
+    refine (Nat.div_lt_iff_lt_mul hp0).mpr ?_
+    calc t < (B + 1) * (B + 1) := hB
+      _ ≤ p * p := Nat.mul_le_mul hBp hBp
+  rw [phiB_of_le (Nat.div_pos hpt hp0) (by omega), mul_one]
+
 /-! ## Where the sieved sum becomes a sum over primes
 
 A survivor that is composite needs two factors above the bound, so below `(B+1)^2` there are none
