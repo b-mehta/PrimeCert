@@ -8,6 +8,8 @@ module
 public meta import PrimeCert.Meta.PrimeHarmonic
 public meta import PrimeCert.SegmentedSieve
 
+import Mathlib.Tactic.NormNum.Prime
+
 /-! # One sieved sum, from the emitted pieces end to end
 
 The bound is 101 and the height is the top of a sieved segment above 10201. The range splits as
@@ -49,5 +51,48 @@ theorem value :
     phiB 13272 101 ∈ Set.Icc
       ((170134779872703497807 : ℚ) / 10 ^ 20) ((170134779872703499417 : ℚ) / 10 ^ 20) :=
   phiB_mem_Icc_of_range_scaled (by omega) (by omega) (by rfl) whole (by rfl) (by rfl)
+
+/-! ## One step of the expansion, on these numbers
+
+Splitting at 103 takes the value at bound 102 and the value at bound 102 of the quotient 13272 by
+103, which is 128, to the value at bound 103. The quotient's own range needs one more base run. -/
+
+run_harmonic 128 20 256
+
+/-- The quotient's range: the survivors from 102 to 128, again a difference of two base runs. -/
+theorem quotMid :
+    SievedRecipRange 102 129 101 4495241745336192858 53 (10 ^ 20) :=
+  sievedRecipRange_of_two_icc (B := 101) (N := 128) (by omega) (by omega) (by omega)
+    primeRecipIcc_128_20_256 primeRecipIcc_101_20_256 (by rfl) (by rfl)
+
+/-- The quotient's whole range, with the empty stretch below 102 joined on. -/
+theorem quotWhole :
+    SievedRecipRange 5 129 101 4495241745336192858 53 (10 ^ 20) :=
+  sievedRecipRange_add (b := 102) (A := 4495241745336192858) (C := 53) (by rfl) (by rfl)
+    (sievedRecipRange_below (by omega)) quotMid (by rfl) (by rfl)
+
+/-- The quotient's value at bound 101. -/
+theorem quotValue :
+    phiB 128 101 ∈ Set.Icc
+      ((104495241745336192858 : ℚ) / 10 ^ 20) ((104495241745336192911 : ℚ) / 10 ^ 20) :=
+  phiB_mem_Icc_of_range_scaled (by omega) (by omega) (by rfl) quotWhole (by rfl) (by rfl)
+
+/-- The only number above 101 and at most 102 is 102, which is composite. -/
+theorem hno102 : ∀ q, 101 < q → q ≤ 102 → ¬ q.Prime := by
+  intro q h1 h2
+  have : q = 102 := by omega
+  subst this
+  norm_num
+
+/-- Splitting at 103. Both children move up to bound 102 first, which changes nothing since 102 is
+composite, and the two quotients carry the division by 103. -/
+theorem valueAt103 :
+    phiB 13272 103 ∈ Set.Icc
+      ((169120262962554602730 : ℚ) / 10 ^ 20) ((169120262962554604341 : ℚ) / 10 ^ 20) :=
+  phiB_mem_Icc_split (p := 103)
+    (Qhi := 1014516910148895077) (Qlo := 1014516910148895076) (by norm_num) (by rfl)
+    (phiB_mem_Icc_of_no_primes (B' := 101) (by omega) hno102 value)
+    (phiB_mem_Icc_of_no_primes (B' := 101) (by omega) hno102 quotValue)
+    (by rfl) (by rfl) (by rfl) (by rfl)
 
 end PrimeCert.PhiConcrete
