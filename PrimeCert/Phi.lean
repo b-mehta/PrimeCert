@@ -49,6 +49,22 @@ theorem phiSet_one (t : ℕ) : phiSet t 1 = (range (t + 1)).filter fun n ↦ 0 <
   have := hp.two_le
   omega
 
+/-- Once the bound reaches `t` only `1` survives, which is where the recursion bottoms out and
+where the identity's trailing `- 1` comes from. -/
+public theorem phiB_of_le {t B : ℕ} (ht : 0 < t) (h : t ≤ B) : phiB t B = 1 := by
+  have hset : phiSet t B = {1} := by
+    ext n
+    simp only [mem_phiSet, mem_singleton]
+    constructor
+    · rintro ⟨hnt, hn0, hq⟩
+      by_contra hne
+      obtain ⟨q, hqp, hdvd⟩ := Nat.exists_prime_and_dvd hne
+      exact hq q ((Nat.le_of_dvd hn0 hdvd).trans (hnt.trans h)) hqp hdvd
+    · rintro rfl
+      exact ⟨ht, one_pos, fun q _ hqp hdvd ↦ hqp.one_lt.ne' (Nat.dvd_one.mp hdvd)⟩
+  rw [phiB, hset]
+  simp
+
 /-- Raising the bound past a composite removes nothing. -/
 public theorem phiB_succ_not_prime {t B : ℕ} (h : ¬ (B + 1).Prime) :
     phiB t (B + 1) = phiB t B := by
