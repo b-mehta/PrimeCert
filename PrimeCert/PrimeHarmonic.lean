@@ -977,7 +977,7 @@ public theorem segment_bit_iff {g B a W : ℕ}
     omega
 
 /-- Shifting a segment literal up by `lo` makes the scan from `lo` read its bits in order. -/
-theorem testBit_shiftLeft_add (g lo j : ℕ) :
+public theorem testBit_shiftLeft_add (g lo j : ℕ) :
     (Nat.shiftLeft g lo).testBit (lo + j) = g.testBit j := by
   simp [Nat.testBit_shiftLeft]
 

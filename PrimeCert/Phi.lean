@@ -542,6 +542,36 @@ public theorem sievedRecipRange_add {a b c B A₁ C₁ A₂ C₂ A C S : ℕ}
   simp only [add_div] at hhi₁ hhi₂ ⊢
   exact ⟨by linarith, by linarith⟩
 
+/-- One sieved segment as an enclosure of the sieved sum over the numbers it covers. The segment
+command already emits these hypotheses, since soundness and completeness are stated against this
+very property. Unlike the prime version this needs no bound tying the window's top to `B ^ 2`:
+nothing has to be upgraded to primality, so a segment far above the square root still answers. -/
+public theorem sievedRecipRange_segment {B a W S g A C : ℕ}
+    (ha : a % 6 = 1 ∨ a % 6 = 5) (hB3 : 3 ≤ B) (hS : Nat.blt 0 S = true)
+    (hsound : ∀ j < W, g.testBit j = true →
+      ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j))
+    (hcomplete : ∀ j < W,
+      (∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value (Sieve.index a + j)) → g.testBit j = true)
+    (hA : sumB (recipAtW g (Sieve.index a) S) 0 W 1 = A)
+    (hC : sumB (bitAtW g) 0 W 1 = C) :
+    SievedRecipRange a (Sieve.value (Sieve.index a + W)) B A C S := by
+  have hlo : Sieve.value (Sieve.index a) = a := Sieve.value_index ha
+  have hbit : ∀ j, Sieve.index a ≤ j → j < Sieve.index a + W →
+      ((Nat.shiftLeft g (Sieve.index a)).testBit j ↔
+        ∀ q ≤ B, q.Prime → ¬ q ∣ Sieve.value j) := by
+    intro j h1 h2
+    obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le h1
+    rw [testBit_shiftLeft_add]
+    exact ⟨fun h ↦ hsound k (by omega) h, fun h ↦ hcomplete k (by omega) h⟩
+  have hA' : sumB (recipAtK (Nat.shiftLeft g (Sieve.index a)) S) (Sieve.index a) W 1 = A := by
+    rw [recip_shift]
+    exact hA
+  have hC' : sumB (bitAtK (Nat.shiftLeft g (Sieve.index a))) (Sieve.index a) W 1 = C := by
+    rw [bit_shift]
+    exact hC
+  have h := sievedRecipRange_of hB3 hS hbit hA' hC'
+  rwa [hlo] at h
+
 /-- The value read off an enclosure of its whole range. The sum runs from 5, so the surviving `1`
 is added back here. -/
 public theorem phiB_mem_Icc_of_range {t B A C S : ℕ} (ht : 0 < t) (hB : 3 ≤ B)
