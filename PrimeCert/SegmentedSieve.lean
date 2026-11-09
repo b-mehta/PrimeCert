@@ -455,6 +455,12 @@ first. -/
 @[expose] public noncomputable def treeBatch2EK (c lo Wm1 start len : Nat) : Nat :=
   flat7 (treeFold2EK c lo Wm1 start len)
 
+/-- How many of a batch's positions name a divisor, found by the walk `treeFold2K` performs. This
+places no strike and settles no window; it is emitted beside a batch to price the walk apart from
+the strikes, since a batch of the widest band walks far more positions than it finds divisors. -/
+@[expose] public noncomputable def walkCountK (c len : Nat) : Nat :=
+  len.rec 0 fun i n => (testBitK c i).rec n n.succ
+
 /-- Two consecutive windows' trees. -/
 @[expose] public noncomputable def Pair7 : Type := Lvl7 × Lvl7
 
@@ -5107,9 +5113,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 58 then throwError "run_segment_variant: mode {mode} is not 0 to 58"
+  if mode > 59 then throwError "run_segment_variant: mode {mode} is not 0 to 59"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
-        || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58)
+        || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
+        || mode == 59)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5136,7 +5143,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 58 is mode 45 with each divisor's second strike taken from its first, which
   -- `index_mul_seven` puts `2 * index p + 1` wheel positions along from it.
   let derivedStrike := mode == 58
-  let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike
+  -- Mode 59 is mode 45 with one extra equation per widest-band batch, counting the divisors the
+  -- batch names by the same walk, so the walk can be priced apart from the strikes.
+  let walkProbe := mode == 59
+  let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike || walkProbe
   let wideLeaf := mode == 53 || mode == 54
   let allTree := mode == 54
   -- Mode 55 is mode 28 with the twin's marking pass kept, so a pair of runs prices taking the
@@ -5784,6 +5794,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchRef ← if fold then pure batchProof else do
         addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) batchProof
         pure (mkConst batchName)
+      -- Mode 59 adds, to each batch of the widest band, one equation that walks the batch's
+      -- positions and counts the divisors without placing a strike. Its statements are mode 45's
+      -- plus that one, so the pair prices the walk apart from the strikes.
+      if walkProbe && nrec == 2 then
+        let walkName := mkPrivateName env (parent ++ Name.mkSimple s!"wwalk_{i}")
+        let cnt := (setBitsLow (sVal >>> start) stepN).size
+        addSegThm walkName
+          (mkSegBeqTrue (mkAppN (mkConst ``walkCountK) #[cE, mkRawNatLit stepN])
+            (mkRawNatLit cnt)) Lean.reflBoolTrue
       let stepName := mkPrivateName env (parent ++ Name.mkSimple
         (if fold && sorted then s!"sstep_{i}" else s!"plain_{i}"))
       addSegThm stepName
