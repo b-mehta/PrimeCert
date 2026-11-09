@@ -498,9 +498,11 @@ the strikes, since a batch of the widest band walks far more positions than it f
 /-- Strikes given in leaf order, each built into its leaf and the leaf joined once. The state is
 the joined tree, the leaf being built, and that leaf's index. `q` packs one 32-bit strike position
 an entry, least significant first. -/
-@[expose] public noncomputable def joinFoldK (q cnt : Nat) : Lvl7 × Nat × Nat :=
-  cnt.rec (zero7, 0, 0) fun i acc =>
-    let s : Nat := (q.shiftRight (i.mul 32)).land 4294967295
+@[expose] public noncomputable def joinFoldK : Nat → Nat → Lvl7 × Nat × Nat
+  | _, 0 => (zero7, 0, 0)
+  | q, cnt + 1 =>
+    let acc : Lvl7 × Nat × Nat := joinFoldK q cnt
+    let s : Nat := (q.shiftRight (cnt.mul 32)).land 4294967295
     let k : Nat := s.shiftRight 16
     (Nat.beq k acc.2.2).rec
       (updL7 acc.1 acc.2.2 acc.2.1, Nat.shiftLeft 1 (s.land 65535), k)
@@ -512,8 +514,10 @@ an entry, least significant first. -/
   flat7 (updL7 r.1 r.2.2 r.2.1)
 
 /-- The same strikes joined one at a time, which is what the tree's per-strike descent gives. -/
-@[expose] public noncomputable def orStrikesK (q cnt : Nat) : Nat :=
-  cnt.rec 0 fun i a => a.lor (Nat.shiftLeft 1 ((q.shiftRight (i.mul 32)).land 4294967295))
+@[expose] public noncomputable def orStrikesK : Nat → Nat → Nat
+  | _, 0 => 0
+  | q, cnt + 1 =>
+    (orStrikesK q cnt).lor (Nat.shiftLeft 1 ((q.shiftRight (cnt.mul 32)).land 4294967295))
 
 /-- A batch's mask assembled from strikes given in leaf order: a leaf is built whole and joined
 once, so the join is paid per leaf rather than per strike. `q` packs one 32-bit strike position an
@@ -3806,6 +3810,31 @@ theorem flat7_zero : flat7 zero7 = 0 := by
   unfold flat7 zero7
   rw [flat6_zero]
   exact lor_shift_zero
+
+/-- Building each leaf whole and joining it once gives the same mask as joining every strike into
+the tree one at a time, given that each strike lies inside the window. This is what lets a batch
+pay the descent once a leaf rather than once a strike. -/
+theorem joinBatchK_eq {q : Nat} : ∀ {cnt : Nat},
+    (∀ i, i < cnt → ((q.shiftRight (i.mul 32)).land 4294967295) < 4194304) →
+    joinBatchK q cnt = orStrikesK q cnt
+  | 0, _ => by
+    simp only [joinBatchK, joinFoldK, orStrikesK, flat7_updL7, flat7_zero, Nat.zero_shiftLeft,
+      Nat.or_self]
+  | n + 1, h => by
+    have hs : ((q.shiftRight (n.mul 32)).land 4294967295) < 4194304 := h n (Nat.lt_succ_self n)
+    have ih := joinBatchK_eq (q := q) (cnt := n) fun i hi => h i (Nat.lt_succ_of_lt hi)
+    have hbit := shift_leaf_eq hs
+    have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+    have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+    simp only [joinBatchK] at ih ⊢
+    simp only [joinFoldK, orStrikesK]
+    cases hb : Nat.beq (((q.shiftRight (n.mul 32)).land 4294967295).shiftRight 16)
+        (joinFoldK q n).2.2 with
+    | true =>
+      rw [Nat.eq_of_beq_eq_true hb] at hbit
+      simp only [hlor, hsl, ← ih, flat7_updL7, shiftLeft_lor, hbit, Nat.or_assoc]
+    | false =>
+      simp only [hlor, hsl, ← ih, flat7_updL7, hbit]
 
 /-- What the tree holds after walking a batch: exactly the in-window strikes of the divisors the
 slice names, two to a divisor. The same characterisation `testBit_segAccLoopSK_wide` gives for the
