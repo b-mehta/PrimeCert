@@ -355,6 +355,40 @@ public abbrev Lvl7 := Lvl6 × Lvl6
 @[expose] public noncomputable def upd7 (t : Lvl7) (k b : Nat) : Lvl7 :=
   (Nat.beq ((k.shiftRight 6).land 1) 0).rec (t.1, upd6 t.2 k b) (upd6 t.1 k b, t.2)
 
+/-! ### Joining a whole leaf
+
+`upd1` to `upd7` carry one strike down seven levels. A batch whose strikes are grouped by leaf can
+instead build a leaf and join it once, so the descent is paid per leaf rather than per strike.
+These are `upd1` to `upd7` with the leaf value in place of `Nat.shiftLeft 1 b`. -/
+
+/-- Join a whole leaf at the bottom level, dispatching on bit 0 of `k`. -/
+@[expose] public noncomputable def updL1 (t : Lvl1) (k v : Nat) : Lvl1 :=
+  (Nat.beq (k.land 1) 0).rec (t.1, t.2.lor v) (t.1.lor v, t.2)
+
+/-- Dispatch on bit 1 of `k`. -/
+@[expose] public noncomputable def updL2 (t : Lvl2) (k v : Nat) : Lvl2 :=
+  (Nat.beq ((k.shiftRight 1).land 1) 0).rec (t.1, updL1 t.2 k v) (updL1 t.1 k v, t.2)
+
+/-- Dispatch on bit 2 of `k`. -/
+@[expose] public noncomputable def updL3 (t : Lvl3) (k v : Nat) : Lvl3 :=
+  (Nat.beq ((k.shiftRight 2).land 1) 0).rec (t.1, updL2 t.2 k v) (updL2 t.1 k v, t.2)
+
+/-- Dispatch on bit 3 of `k`. -/
+@[expose] public noncomputable def updL4 (t : Lvl4) (k v : Nat) : Lvl4 :=
+  (Nat.beq ((k.shiftRight 3).land 1) 0).rec (t.1, updL3 t.2 k v) (updL3 t.1 k v, t.2)
+
+/-- Dispatch on bit 4 of `k`. -/
+@[expose] public noncomputable def updL5 (t : Lvl5) (k v : Nat) : Lvl5 :=
+  (Nat.beq ((k.shiftRight 4).land 1) 0).rec (t.1, updL4 t.2 k v) (updL4 t.1 k v, t.2)
+
+/-- Dispatch on bit 5 of `k`. -/
+@[expose] public noncomputable def updL6 (t : Lvl6) (k v : Nat) : Lvl6 :=
+  (Nat.beq ((k.shiftRight 5).land 1) 0).rec (t.1, updL5 t.2 k v) (updL5 t.1 k v, t.2)
+
+/-- Dispatch on bit 6 of `k`, the top of a 64-leaf tree. -/
+@[expose] public noncomputable def updL7 (t : Lvl7) (k v : Nat) : Lvl7 :=
+  (Nat.beq ((k.shiftRight 6).land 1) 0).rec (t.1, updL6 t.2 k v) (updL6 t.1 k v, t.2)
+
 /-- A leaf pair as one number, the second slice above the first. -/
 @[expose] public noncomputable def flat1 (t : Lvl1) : Nat :=
   t.1.lor (t.2.shiftLeft 65536)
@@ -460,6 +494,21 @@ places no strike and settles no window; it is emitted beside a batch to price th
 the strikes, since a batch of the widest band walks far more positions than it finds divisors. -/
 @[expose] public noncomputable def walkCountK (c len : Nat) : Nat :=
   len.rec 0 fun i n => (testBitK c i).rec n n.succ
+
+/-- A batch's mask assembled from strikes given in leaf order: a leaf is built whole and joined
+once, so the join is paid per leaf rather than per strike. `q` packs one 32-bit strike position an
+entry, least significant first, and the state carries the joined mask, the leaf being built and
+its index. Emitted beside a batch to price that grouping against the per-strike descent; it
+settles no window. -/
+@[expose] public noncomputable def bucketJoinK (q cnt : Nat) : Nat :=
+  let r : Nat × Nat × Nat :=
+    cnt.rec (0, 0, 0) fun i acc =>
+      let s : Nat := (q.shiftRight (i.mul 32)).land 4294967295
+      let k : Nat := s.shiftRight 16
+      (Nat.beq k acc.2.2).rec
+        (acc.1.lor (acc.2.1.shiftLeft (acc.2.2.mul 65536)), Nat.shiftLeft 1 (s.land 65535), k)
+        (acc.1, acc.2.1.lor (Nat.shiftLeft 1 (s.land 65535)), acc.2.2)
+  r.1.lor (r.2.1.shiftLeft (r.2.2.mul 65536))
 
 /-- The sum of a batch's strike positions, found by the same arithmetic `treeDiv2K` performs and
 added rather than placed. Emitted beside a batch to price that arithmetic apart from the dispatch
@@ -5123,10 +5172,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 60 then throwError "run_segment_variant: mode {mode} is not 0 to 60"
+  if mode > 61 then throwError "run_segment_variant: mode {mode} is not 0 to 61"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
-        || mode == 59 || mode == 60)
+        || mode == 59 || mode == 60 || mode == 61)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5160,7 +5209,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- positions that batch's divisors give, so the seed arithmetic can be priced apart from the
   -- dispatch of each strike into its leaf.
   let seedProbe := mode == 60
+  -- Mode 61 is mode 45 with one extra equation per widest-band batch, joining that batch's
+  -- strikes in leaf order so a leaf is built whole and joined once. Against mode 60 it prices
+  -- that grouping against the per-strike descent through the tree.
+  let bucketProbe := mode == 61
   let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike || walkProbe || seedProbe
+    || bucketProbe
   let wideLeaf := mode == 53 || mode == 54
   let allTree := mode == 54
   -- Mode 55 is mode 28 with the twin's marking pass kept, so a pair of runs prices taking the
@@ -5817,6 +5871,27 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm walkName
           (mkSegBeqTrue (mkAppN (mkConst ``walkCountK) #[cE, mkRawNatLit stepN])
             (mkRawNatLit cnt)) Lean.reflBoolTrue
+      if bucketProbe && nrec == 2 then
+        -- The strikes of the batch in leaf order, which is the order the sort already puts the
+        -- records in, packed one to a 32-bit field.
+        let mut strikes : Array Nat := #[]
+        for j in setBitsLow (sVal >>> start) stepN do
+          let p := value (start + j)
+          let d := p * 2
+          for X in [firstLoc (index (p * 5)) lo d, firstLoc (index (p * 7)) lo d] do
+            if X ≤ wm1 then
+              strikes := strikes.push X
+        let sorted := strikes.qsort (· < ·)
+        let mut q := 0
+        for j in [0:sorted.size] do
+          q := q ||| (sorted[j]! <<< (32 * j))
+        let mut want := 0
+        for X in sorted do
+          want := want ||| (1 <<< X)
+        let joinName := mkPrivateName env (parent ++ Name.mkSimple s!"wjoin_{i}")
+        addSegThm joinName
+          (mkSegBeqTrue (mkAppN (mkConst ``bucketJoinK)
+            #[mkRawNatLit q, mkRawNatLit sorted.size]) (mkRawNatLit want)) Lean.reflBoolTrue
       if seedProbe && nrec == 2 then
         let seedName := mkPrivateName env (parent ++ Name.mkSimple s!"wseed_{i}")
         let mut tot := 0
