@@ -3537,6 +3537,138 @@ theorem flat1_updL1 {t : Lvl1} {k v : Nat} :
     simp only [hlor, hsl, Nat.one_mul, shiftLeft_lor]
     rw [← Nat.or_assoc]
 
+/-- The second level, same shape with the width doubled. -/
+theorem flat2_updL2 {t : Lvl2} {k v : Nat} :
+    flat2 (updL2 t k v) = flat2 t ||| (v <<< ((k.land 3) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL2 flat2
+  cases hbit : Nat.beq ((k.shiftRight 1).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 1).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 3 = k.land 1 := by rw [land3_split, hz]; lia
+    simp only [hlor, hsl, flat1_updL1, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 1) * 65536)) (flat1 t.2 <<< 131072)]
+  | false =>
+    have hz : (k.shiftRight 1).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 1)
+      lia
+    have harith : (k.land 3) * 65536 = (k.land 1) * 65536 + 131072 := by
+      rw [land3_split, hz]
+      lia
+    simp only [hlor, hsl, flat1_updL1, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- The third level. -/
+theorem flat3_updL3 {t : Lvl3} {k v : Nat} :
+    flat3 (updL3 t k v) = flat3 t ||| (v <<< ((k.land 7) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL3 flat3
+  cases hbit : Nat.beq ((k.shiftRight 2).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 2).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 7 = k.land 3 := by rw [land7_split, hz]; lia
+    simp only [hlor, hsl, flat2_updL2, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 3) * 65536)) (flat2 t.2 <<< 262144)]
+  | false =>
+    have hz : (k.shiftRight 2).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 2)
+      lia
+    have harith : (k.land 7) * 65536 = (k.land 3) * 65536 + 262144 := by
+      rw [land7_split, hz]
+      lia
+    simp only [hlor, hsl, flat2_updL2, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- The fourth level. -/
+theorem flat4_updL4 {t : Lvl4} {k v : Nat} :
+    flat4 (updL4 t k v) = flat4 t ||| (v <<< ((k.land 15) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL4 flat4
+  cases hbit : Nat.beq ((k.shiftRight 3).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 3).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 15 = k.land 7 := by rw [land15_split, hz]; lia
+    simp only [hlor, hsl, flat3_updL3, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 7) * 65536)) (flat3 t.2 <<< 524288)]
+  | false =>
+    have hz : (k.shiftRight 3).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 3)
+      lia
+    have harith : (k.land 15) * 65536 = (k.land 7) * 65536 + 524288 := by
+      rw [land15_split, hz]
+      lia
+    simp only [hlor, hsl, flat3_updL3, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- The fifth level. -/
+theorem flat5_updL5 {t : Lvl5} {k v : Nat} :
+    flat5 (updL5 t k v) = flat5 t ||| (v <<< ((k.land 31) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL5 flat5
+  cases hbit : Nat.beq ((k.shiftRight 4).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 4).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 31 = k.land 15 := by rw [land31_split, hz]; lia
+    simp only [hlor, hsl, flat4_updL4, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 15) * 65536)) (flat4 t.2 <<< 1048576)]
+  | false =>
+    have hz : (k.shiftRight 4).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 4)
+      lia
+    have harith : (k.land 31) * 65536 = (k.land 15) * 65536 + 1048576 := by
+      rw [land31_split, hz]
+      lia
+    simp only [hlor, hsl, flat4_updL4, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- The sixth level. -/
+theorem flat6_updL6 {t : Lvl6} {k v : Nat} :
+    flat6 (updL6 t k v) = flat6 t ||| (v <<< ((k.land 63) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL6 flat6
+  cases hbit : Nat.beq ((k.shiftRight 5).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 5).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 63 = k.land 31 := by rw [land63_split, hz]; lia
+    simp only [hlor, hsl, flat5_updL5, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 31) * 65536)) (flat5 t.2 <<< 2097152)]
+  | false =>
+    have hz : (k.shiftRight 5).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 5)
+      lia
+    have harith : (k.land 63) * 65536 = (k.land 31) * 65536 + 2097152 := by
+      rw [land63_split, hz]
+      lia
+    simp only [hlor, hsl, flat5_updL5, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- The seventh level, the whole tree: joining a leaf sets exactly that leaf's bits. -/
+theorem flat7_updL7 {t : Lvl7} {k v : Nat} :
+    flat7 (updL7 t k v) = flat7 t ||| (v <<< ((k.land 127) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL7 flat7
+  cases hbit : Nat.beq ((k.shiftRight 6).land 1) 0 with
+  | true =>
+    have hz : (k.shiftRight 6).land 1 = 0 := Nat.eq_of_beq_eq_true hbit
+    have h3 : k.land 127 = k.land 63 := by rw [land127_split, hz]; lia
+    simp only [hlor, hsl, flat6_updL6, h3, Nat.or_assoc,
+      Nat.or_comm (v <<< ((k.land 63) * 65536)) (flat6 t.2 <<< 4194304)]
+  | false =>
+    have hz : (k.shiftRight 6).land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k.shiftRight 6)
+      lia
+    have harith : (k.land 127) * 65536 = (k.land 63) * 65536 + 4194304 := by
+      rw [land127_split, hz]
+      lia
+    simp only [hlor, hsl, flat6_updL6, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
 /-- A strike past the window's end leaves the tree alone. -/
 theorem putK_eq_self {t : Lvl7} {Wm1 s : Nat} (h : Nat.blt Wm1 s = true) : putK t Wm1 s = t := by
   unfold putK
