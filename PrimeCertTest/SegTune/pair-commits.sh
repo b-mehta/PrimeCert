@@ -16,12 +16,19 @@ shift 2
 cases=("$@")
 read -r -a swap <<< "${SWAP:-PrimeCert/SegmentedSieve.lean}"
 
+# RUNNER=pair times the cases together, two windows to a runner, which is the shape a real run
+# uses; anything else times them one at a time through run.sh.
 arm() {
   local tag=$1
   local commit=$2
   git checkout -q "$commit" -- "${swap[@]}"
   lake build PrimeCert.SegmentedSieve > /dev/null 2>&1
-  TAG="$tag-" LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
+  if [ "${RUNNER:-run}" = "pair" ]; then
+    echo "arm $tag"
+    LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/pair.sh "${cases[@]}"
+  else
+    TAG="$tag-" LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
+  fi
 }
 
 for order in "A $A" "B $B" "B $B" "A $A"; do
