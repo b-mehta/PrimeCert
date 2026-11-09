@@ -3508,6 +3508,35 @@ theorem testBit_treeDiv2K {t : Lvl7} {lo Wm1 p j : Nat} (hW : Wm1 < 4194304) :
   unfold treeDiv2K
   rw [testBit_putK hW, testBit_putK hW]
 
+/-- Shifting a join is joining the shifts. -/
+theorem shiftLeft_lor {a b n : Nat} : (a ||| b) <<< n = (a <<< n) ||| (b <<< n) := by
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_shiftLeft, Nat.testBit_shiftLeft,
+    Nat.testBit_or]
+  cases Nat.decLe n j <;> cases a.testBit (j - n) <;> cases b.testBit (j - n) <;> rfl
+
+/-- Joining a whole leaf at the bottom level, as an equation on the flattened pair. The other six
+levels follow this shape with the width doubled, so the offset a level contributes is its own bit
+of `k` times that level's width. -/
+theorem flat1_updL1 {t : Lvl1} {k v : Nat} :
+    flat1 (updL1 t k v) = flat1 t ||| (v <<< ((k.land 1) * 65536)) := by
+  have hlor : ∀ x y : Nat, x.lor y = x ||| y := fun _ _ => rfl
+  have hsl : ∀ x y : Nat, x.shiftLeft y = x <<< y := fun _ _ => rfl
+  unfold updL1 flat1
+  cases hbit : Nat.beq (k.land 1) 0 with
+  | true =>
+    rw [Nat.eq_of_beq_eq_true hbit]
+    simp only [hlor, hsl, Nat.zero_mul, Nat.shiftLeft_zero]
+    simp only [Nat.or_assoc, Nat.or_comm v (t.2 <<< 65536)]
+  | false =>
+    have h1 : k.land 1 = 1 := by
+      have hne := Nat.ne_of_beq_eq_false hbit
+      have := land1_lt (k := k)
+      lia
+    rw [h1]
+    simp only [hlor, hsl, Nat.one_mul, shiftLeft_lor]
+    rw [← Nat.or_assoc]
+
 /-- A strike past the window's end leaves the tree alone. -/
 theorem putK_eq_self {t : Lvl7} {Wm1 s : Nat} (h : Nat.blt Wm1 s = true) : putK t Wm1 s = t := by
   unfold putK
