@@ -437,6 +437,24 @@ of the design rather than a constant. -/
 @[expose] public noncomputable def treeBatch2K (c lo Wm1 start len : Nat) : Nat :=
   flat7 (treeFold2K c lo Wm1 start len)
 
+/-- The two strikes of a divisor, the second taken from the first. `k` is the position the fold
+walks, so the divisor is `valueK k` and `index_mul_seven` puts the second progression `2 * k + 1`
+wheel positions after the first. -/
+@[expose] public noncomputable def treeDiv2EK (t : Lvl7) (lo Wm1 k : Nat) : Lvl7 :=
+  let d : Nat := (valueK k).mul 2
+  let A : Nat := firstLocK (indexK ((valueK k).mul 5)) lo d
+  putK (putK t Wm1 A) Wm1 ((A + (k * 2 + 1)) % d)
+
+/-- Walk the batch, two strikes to a divisor, the second taken from the first. -/
+@[expose] public noncomputable def treeFold2EK (c lo Wm1 start len : Nat) : Lvl7 :=
+  len.rec zero7 fun i t =>
+    (testBitK c i).rec t (treeDiv2EK t lo Wm1 (start.add i))
+
+/-- The assembled mask of a batch of the widest band, each divisor's second strike taken from its
+first. -/
+@[expose] public noncomputable def treeBatch2EK (c lo Wm1 start len : Nat) : Nat :=
+  flat7 (treeFold2EK c lo Wm1 start len)
+
 /-- Two consecutive windows' trees. -/
 @[expose] public noncomputable def Pair7 : Type := Lvl7 × Lvl7
 
@@ -4349,6 +4367,52 @@ public theorem firstLocK_spec {A lo m : ℕ} (hm : 0 < m) (hA : A ≤ lo) :
 public theorem value_index_add {a k : ℕ} (ha : a % 6 = 1 ∨ a % 6 = 5) :
     value (index a + 2 * k) = a + 6 * k := by
   grind [value, index]
+
+/-- A divisor's two progressions start `2 * index p + 1` wheel positions apart. A routine walking
+the base sieve is at `index p` when it reaches `p`, so the second progression's index is the first
+one's plus a number already in hand. -/
+public theorem index_mul_seven {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) :
+    index (p.mul 7) = index (p.mul 5) + (index p * 2 + 1) := by
+  unfold index
+  rcases hp with h | h
+  · obtain ⟨a, rfl⟩ : ∃ a, p = 6 * a + 1 := ⟨p / 6, by lia⟩
+    lia
+  · obtain ⟨a, rfl⟩ : ∃ a, p = 6 * a + 5 := ⟨p / 6, by lia⟩
+    lia
+
+/-- Taking a divisor's second strike from its first gives the same tree as deriving it from the
+divisor's own second progression. -/
+public theorem treeDiv2EK_eq {t : Lvl7} {lo Wm1 k : Nat} :
+    treeDiv2EK t lo Wm1 k = treeDiv2K t lo Wm1 (valueK k) := by
+  have hp : (value k) % 6 = 1 ∨ (value k) % 6 = 5 := coprime6_mod.mp value_coprime6
+  have hpos : 0 < value k * 2 := by
+    have h1 : 1 ≤ value k := by grind [value]
+    lia
+  have hmod : lo % (value k * 2) < value k * 2 := Nat.mod_lt _ hpos
+  simp only [treeDiv2EK, treeDiv2K, valueK_eq_value, indexK_eq_index, firstLocK_eq]
+  congr 1
+  rw [Nat.mod_add_mod, index_mul_seven hp, index_value]
+  congr 1
+  lia
+
+/-- Loop recurrence for the derived-strike fold, in the `Bool.rec` form the definition uses. -/
+public theorem treeFold2EK_succ {c lo Wm1 start len : Nat} :
+    treeFold2EK c lo Wm1 start (len + 1)
+      = (testBitK c len).rec (treeFold2EK c lo Wm1 start len)
+          (treeDiv2EK (treeFold2EK c lo Wm1 start len) lo Wm1 (start.add len)) := rfl
+
+/-- Deriving each divisor's second strike from its first gives the batch's own tree. -/
+public theorem treeFold2EK_eq {c lo Wm1 start : Nat} : ∀ {len : Nat},
+    treeFold2EK c lo Wm1 start len = treeFold2K c lo Wm1 start len
+  | 0 => rfl
+  | _ + 1 => by
+    rw [treeFold2EK_succ, treeFold2K_succ, treeFold2EK_eq, treeDiv2EK_eq]
+
+/-- Deriving each divisor's second strike from its first gives the batch's own mask, so the
+emitter may state a batch either way. -/
+public theorem treeBatch2EK_eq {c lo Wm1 start len : Nat} :
+    treeBatch2EK c lo Wm1 start len = treeBatch2K c lo Wm1 start len :=
+  congrArg flat7 treeFold2EK_eq
 
 /-- The completed run over the window of `W` positions from `a`, sieved by the base primes up to
 `B`, in terms of `a`, `W` and `B` themselves. This is the form the correctness statements speak in
