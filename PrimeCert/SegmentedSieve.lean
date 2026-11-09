@@ -4414,6 +4414,19 @@ public theorem treeBatch2EK_eq {c lo Wm1 start len : Nat} :
     treeBatch2EK c lo Wm1 start len = treeBatch2K c lo Wm1 start len :=
   congrArg flat7 treeFold2EK_eq
 
+/-- `treeStep2` for a batch stated with each divisor's second strike taken from its first. The
+kernel checks the same window against the same mask, reaching it with one progression derived
+rather than two. -/
+public theorem treeStep2E {c lo Wm1 n W start len seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hW4 : Nat.blt Wm1 4194304 = true)
+    (hwide : Nat.blt Wm1 (Nat.mul (valueK start) 2) = true)
+    (hbatch : Nat.beq (treeBatch2EK c lo Wm1 start len) lit = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  refine treeStep2 hWeq hsegW hW4 hwide ?_ hclear
+  rwa [treeBatch2EK_eq] at hbatch
+
 /-- The completed run over the window of `W` positions from `a`, sieved by the base primes up to
 `B`, in terms of `a`, `W` and `B` themselves. This is the form the correctness statements speak in
 and the form `run_segment` emits alongside the numeral one, through `segRun_of`. -/
@@ -5088,9 +5101,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 57 then throwError "run_segment_variant: mode {mode} is not 0 to 57"
+  if mode > 58 then throwError "run_segment_variant: mode {mode} is not 0 to 58"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
-        || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57)
+        || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5114,7 +5127,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- one equation against the assembled mask instead of a record list, a tally and a clear.
   -- Mode 53 is mode 45 with the tree's leaves at 262144 bits rather than 65536. Mode 54 sends all
   -- three bands through that tree, so no batch of the run uses sorted records.
-  let tree := mode == 45 || mode == 53 || mode == 54
+  -- Mode 58 is mode 45 with each divisor's second strike taken from its first, which
+  -- `index_mul_seven` puts `2 * index p + 1` wheel positions along from it.
+  let derivedStrike := mode == 58
+  let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike
   let wideLeaf := mode == 53 || mode == 54
   let allTree := mode == 54
   -- Mode 55 is mode 28 with the twin's marking pass kept, so a pair of runs prices taking the
@@ -5744,7 +5760,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
           let args := #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit W, mkRawNatLit start,
             mkRawNatLit stepN, bitsE, mkRawNatLit asm, mkRawNatLit next]
           if nrec == 2 then
-            mkAppN (mkConst (if wideLeaf then ``wtreeStep2 else ``treeStep2))
+            mkAppN (mkConst (if wideLeaf then ``wtreeStep2
+              else if derivedStrike then ``treeStep2E else ``treeStep2))
               (args ++ Array.replicate 6 Lean.reflBoolTrue)
           else
             mkAppN (mkConst (if nrec == 4 then ``wtreeStep4 else ``wtreeStep8))
