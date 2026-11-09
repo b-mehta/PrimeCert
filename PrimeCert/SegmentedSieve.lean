@@ -4806,14 +4806,16 @@ meta def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Na
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := value (start + i)
+    let d := p * 2
+    let b5 := firstLoc (index (p * 5)) lo d
+    let b7 := firstLoc (index (p * 7)) lo d
     for w in [0:nrec] do
-      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-        else firstLoc (index (p * 7)) lo (p * 2)
-      let X := base + (w >>> 1) * (p * 2)
-      let k := if X ≤ Wm1 then X >>> 17 else np
-      slots := slots.modify k (·.push (8 * i + w))
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 131071)))
+        slots := slots.modify (X >>> 17) (·.push (8 * i + w))
+        slotAsm := slotAsm.modify (X >>> 17) (· ||| (1 <<< (X &&& 131071)))
+      else
+        slots := slots.modify np (·.push (8 * i + w))
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 131072))
@@ -4848,14 +4850,18 @@ meta def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := value (start + i)
+    -- Both progressions are found once a divisor, where the records of a divisor read them
+    -- `nrec` times between them.
+    let d := p * 2
+    let b5 := firstLoc (index (p * 5)) lo d
+    let b7 := firstLoc (index (p * 7)) lo d
     for w in [0:nrec] do
-      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo (p * 2)
-        else firstLoc (index (p * 7)) lo (p * 2)
-      let X := base + (w >>> 1) * (p * 2)
-      let k := if X ≤ Wm1 then X >>> 16 else np
-      slots := slots.modify k (·.push (8 * i + w))
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify k (· ||| (1 <<< (X &&& 65535)))
+        slots := slots.modify (X >>> 16) (·.push (8 * i + w))
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+      else
+        slots := slots.modify np (·.push (8 * i + w))
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
@@ -4911,10 +4917,10 @@ meta def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
   for j in setBitsLow (s >>> start) len do
     let p := value (start + j)
     let d := p * 2
+    let b5 := firstLoc (index (p * 5)) lo d
+    let b7 := firstLoc (index (p * 7)) lo d
     for w in [0:nrec] do
-      let base := if w &&& 1 = 0 then firstLoc (index (p * 5)) lo d
-        else firstLoc (index (p * 7)) lo d
-      let X := base + (w >>> 1) * d
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
   let mut asm := 0
