@@ -5882,16 +5882,21 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             if X ≤ wm1 then
               strikes := strikes.push X
         let sorted := strikes.qsort (· < ·)
-        let mut q := 0
-        for j in [0:sorted.size] do
-          q := q ||| (sorted[j]! <<< (32 * j))
-        let mut want := 0
-        for X in sorted do
-          want := want ||| (1 <<< X)
-        let joinName := mkPrivateName env (parent ++ Name.mkSimple s!"wjoin_{i}")
-        addSegThm joinName
-          (mkSegBeqTrue (mkAppN (mkConst ``bucketJoinK)
-            #[mkRawNatLit q, mkRawNatLit sorted.size]) (mkRawNatLit want)) Lean.reflBoolTrue
+        -- One equation a chunk: the kernel reports deep recursion on a fold over a whole batch's
+        -- strikes, and a chunk keeps the leaves of a run grouped all the same.
+        let chunk := 512
+        for base in [0:(sorted.size + chunk - 1) / chunk] do
+          let hi := Nat.min sorted.size ((base + 1) * chunk)
+          let mut q := 0
+          let mut want := 0
+          for j in [base * chunk:hi] do
+            q := q ||| (sorted[j]! <<< (32 * (j - base * chunk)))
+            want := want ||| (1 <<< sorted[j]!)
+          let joinName := mkPrivateName env (parent ++ Name.mkSimple s!"wjoin_{i}_{base}")
+          addSegThm joinName
+            (mkSegBeqTrue (mkAppN (mkConst ``bucketJoinK)
+              #[mkRawNatLit q, mkRawNatLit (hi - base * chunk)]) (mkRawNatLit want))
+            Lean.reflBoolTrue
       if seedProbe && nrec == 2 then
         let seedName := mkPrivateName env (parent ++ Name.mkSimple s!"wseed_{i}")
         let mut tot := 0
