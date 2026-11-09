@@ -495,6 +495,26 @@ the strikes, since a batch of the widest band walks far more positions than it f
 @[expose] public noncomputable def walkCountK (c len : Nat) : Nat :=
   len.rec 0 fun i n => (testBitK c i).rec n n.succ
 
+/-- Strikes given in leaf order, each built into its leaf and the leaf joined once. The state is
+the joined tree, the leaf being built, and that leaf's index. `q` packs one 32-bit strike position
+an entry, least significant first. -/
+@[expose] public noncomputable def joinFoldK (q cnt : Nat) : Lvl7 × Nat × Nat :=
+  cnt.rec (zero7, 0, 0) fun i acc =>
+    let s : Nat := (q.shiftRight (i.mul 32)).land 4294967295
+    let k : Nat := s.shiftRight 16
+    (Nat.beq k acc.2.2).rec
+      (updL7 acc.1 acc.2.2 acc.2.1, Nat.shiftLeft 1 (s.land 65535), k)
+      (acc.1, acc.2.1.lor (Nat.shiftLeft 1 (s.land 65535)), acc.2.2)
+
+/-- The mask those strikes assemble, the leaf left pending joined at the end. -/
+@[expose] public noncomputable def joinBatchK (q cnt : Nat) : Nat :=
+  let r : Lvl7 × Nat × Nat := joinFoldK q cnt
+  flat7 (updL7 r.1 r.2.2 r.2.1)
+
+/-- The same strikes joined one at a time, which is what the tree's per-strike descent gives. -/
+@[expose] public noncomputable def orStrikesK (q cnt : Nat) : Nat :=
+  cnt.rec 0 fun i a => a.lor (Nat.shiftLeft 1 ((q.shiftRight (i.mul 32)).land 4294967295))
+
 /-- A batch's mask assembled from strikes given in leaf order: a leaf is built whole and joined
 once, so the join is paid per leaf rather than per strike. `q` packs one 32-bit strike position an
 entry, least significant first, and the state carries the joined mask, the leaf being built and
@@ -3668,6 +3688,33 @@ theorem flat7_updL7 {t : Lvl7} {k v : Nat} :
       rw [land127_split, hz]
       lia
     simp only [hlor, hsl, flat6_updL6, shiftLeft_lor, harith, Nat.shiftLeft_add, Nat.or_assoc]
+
+/-- A strike inside the window is its leaf's offset shifted to that leaf, so building it into a
+leaf and joining the leaf sets the bit the strike names. -/
+theorem shift_leaf_eq {s : Nat} (hs : s < 4194304) :
+    (1 <<< (s.land 65535)) <<< (((s.shiftRight 16).land 127) * 65536) = 1 <<< s := by
+  have hl : s.land 65535 = s % 65536 := by
+    have hh : s.land 65535 = s.land (2 ^ 16 - 1) := rfl
+    have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+    rw [hh, land_mask_eq, h2]
+  have hsr : s.shiftRight 16 = s / 65536 := by
+    have h := shiftRightK_eq (k := s) (n := 16)
+    have h2 : (2 : Nat) ^ 16 = 65536 := rfl
+    rw [h2] at h
+    exact h
+  have hk : (s.shiftRight 16).land 127 = s.shiftRight 16 := by
+    have hlt : s / 65536 < 128 := by lia
+    have hm : (s / 65536).land 127 = (s / 65536) % 128 := by
+      have hh : (s / 65536).land 127 = (s / 65536).land (2 ^ 7 - 1) := rfl
+      have h2 : (2 : Nat) ^ 7 = 128 := rfl
+      rw [hh, land_mask_eq, h2]
+    rw [hsr, hm]
+    exact Nat.mod_eq_of_lt hlt
+  have hpos : s.land 65535 + ((s.shiftRight 16).land 127) * 65536 = s := by
+    rw [hk, hsr, hl]
+    have := Nat.div_add_mod s 65536
+    lia
+  rw [← Nat.shiftLeft_add, hpos]
 
 /-- A strike past the window's end leaves the tree alone. -/
 theorem putK_eq_self {t : Lvl7} {Wm1 s : Nat} (h : Nat.blt Wm1 s = true) : putK t Wm1 s = t := by
