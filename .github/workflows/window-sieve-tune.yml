@@ -20,10 +20,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: The leaf join measured against its own baseline on one runner
+      - name: Building the smallest band's masks by doubling against by multiplication
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 U1_Tree V4_Bucket
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 W1_Double W2_Multiply
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

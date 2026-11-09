@@ -113,6 +113,35 @@ agreement is checked per batch against the same compiled twin, and is not proved
         (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
     n
 
+/-- `buildMaskCK` with each doubling round done as a multiplication: joining a mask to itself
+shifted by `sh` is multiplying it by `2 ^ sh + 1` whenever all the mask's bits lie below `sh`,
+which the rounds maintain, since round `i` shifts by `p * 2 ^ (i + 1)` and the mask reaching it
+spans that much. -/
+@[expose] public noncomputable def buildMaskMK (p M A B n : Nat) : Nat :=
+  Nat.rec
+    ((seedK A M).lor (seedK B M))
+    (fun i Mk =>
+      ((p.shiftLeft i.succ).ble M).rec Mk
+        (Mk.mul (Nat.succ (Nat.shiftLeft 1 (p.shiftLeft i.succ)))))
+    n
+
+/-- The masks of a batch's divisors joined, each built by doubling as `segMarkCK` builds them.
+Emitted beside a batch to price mask construction; it settles no window. -/
+@[expose] public noncomputable def orMaskCK (c lo Wm1 n start len : Nat) : Nat :=
+  len.rec 0 fun i a =>
+    (testBitK c i).rec a
+      (a.lor (buildMaskCK (valueK (start.add i)) Wm1
+        (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
+        (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
+
+/-- `orMaskCK` with the masks built by multiplication. -/
+@[expose] public noncomputable def orMaskMK (c lo Wm1 n start len : Nat) : Nat :=
+  len.rec 0 fun i a =>
+    (testBitK c i).rec a
+      (a.lor (buildMaskMK (valueK (start.add i)) Wm1
+        (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
+        (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
+
 /-- `segMarkK` with seeds dropped outside the window, `n` doubling rounds, no rounds at all when
 `2 * p > Wm1` (only the seeds can then land in the window), and no subtraction when nothing hits. -/
 @[expose] public noncomputable def segMarkCK (seg p lo Wm1 n : Nat) : Nat :=
@@ -5409,10 +5438,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 61 then throwError "run_segment_variant: mode {mode} is not 0 to 61"
+  if mode > 63 then throwError "run_segment_variant: mode {mode} is not 0 to 63"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
-        || mode == 59 || mode == 60 || mode == 61)
+        || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5450,6 +5479,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- strikes in leaf order so a leaf is built whole and joined once. Against mode 60 it prices
   -- that grouping against the per-strike descent through the tree.
   let bucketProbe := mode == 61
+  -- Modes 62 and 63 add, per batch of the smallest band, one equation joining that batch's masks,
+  -- built by doubling and by multiplication respectively, so the pair prices the construction.
+  let maskProbe := mode == 62
+  let maskMulProbe := mode == 63
   let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike || walkProbe || seedProbe
     || bucketProbe
   let wideLeaf := mode == 53 || mode == 54
@@ -5463,6 +5496,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
   let midLong := mode == 57
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong
+    || maskProbe || maskMulProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -6108,6 +6142,18 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm walkName
           (mkSegBeqTrue (mkAppN (mkConst ``walkCountK) #[cE, mkRawNatLit stepN])
             (mkRawNatLit cnt)) Lean.reflBoolTrue
+      if (maskProbe || maskMulProbe) && nrec == 0 then
+        let mut acc := 0
+        for j in setBitsLow (sVal >>> start) stepN do
+          let p := value (start + j)
+          let d := p * 2
+          acc := acc ||| buildMaskC p wm1 (firstLoc (index (p * 5)) lo d)
+            (firstLoc (index (p * 7)) lo d) nb
+        let maskName := mkPrivateName env (parent ++ Name.mkSimple s!"smask_{i}")
+        addSegThm maskName
+          (mkSegBeqTrue (mkAppN (mkConst (if maskMulProbe then ``orMaskMK else ``orMaskCK))
+            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit start, mkRawNatLit stepN])
+            (mkRawNatLit acc)) Lean.reflBoolTrue
       if bucketProbe && nrec == 2 then
         -- The strikes of the batch in leaf order, which is the order the sort already puts the
         -- records in, packed one to a 32-bit field.
