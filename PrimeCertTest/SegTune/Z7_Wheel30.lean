@@ -17,6 +17,8 @@ divisor's mask now starts from eight seeds instead of two and needs two fewer do
 
 namespace PrimeCert.SegTune.Z7_Wheel30
 
+run_sieve 10000000
+
 run_wheel 30 100000000000001 4194304 333333 8192 10000000
 
 end PrimeCert.SegTune.Z7_Wheel30

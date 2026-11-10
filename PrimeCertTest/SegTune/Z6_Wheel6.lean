@@ -19,6 +19,8 @@ compare kernel seconds; the wheel of thirty wins only if it is under 1.25 times 
 
 namespace PrimeCert.SegTune.Z6_Wheel6
 
+run_sieve 10000000
+
 run_wheel 6 100000000000001 4194304 333333 8192 10000000
 
 end PrimeCert.SegTune.Z6_Wheel6
