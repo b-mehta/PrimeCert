@@ -69,9 +69,10 @@ meta partial def emitNode (S : Nat) (ns : Name) (tag : String) (cut : Nat) (dry 
     (seen : IO.Ref (Std.HashMap (Nat × Nat) Node)) (t B : Nat) : MetaM Node := do
   if let some n := (← seen.get)[(t, B)]? then return n
   -- below the cut a branch stops and is answered from outside, by a leaf the sieve produced
-  -- a bound below 3 sieves out almost nothing, and the leaf machinery wants survivors coprime to
-  -- 6, so such a branch is expanded rather than cut
-  if cut != 0 && t < cut && B ≥ 3 then
+  -- a branch is cut only where its leaf can be answered: the bound must reach 3, since the leaf
+  -- machinery wants survivors coprime to 6, and the height must lie below the bound's square, so
+  -- that the survivors above the bound are just the primes and two base runs settle them
+  if cut != 0 && t < cut && B ≥ 3 && t + 1 ≤ B * B then
     let leafName := ns ++ Name.mkSimple s!"phiLeaf_{t}_{B}"
     match (← getEnv).find? leafName with
     | some info =>
