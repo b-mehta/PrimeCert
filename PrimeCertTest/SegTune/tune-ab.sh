@@ -20,10 +20,11 @@ TUNABLES=glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=171798
 for r in $(seq 1 "$rounds"); do
   for arm in P T T P; do
     if [ "$arm" = "T" ]; then
-      TAG="T$r-" GLIBC_TUNABLES="$TUNABLES" LEAN_FLAGS=-DElab.async=false \
+      TAG="T$r-" TUNE=1 GLIBC_TUNABLES="$TUNABLES" LEAN_FLAGS=-DElab.async=false \
         PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
     else
-      TAG="P$r-" LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
+      TAG="P$r-" TUNE=0 LEAN_FLAGS=-DElab.async=false \
+        PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
     fi
   done
 done

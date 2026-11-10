@@ -8,6 +8,11 @@ set +e +o pipefail
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
 
+# The allocator settings `run.sh` explains, on by default here too so the two runners agree.
+if [ "${TUNE:-1}" = "1" ]; then
+  export GLIBC_TUNABLES=${GLIBC_TUNABLES:-glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=17179869184:glibc.malloc.top_pad=268435456}
+fi
+
 # As in `run.sh`: lean is called directly, so every precompiled library's shared object has to be
 # named on the command line or that code runs in the interpreter.
 plugin=""

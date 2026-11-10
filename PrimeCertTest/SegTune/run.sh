@@ -30,6 +30,14 @@ n=${#cases[@]}
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
 
+# Allocator settings for the lean process. Measured on a quiet 32 vCPU box, four runs an arm
+# alternating: kernel 76.5-77.8 s without against 67.7-68.4 s with, processor 84.7-86.1 against
+# 75.8-76.5, peak unchanged. Nothing in the project changes, so this is on by default and
+# TUNE=0 turns it off, which is how the pair above was measured.
+if [ "${TUNE:-1}" = "1" ]; then
+  export GLIBC_TUNABLES=${GLIBC_TUNABLES:-glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=17179869184:glibc.malloc.top_pad=268435456}
+fi
+
 # These cases call lean directly rather than through lake, so nothing hands it the shared objects
 # the precompiled libraries build. Without the flags below that code runs in the interpreter
 # whatever the lakefile says. A library the lakefile does not precompile leaves no object, so this
