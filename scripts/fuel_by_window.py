@@ -43,15 +43,21 @@ N = 10**14
 FULL_B = 10**7                   # divisors the top window needs
 
 # Measured seconds for one window at batch 8192, two windows sharing a runner, which is the shape
-# a real run uses (run 42463567277, three rounds, group wall 149 s for two windows at the default
-# tiers). The band split is taken from the one-file run 42389213113 in the same proportions:
-# small divisors, the two middle bands, the widest band, and the non-kernel remainder.
+# a real run uses. The band split is taken from the one-file run 42389213113 in these proportions:
+# small divisors, the two middle bands, and the widest band.
+#
+# The non-kernel remainder was once carried here as a constant, on the reasoning that elaboration
+# does not depend on the divisor count. Two paired runs say otherwise. A window given the divisors
+# window 1000 of 1..10^14 needs, a hundredth of the top window's, costs 0.0815 of the top
+# (run 42785072832: 183/162/159 s of group wall against 15/12/14), where a constant remainder
+# predicts 0.260; and a window at half the divisors costs 0.762 (run 42777596039: 226/225/229
+# against 172/172/174). So the remainder scales with the work and is distributed across the bands
+# rather than added on top.
 _SPLIT = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
-_OTHER_SPLIT = 41.4
 _PAIRED = 149.0 / 2              # seconds of runner time one window takes, two to a runner
-_SCALE = _PAIRED / (sum(_SPLIT.values()) + _OTHER_SPLIT)
+_SCALE = _PAIRED / sum(_SPLIT.values())
 COST = {k: v * _SCALE for k, v in _SPLIT.items()}
-OTHER = _OTHER_SPLIT * _SCALE    # non-kernel elaboration, independent of the divisor count
+OTHER = 0.0
 
 EDGES = {
     "small": (2, WM1 // 8),
