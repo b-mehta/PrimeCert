@@ -44,7 +44,10 @@ def main() -> None:
         print(f"window {k}: covers {lo}..{top}")
         print(f"  divisors to {bound}, fuel {fuel}, which is {share:.4f} of the {full} "
               f"a top-of-range window needs")
-        print(f"  run_segment {lo} {W} {fuel} 8192 10000000")
+        # The tuned path is `run_segment_variant 28`, which sorts each band's strikes into slices;
+        # plain `run_segment` is a separate elaborator with none of that, and every cost figure
+        # on this branch is measured on the tuned one.
+        print(f"  run_segment_variant 28 {lo} {W} {fuel} 8192 10000000")
 
 
 if __name__ == "__main__":

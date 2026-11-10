@@ -18,6 +18,6 @@ namespace PrimeCert.SegTune.X2_One
 
 run_sieve 10000000
 
-run_segment 994050049 4194304 10575 8192 10000000
+run_segment_variant 28 994050049 4194304 10575 8192 10000000
 
 end PrimeCert.SegTune.X2_One
