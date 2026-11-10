@@ -5368,10 +5368,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let marked := mode == 56
   -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
   let midLong := mode == 57
-  -- Mode 66 is mode 28 with the twin that finds the next window reaching it through a byte array
-  -- rather than through a mask per divisor. The kernel checks the same literal either way.
-  let bytesTwin := mode == 66
-  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || bytesTwin
+  -- The twin that finds the next window reaches it through a byte array. Mode 66 keeps the older
+  -- route, a mask built and subtracted per divisor, so the two can still be timed against each
+  -- other; the kernel checks the same literal either way. Measured on a quiet 32 vCPU box, three
+  -- rounds alternating: the mask route spent 29.3 s of a 111.8 s window finding next windows, the
+  -- byte array 4.2 s of 86.3 s, with the kernel unmoved, which is why the byte array is the
+  -- default and the mask route is kept only for comparison.
+  let maskTwin := mode == 66
+  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
@@ -5987,8 +5991,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       -- an unsorted batch, which assembles nothing, still runs the twin. That pass used to sit
       -- inside the clock above, where it was reported as part of the sort; it is timed apart now.
       let twin := fun _ : Unit =>
-        if bytesTwin then segLoopCBytes sVal lo wm1 bits start stepN
-        else segLoopC sVal lo wm1 nb bits start stepN
+        if maskTwin then segLoopC sVal lo wm1 nb bits start stepN
+        else segLoopCBytes sVal lo wm1 bits start stepN
       let next := if twoPass then twin () else
         match sortRes, asmRes with
         | some (_, _, _, expect), _ => bits - (expect &&& bits)
