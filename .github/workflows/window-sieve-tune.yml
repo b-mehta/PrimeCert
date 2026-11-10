@@ -23,7 +23,7 @@ jobs:
       - name: Does precompiling the emitter's arithmetic pay
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh PrimeCertTest/SegTune/pair-commits.sh
-          SWAP=lakefile.toml PrimeCertTest/SegTune/pair-commits.sh 0941c90 e2a9d24 WA_Narrow
+          ROUNDS=3 SWAP=lakefile.toml PrimeCertTest/SegTune/pair-commits.sh 0941c90 e2a9d24 WA_Narrow
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

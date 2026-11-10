@@ -8,7 +8,8 @@
 # SWAP defaults to the emitter alone; set it to swap something else, such as the lakefile.
 #
 # Each arm's output carries TAG=A- or TAG=B-, so `run.sh`'s per-case files do not overwrite each
-# other and the reported lines say which arm they belong to.
+# other and the reported lines say which arm they belong to. ROUNDS repeats the whole A B B A
+# order, for a question two readings an arm leave open.
 set +e +o pipefail
 A=$1
 B=$2
@@ -30,13 +31,16 @@ arm() {
     echo "arm $tag"
     LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/pair.sh "${cases[@]}"
   else
-    TAG="$tag-" LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
+    TAG="$tag$rno-" LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 "${cases[@]}"
   fi
 }
 
-for order in "A $A" "B $B" "B $B" "A $A"; do
-  set -- $order
-  arm "$1" "$2"
+: "${ROUNDS:=1}"
+for rno in $(seq 1 "$ROUNDS"); do
+  for order in "A $A" "B $B" "B $B" "A $A"; do
+    set -- $order
+    arm "$1" "$2"
+  done
 done
 
 git checkout -q HEAD -- "${swap[@]}"
