@@ -53,6 +53,15 @@ FULL_B = 10**7                   # divisors the top window needs
 # predicts 0.260; and a window at half the divisors costs 0.762 (run 42777596039: 226/225/229
 # against 172/172/174). So the remainder scales with the work and is distributed across the bands
 # rather than added on top.
+# THE ANCHOR BELOW PREDATES TWO MEASURED CHANGES AND SO OVERSTATES THE COST.
+# It was taken before the emitter reached the next window through a byte array, and before the
+# allocator settings went into the run scripts. Measured on one quiet 32 vCPU box, alternating
+# arms: the byte array took a window from 110.5/112.9/112.0 to 87.7/85.7/85.6 processor seconds,
+# and the settings took 84.7-86.1 to 75.8-76.5. Together about 0.68 of what this anchor assumes.
+# The figures this file prints are therefore an upper bound. They are left as they are rather than
+# scaled, because the anchor and the newer measurements come from different machines and the whole
+# point of the anchor is that it was measured in the shape a real run uses. Re-anchor by repeating
+# that paired measurement on the machine a run will actually use.
 _SPLIT = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
 _PAIRED = 149.0 / 2              # seconds of runner time one window takes, two to a runner
 _SCALE = _PAIRED / sum(_SPLIT.values())
