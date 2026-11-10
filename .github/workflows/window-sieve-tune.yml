@@ -20,15 +20,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Does the cost model hold at the cheap end, where most windows sit
+      - name: Sieve 1..10^9 end to end, every window at its own divisor count
         run: |
-          chmod +x PrimeCertTest/SegTune/pair.sh
-          for round in 1 2 3; do
-            echo "round $round | every divisor to 1e7"
-            PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
-            echo "round $round | the divisors window 1000 needs"
-            PrimeCertTest/SegTune/pair.sh T4_Tiny1 T4_Tiny2
-          done
+          chmod +x PrimeCertTest/SegTune/run.sh
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 1 X1_Range1e9
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
