@@ -1008,6 +1008,35 @@ width. -/
       ((Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1))
       ((Cs.shiftRight (k.mul 16)).land 65535) 0)
 
+/-! ### Joining the slices in pairs rather than one into a window-wide accumulator
+
+`stripeUpToK` shifts each finished slice into its place in a number that is already as wide as the
+window, and joins the tally into the same number, so every slice touches the full width twice.
+`joinJK` below joins the slices in pairs instead, doubling the width as it goes, and the tally is
+accumulated apart and joined once at the end. Prototype: no soundness is proved, and the kernel
+checks the literal, which is what a timing pair needs. -/
+
+/-- The leaves `k` through `k + 2 ^ d - 1` joined in pairs, each leaf `w` bits wide. The recursion
+is on the depth and returns a function, so the index arrives after the branch is chosen. -/
+@[expose] public noncomputable def joinJK (leaf : Nat → Nat) (w : Nat) : Nat → Nat → Nat :=
+  fun d => Nat.rec (motive := fun _ => Nat → Nat) leaf
+    (fun i ih k => (ih k).lor ((ih (k.add (Nat.shiftLeft 1 i))).shiftLeft (Nat.shiftLeft w i))) d
+
+/-- The tallies of every slice, joined as a number no wider than the tally itself. -/
+@[expose] public noncomputable def stripeTallyJK
+    (c lo start len Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k t =>
+    t.lor ((stripeStateK c lo start len Wm1 slotW Ls Cs np k).shiftRight 65536)
+
+/-- The same assembled number as `stripeBatchK`, with the window's slices joined in pairs and the
+tally carried separately. `d` is the depth, so the window holds `2 ^ d` slices. -/
+@[expose] public noncomputable def stripeBatchJK
+    (c lo start len W Wm1 slotW Ls Cs np d : Nat) : Nat :=
+  (joinJK (fun k =>
+      (stripeStateK c lo start len Wm1 slotW Ls Cs np k).land
+        (Nat.sub (Nat.shiftLeft 1 65536) 1)) 65536 d 0).lor
+    ((stripeTallyJK c lo start len Wm1 slotW Ls Cs np (np + 1)).shiftLeft W)
+
 /-- One more slice. -/
 public theorem stripeUpToK_succ {c lo start len W Wm1 slotW Ls Cs np n : Nat} :
     stripeUpToK c lo start len W Wm1 slotW Ls Cs np (n + 1)
@@ -5377,11 +5406,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 67 then throwError "run_segment_variant: mode {mode} is not 0 to 67"
+  if mode > 68 then throwError "run_segment_variant: mode {mode} is not 0 to 68"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
-        || mode == 64 || mode == 65 || mode == 67)
+        || mode == 64 || mode == 65 || mode == 67 || mode == 68)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5718,7 +5747,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67 then
+  if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67
+      || mode == 68 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -5764,12 +5794,23 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         continue
       let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
         else stripeSort sVal lo wm1 start stepN W 8
-      let batchE := mkAppN (mkConst (if mode == 37 then ``stripeBatchTK
-          else if mode == 67 then ``stripeBatchFK
-          else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
-        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
-          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
-          mkRawNatLit (if mode == 40 then W / 131072 else W / 65536)]
+      -- The join of mode 68 is by depth, so the window's slice count has to be a power of two.
+      let npJ := W / 65536
+      let dJ := Nat.log2 npJ
+      if mode == 68 && (1 <<< dJ) != npJ then
+        throwError "run_segment_variant: mode 68 joins by depth, so W / 65536 = {npJ} must be a \
+          power of two"
+      let batchE := if mode == 68 then
+          mkAppN (mkConst ``stripeBatchJK)
+            #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+              mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit npJ, mkRawNatLit dJ]
+        else
+          mkAppN (mkConst (if mode == 37 then ``stripeBatchTK
+            else if mode == 67 then ``stripeBatchFK
+            else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
+          #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+            mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
+            mkRawNatLit (if mode == 40 then W / 131072 else W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
