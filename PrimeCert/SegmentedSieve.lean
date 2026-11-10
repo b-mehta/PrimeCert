@@ -186,6 +186,73 @@ every `2 * p` positions, so the window `W` positions along carries the same mask
   fuel.rec seg fun i b =>
     (testBitK s (start.add i)).rec b (segMarkCK b (valueK (start.add i)) lo Wm1 n)
 
+/-! ### A thirty wheel, as a prototype
+
+The window above holds one bit per integer coprime to 6, two residues in every six. A wheel of
+thirty holds eight residues in every thirty, so the same bit count covers 3.75 times as many
+integers instead of 3. Cost here is per divisor rather than per multiple — a divisor's mask is
+built the full width of the window whichever divisor it is — so a window that reaches further for
+the same divisors is worth measuring. Against that, a divisor now has eight progressions where it
+had two, so its mask takes eight seeds.
+
+Nothing below is proved sound. It exists to be timed against the wheel of six at the same width,
+which the kernel can do honestly because it still checks every literal: a batch equation here says
+`segLoop30CK … = literal`, and the emitter twin producing that literal is not trusted. Whether a
+window of this shape sieves correctly is a separate question, not answered here. -/
+
+/-- The eight residues coprime to 30, five bits each: 1, 7, 11, 13, 17, 19, 23, 29. -/
+@[expose] public def wheel30OffsK : Nat := 1021784272097
+
+/-- Where each residue modulo 30 sits among those eight, three bits each. Entries for residues
+sharing a factor with 30 are never read. -/
+@[expose] public def wheel30RankK : Nat := 1083201076879154698854072320
+
+/-- The eight multipliers a divisor's progressions start from: 7, 11, 13, 17, 19, 23, 29, 31,
+five bits each. These are the residues coprime to 30 above 1, so `p` itself is not crossed out. -/
+@[expose] public def wheel30MulK : Nat := 1097082647911
+
+/-- The `k`th integer coprime to 30. -/
+@[expose] public noncomputable def value30K (k : Nat) : Nat :=
+  Nat.add (Nat.mul 30 (Nat.div k 8))
+    (Nat.land (Nat.shiftRight wheel30OffsK (Nat.mul 5 (Nat.mod k 8))) 31)
+
+/-- Where an integer coprime to 30 sits in that enumeration. -/
+@[expose] public noncomputable def index30K (q : Nat) : Nat :=
+  Nat.add (Nat.mul 8 (Nat.div q 30))
+    (Nat.land (Nat.shiftRight wheel30RankK (Nat.mul 3 (Nat.mod q 30))) 7)
+
+/-- The eight seed bits of `p` in a window starting at wheel index `lo`, joined. A divisor's
+pattern repeats every 30 `p`, which is `8 * p` positions of this wheel. -/
+@[expose] public noncomputable def seeds30K (p lo M : Nat) : Nat :=
+  Nat.rec 0
+    (fun j a =>
+      a.lor (seedK (firstLocK
+        (index30K (p.mul (Nat.land (Nat.shiftRight wheel30MulK (Nat.mul 5 j)) 31)))
+        lo (p.mul 8)) M))
+    8
+
+/-- `buildMaskCK` for the wheel of thirty: the same doubling, from eight seeds, with the period
+`8 * p` in place of `2 * p`. -/
+@[expose] public noncomputable def buildMask30CK (p M lo n : Nat) : Nat :=
+  Nat.rec
+    (seeds30K p lo M)
+    (fun i Mk =>
+      ((p.shiftLeft (i.succ.add 2)).ble M).rec Mk
+        (Mk.lor (Mk.shiftLeft (p.shiftLeft (i.succ.add 2)))))
+    n
+
+/-- `segMarkCK` for the wheel of thirty. -/
+@[expose] public noncomputable def segMark30CK (seg p lo Wm1 n : Nat) : Nat :=
+  ((p.mul 8).ble Wm1).rec
+    (clearHitK seg ((seeds30K p lo Wm1).land seg))
+    (clearHitK seg ((buildMask30CK p Wm1 lo n).land seg))
+
+/-- `segLoopCK` for the wheel of thirty. The divisors are still read from the wheel-of-six base
+sieve, since how the base primes are enumerated is independent of the window's wheel. -/
+@[expose] public noncomputable def segLoop30CK (s lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK s (start.add i)).rec b (segMark30CK b (valueK (start.add i)) lo Wm1 n)
+
 /-- `segLoopK` reading the base primes from a slice `c` of the base sieve: bit `i` of `c` stands for
 base index `start + i`. -/
 @[expose] public noncomputable def segLoopSK (c lo Wm1 seg start fuel : Nat) : Nat :=
@@ -6220,6 +6287,54 @@ elab "run_segment_variant" mStx:num aStx:num wStx:num fStx:num lStx:num bStx:(nu
       | none => ``sieveBits_1000000
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegmentV (← getCurrNamespace) base mStx.getNat aStx.getNat wStx.getNat fStx.getNat
+      lStx.getNat
+
+/-- Emit the batch equations of one window on a chosen wheel, and nothing else: no chain, no
+`segRun`, no soundness. `wheel` is 6 or 30. The two differ only in how many integers a bit stands
+for, so a pair of calls at the same width and the same divisors prices the wheels against each
+other, and the kernel checks every literal in both. -/
+public meta def runWheel (ns baseLit : Name) (wheel a W fuel len : Nat) : MetaM Unit := do
+  if wheel ≠ 6 && wheel ≠ 30 then throwError "run_wheel: the wheel {wheel} is not 6 or 30"
+  if W = 0 then throwError "run_wheel: the window is empty"
+  let env ← getEnv
+  let some info := env.find? baseLit | throwError "run_wheel: no base sieve {baseLit}"
+  let some sVal := info.value?.bind Expr.rawNatLit?
+    | throwError "run_wheel: the base sieve {baseLit} is not a numeral"
+  let lo := if wheel == 6 then index a else SieveEmit.index30 a
+  let wm1 := W - 1
+  let step0 := Nat.max 1 len
+  let sE := mkConst baseLit
+  let loE := mkRawNatLit lo
+  let wE := mkRawNatLit wm1
+  let nb := Nat.min 32 (Nat.log2 (wm1 / value 1) + 1)
+  let nbE := mkRawNatLit nb
+  let loopC := mkConst (if wheel == 6 then ``segLoopCK else ``segLoop30CK)
+  let tag := s!"{wheel}_{a}_{W}_{fuel}_{step0}"
+  let parent := ns ++ Name.mkSimple s!"wheelEq_{tag}"
+  -- 5 divides 30, so a window of that wheel holds no multiple of it and it is not one of its
+  -- divisors; `index30K (5 * m)` would read a rank entry that stands for nothing. The wheel of
+  -- six starts at 5 as usual. One divisor in tens of thousands separates the two scans.
+  let first := if wheel == 6 then 1 else 2
+  let mut bits := initSeg W
+  for i in [0:(fuel + step0 - 1) / step0] do
+    let start := first + i * step0
+    let stepN := Nat.min step0 (fuel - i * step0)
+    let next := if wheel == 6 then segLoopC sVal lo wm1 nb bits start stepN
+      else SieveEmit.segLoop30C sVal lo wm1 nb bits start stepN
+    let lhs := mkAppN loopC
+      #[sE, loE, wE, nbE, mkRawNatLit bits, mkRawNatLit start, mkRawNatLit stepN]
+    addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+      (mkSegBeqTrue lhs (mkRawNatLit next)) Lean.reflBoolTrue
+    bits := next
+
+/-- `run_wheel wheel a W fuel len` emits one window's batch equations on the wheel of `wheel`
+(6 or 30), for timing one wheel against the other. It proves nothing about the window. -/
+elab "run_wheel" kStx:num aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
+  liftTermElabM <| do
+    let base := match bStx with
+      | none => ``sieveBits_1000000
+      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
+    runWheel (← getCurrNamespace) base kStx.getNat aStx.getNat wStx.getNat fStx.getNat
       lStx.getNat
 
 /-! ## Worked instances

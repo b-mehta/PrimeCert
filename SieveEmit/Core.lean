@@ -310,6 +310,58 @@ public def segLoopCBytes (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
   let mask := bytesToNat ba
   return seg - (mask &&& seg)
 
+/-! ## The thirty wheel's twins
+
+Prototype, matching the kernel definitions of the same names. Nothing here is proved sound; it
+produces the literals a timing run checks. -/
+
+/-- The eight residues coprime to 30, five bits each. -/
+public def wheel30Offs : Nat := 1021784272097
+
+/-- Where each residue modulo 30 sits among those eight, three bits each. -/
+public def wheel30Rank : Nat := 1083201076879154698854072320
+
+/-- The eight multipliers a divisor's progressions start from, five bits each. -/
+public def wheel30Mul : Nat := 1097082647911
+
+/-- The `k`th integer coprime to 30. -/
+public def value30 (k : Nat) : Nat :=
+  30 * (k / 8) + ((wheel30Offs >>> (5 * (k % 8))) &&& 31)
+
+/-- Where an integer coprime to 30 sits in that enumeration. -/
+public def index30 (q : Nat) : Nat :=
+  8 * (q / 30) + ((wheel30Rank >>> (3 * (q % 30))) &&& 7)
+
+/-- Twin of `seeds30K`. -/
+public def seeds30 (p lo M : Nat) : Nat := Id.run do
+  let mut a := 0
+  for j in [0:8] do
+    let m := (wheel30Mul >>> (5 * j)) &&& 31
+    a := a ||| seedC (firstLoc (index30 (p * m)) lo (p * 8)) M
+  return a
+
+/-- Twin of `buildMask30CK`. -/
+public def buildMask30C (p M lo n : Nat) : Nat := Id.run do
+  let mut m := seeds30 p lo M
+  for i in [0:n] do
+    let sh := p <<< (i + 3)
+    if sh ≤ M then
+      m := m ||| (m <<< sh)
+  return m
+
+/-- Twin of `segMark30CK`. -/
+public def segMark30C (seg p lo Wm1 n : Nat) : Nat :=
+  let mask := if p * 8 ≤ Wm1 then buildMask30C p Wm1 lo n else seeds30 p lo Wm1
+  let hit := mask &&& seg
+  if hit = 0 then seg else seg - hit
+
+/-- Twin of `segLoop30CK`. -/
+public def segLoop30C (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMark30C b (valueE (start + i)) lo Wm1 n
+  return b
+
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
 Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoopCK` agree on all
 of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
