@@ -175,11 +175,11 @@ every `2 * p` positions, so the window `W` positions along carries the same mask
 @[expose] public noncomputable def segMarkCK (seg p lo Wm1 n : Nat) : Nat :=
   ((p.mul 2).ble Wm1).rec
     (clearHitK seg
-      (((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
-        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)).land seg))
+      (seg.land ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
+        (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))))
     (clearHitK seg
-      ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg))
+      (seg.land (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)))
 
 /-- `segLoopK` marking with `segMarkCK`. -/
 @[expose] public noncomputable def segLoopCK (s lo Wm1 n seg start fuel : Nat) : Nat :=
@@ -1878,7 +1878,7 @@ public theorem segMarkCK_ldiff {seg p lo Wm1 n : Nat} :
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n).land seg)
         else clearHitK seg ((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0).land seg) := by
-    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, buildMaskCK_zero]
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, buildMaskCK_zero, Nat.land_comm]
   have hland : ∀ m : Nat, Nat.ldiff seg m = seg - m.land seg := by
     intro m
     have h1 : m.land seg = seg &&& m := Nat.land_comm m seg
@@ -1916,7 +1916,7 @@ public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) 
         else clearHitK seg (seg.land
           ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
             (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))) := by
-    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, Nat.land_comm]
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq]
   have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
   rw [hite, segMarkK, hsub]
   by_cases hc : p * 2 ≤ Wm1
@@ -1954,7 +1954,7 @@ public theorem segMarkCK_eq_stride {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1
         else clearHitK seg (seg.land
           ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
             (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))) := by
-    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq, Nat.land_comm]
+    simp [segMarkCK, Bool.rec_eq, Nat.ble_eq, Nat.mul_eq]
   have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
   rw [hite, segMarkK, hsub]
   by_cases hc : p * 2 ≤ Wm1
