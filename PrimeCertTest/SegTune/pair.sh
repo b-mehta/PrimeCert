@@ -8,13 +8,12 @@ set +e +o pipefail
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
 
-# As in `run.sh`: lean is called directly, so the shared object of a precompiled library has to be
-# named on the command line or the emitter's arithmetic runs in the interpreter.
-emitlib=.lake/build/lib/libPrimeCert_SieveEmit.so
+# As in `run.sh`: lean is called directly, so every precompiled library's shared object has to be
+# named on the command line or that code runs in the interpreter.
 plugin=""
-if [ -f "$emitlib" ]; then
-  plugin="--plugin=$emitlib"
-fi
+for so in .lake/build/lib/libPrimeCert_*.so; do
+  [ -f "$so" ] && plugin="$plugin --plugin=$so"
+done
 start=$(date +%s)
 pids=()
 for f in "$@"; do

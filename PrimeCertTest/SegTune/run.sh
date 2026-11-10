@@ -30,20 +30,28 @@ n=${#cases[@]}
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
 
-# These cases call lean directly rather than through lake, so nothing hands it the shared object a
-# precompiled library builds. Without the flag below the emitter's arithmetic runs in the
-# interpreter whatever the lakefile says. The object is absent when the lakefile does not
-# precompile, and the flag is then left off.
-emitlib=.lake/build/lib/libPrimeCert_SieveEmit.so
+# These cases call lean directly rather than through lake, so nothing hands it the shared objects
+# the precompiled libraries build. Without the flags below that code runs in the interpreter
+# whatever the lakefile says. A library the lakefile does not precompile leaves no object, so this
+# names exactly the ones there are.
 plugin=""
-if [ -f "$emitlib" ]; then
-  plugin="--plugin=$emitlib"
-fi
+for so in .lake/build/lib/libPrimeCert_*.so; do
+  [ -f "$so" ] && plugin="$plugin --plugin=$so"
+done
 
 # ksum <file> <pattern>: the sum of the [Kernel] seconds on lines matching the pattern.
 ksum() {
   grep -o "\[Kernel\] \[[0-9.]*\].*$2" "$1" | grep -o '^\[Kernel\] \[[0-9.]*\]' \
     | grep -o '[0-9]\+\.[0-9]\+' | awk '{s+=$1} END {printf "%.3f", s}'
+}
+
+# cmdsum <file> <command>: the seconds the profiler charges to the commands whose text starts with
+# <command>. `elab command` below covers the whole file, so this is how the base sieve and the
+# window are told apart, each of which the elaborator builds in code of ours that may or may not
+# be compiled.
+cmdsum() {
+  grep -oE "^\[Elab.command\] \[[0-9.]+\][^[]*$2" "$1" | grep -oE '\[[0-9]+\.[0-9]+\]' \
+    | tr -d '[]' | awk '{s+=$1} END {printf "%.3f", s+0}'
 }
 
 # esum <file> <tag>: the sum of the seconds on lines whose profiler tag is <tag>, e.g. Elab.command
@@ -92,6 +100,8 @@ for round in $(seq 1 "$rounds"); do
     wide=$(ksum "$out" "segEqV_.*wstep_")
     chunks=$(ksum "$out" "segEqV_.*chunk_")
     elab=$(esum "$out" "Elab.command")
+    basecmd=$(cmdsum "$out" "run_sieve")
+    wincmd=$(cmdsum "$out" "run_segment")
     addd=$(esum "$out" "addDecl")
     typec=$(esum "$out" "typechecking")
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
@@ -103,7 +113,8 @@ for round in $(seq 1 "$rounds"); do
     sortms=$(grep -oE 'stripeSort total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s}')
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
-      "elab command ${elab}s | addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
+      "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
+      "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
       "wall $wall | processor ${cpu}s | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
       "batch lemma count $nsteps"
   done
