@@ -5867,6 +5867,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     -- runs did not split that between the sorting and the records. This times the sorting itself,
     -- which answers it without a subtraction.
     let mut sortNanos : Nat := 0
+    -- The marking pass an unsorted batch runs to find the window after it, which the clock above
+    -- used to include, and a bit of each result read so that nothing is left unevaluated.
+    let mut twinNanos : Nat := 0
+    let mut forceAcc : Nat := 0
     while start ≤ fuel do
       let owed := fuel + 1 - start
       let stepN := Nat.min
@@ -5901,19 +5905,25 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let sortRes := if nrec == 0 || treeHere then none
         else some (stripeSort sVal lo wm1 start stepN W nrec)
       let asmRes := if treeHere then some (treeAsmN sVal lo wm1 start stepN W nrec) else none
+      -- Looking at the answer is what forces the work, so each clock below covers what precedes
+      -- it. Reading one bit of a result is enough to force it and costs nothing beside the window.
+      forceAcc := forceAcc + (match asmRes with | some asm => asm.land 1 | none => 0)
+      if let some (_, _, _, expect) := sortRes then
+        if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
+      let t1 ← IO.monoNanosNow
+      sortNanos := sortNanos + (t1 - t0)
       -- The window after this batch is the window with the batch's mask cleared from it, so a
       -- batch that has already assembled its mask needs no second marking pass to find it. Only
-      -- an unsorted batch, which assembles nothing, still runs the twin.
+      -- an unsorted batch, which assembles nothing, still runs the twin. That pass used to sit
+      -- inside the clock above, where it was reported as part of the sort; it is timed apart now.
       let next := if twoPass then segLoopC sVal lo wm1 nb bits start stepN else
         match sortRes, asmRes with
         | some (_, _, _, expect), _ => bits - (expect &&& bits)
         | _, some asm => bits - (asm &&& bits)
         | _, _ => segLoopC sVal lo wm1 nb bits start stepN
-      -- Looking at the answer is what forces the sort, so the time below covers it.
-      if let some (_, _, _, expect) := sortRes then
-        if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
-      let t1 ← IO.monoNanosNow
-      sortNanos := sortNanos + (t1 - t0)
+      forceAcc := forceAcc + next.land 1
+      let t2 ← IO.monoNanosNow
+      twinNanos := twinNanos + (t2 - t1)
       let batchProof :=
         if sortOnly then Lean.reflBoolTrue
         else if treeHere then
@@ -6033,6 +6043,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       start := start + stepN
       i := i + 1
     logInfo m!"stripeSort total {sortNanos / 1000000} ms"
+    logInfo m!"segLoopC total {twinNanos / 1000000} ms (forced {forceAcc})"
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }

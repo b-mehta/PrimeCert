@@ -111,10 +111,12 @@ for round in $(seq 1 "$rounds"); do
     # The emitter's own report of how long it spent sorting batches into slices, which is the part
     # of the non-kernel remainder that the compiled twins are responsible for.
     sortms=$(grep -oE 'stripeSort total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s}')
+    twinms=$(grep -oE 'segLoopC total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s+0}')
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
       "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
       "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
+      "segLoopC ${twinms}ms |" \
       "wall $wall | processor ${cpu}s | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
       "batch lemma count $nsteps"
   done
