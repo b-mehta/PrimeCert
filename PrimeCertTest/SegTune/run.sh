@@ -30,6 +30,16 @@ n=${#cases[@]}
 limit=${LIMIT_KB:-14000000}
 export LEAN_PATH=$(lake env printenv LEAN_PATH)
 
+# These cases call lean directly rather than through lake, so nothing hands it the shared object a
+# precompiled library builds. Without the flag below the emitter's arithmetic runs in the
+# interpreter whatever the lakefile says. The object is absent when the lakefile does not
+# precompile, and the flag is then left off.
+emitlib=.lake/build/lib/libPrimeCert_SieveEmit.so
+plugin=""
+if [ -f "$emitlib" ]; then
+  plugin="--plugin=$emitlib"
+fi
+
 # ksum <file> <pattern>: the sum of the [Kernel] seconds on lines matching the pattern.
 ksum() {
   grep -o "\[Kernel\] \[[0-9.]*\].*$2" "$1" | grep -o '^\[Kernel\] \[[0-9.]*\]' \
@@ -48,7 +58,7 @@ for round in $(seq 1 "$rounds"); do
     f=${cases[$(( (k + round - 1) % n ))]}
     out="out-${TAG}$f-$round.txt"
     tim="time-${TAG}$f-$round.txt"
-    /usr/bin/time -v lean -Dtrace.profiler=true -Dtrace.profiler.threshold=0 $LEAN_FLAGS \
+    /usr/bin/time -v lean $plugin -Dtrace.profiler=true -Dtrace.profiler.threshold=0 $LEAN_FLAGS \
       "PrimeCertTest/SegTune/$f.lean" > "$out" 2> "$tim" &
     tpid=$!
     killed=0

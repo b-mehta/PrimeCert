@@ -22,6 +22,9 @@ arm() {
   local tag=$1
   local commit=$2
   git checkout -q "$commit" -- "${swap[@]}"
+  # An arm whose lakefile precompiles a library builds its shared object again; an arm whose
+  # lakefile does not must not find the other arm's, since the runners load whatever is there.
+  rm -f .lake/build/lib/libPrimeCert_SieveEmit.so
   lake build PrimeCert.SegmentedSieve > /dev/null 2>&1
   if [ "${RUNNER:-run}" = "pair" ]; then
     echo "arm $tag"
