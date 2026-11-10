@@ -421,6 +421,78 @@ the repeated subterms on its own. -/
     (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToTK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
+/-! ### Naming a record's shared quantities by their value
+
+`stripeBatchTK` above writes each repeated subterm of a record once, with `let`. That left the
+work unchanged, which is consistent with the kernel substituting a `let` rather than evaluating
+it: the two forms then reduce through the same terms. The definitions below instead pass each
+shared quantity through `forceK`, whose `Nat.rec` evaluates it before the body sees it, so the
+body is handed a value. Whether that changes anything is for a timing pair to say; they compute
+the same number as `stripeBatchK` either way, and the kernel checks it. -/
+
+/-- `f x`, with `x` evaluated first. `Nat.rec` reduces its major premise before choosing a branch,
+so the body receives a value in place of the term that computes it. -/
+@[expose] public noncomputable def forceK (x : Nat) (f : Nat → Nat) : Nat :=
+  Nat.rec (f Nat.zero) (fun n _ => f n.succ) x
+
+/-- `forceK` names its argument and nothing else. -/
+public theorem forceK_eq {x : Nat} {f : Nat → Nat} : forceK x f = f x := by
+  cases x <;> rfl
+
+/-- `entrySeedK` with the record's position and the divisor it names passed through `forceK`, so
+that a divisor's several records present the same value rather than the same unevaluated term. -/
+@[expose] public noncomputable def entrySeedFK (lo start e : Nat) : Nat :=
+  forceK (e.shiftRight 3) fun i =>
+    forceK (valueK (start.add i)) fun p =>
+      Nat.add
+        ((Nat.beq ((e.land 7).land 1) 0).rec
+          (firstLocK (indexK (p.mul 7)) lo (p.mul 2))
+          (firstLocK (indexK (p.mul 5)) lo (p.mul 2)))
+        (Nat.mul ((e.land 7).shiftRight 1) (p.mul 2))
+
+/-- `stripeEntryK` through `entrySeedFK`, with the seed itself forced so that the slice test and
+the bit it sets read one value. -/
+@[expose] public noncomputable def stripeEntryFK (st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    (forceK (entrySeedFK lo start e) fun s =>
+      (Nat.beq (s.shiftRight 16) k).rec st
+        (st.lor ((Nat.shiftLeft 1 (s.land 65535)).lor
+          (Nat.shiftLeft 1 (entryTallyK len e)))))
+
+/-- `stripeOutK` through `entrySeedFK`. -/
+@[expose] public noncomputable def stripeOutFK (st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 3)).rec st
+    ((Nat.blt Wm1 (entrySeedFK lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
+
+/-- The entries of one slice's list, through the forced entry. -/
+@[expose] public noncomputable def stripeSlotFK (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryFK s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- The entries of the out-of-window list, through the forced entry. -/
+@[expose] public noncomputable def stripeOutSlotFK (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutFK s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` through the forced entry. -/
+@[expose] public noncomputable def stripeUpToFK
+    (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k np).rec
+      (stripeSlotFK c lo start k len slot cnt 0)
+      (stripeOutSlotFK c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- The same assembled number as `stripeBatchK`, with each record's shared quantities named by
+value rather than by the term computing them. -/
+@[expose] public noncomputable def stripeBatchFK
+    (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToFK c lo start len W Wm1 slotW Ls Cs np (np + 1)
+
 /-! ### Dispatching strikes into a tree instead of sorting them into records
 
 The sorted design hands the kernel a list of records and has it place each one. This asks whether
@@ -5305,11 +5377,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 66 then throwError "run_segment_variant: mode {mode} is not 0 to 66"
+  if mode > 67 then throwError "run_segment_variant: mode {mode} is not 0 to 67"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
-        || mode == 64 || mode == 65)
+        || mode == 64 || mode == 65 || mode == 67)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5646,7 +5718,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
     return
-  if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 then
+  if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -5654,7 +5726,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     -- sorting leaves untouched today.
     -- Mode 37 sorts them exactly as mode 34 does but through `stripeBatchTK`, which reaches the
     -- same number with each shared subterm of a record written once, so the pair prices the
-    -- repeated subterms on their own.
+    -- repeated subterms on their own. Mode 67 is the same question asked again through
+    -- `stripeBatchFK`, where the shared quantities are named by value rather than by `let`.
     let mut first := 1
     while 8 * value first ≤ wm1 do
       first := first + 1
@@ -5692,6 +5765,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
         else stripeSort sVal lo wm1 start stepN W 8
       let batchE := mkAppN (mkConst (if mode == 37 then ``stripeBatchTK
+          else if mode == 67 then ``stripeBatchFK
           else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
