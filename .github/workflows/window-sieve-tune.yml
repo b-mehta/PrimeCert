@@ -20,11 +20,10 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Where the tuned elaborator starts to beat the plain one
+      - name: What sharing a divisor's mask across two windows is worth
         run: |
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 2 \
-            YA_Plain YA_Tuned YB_Plain YB_Tuned YC_Plain YC_Tuned
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 V5_TwoBuild V6_TwoShift
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi

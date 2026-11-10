@@ -134,6 +134,33 @@ Emitted beside a batch to price mask construction; it settles no window. -/
         (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
         (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
 
+/-- Two consecutive windows' masks for each divisor of a batch, each built by doubling, joined and
+clamped to the window's width. Emitted beside a batch to price mask construction across windows;
+it settles no window. -/
+@[expose] public noncomputable def orMask2CK (c lo Wm1 n start len W : Nat) : Nat :=
+  len.rec 0 fun i a =>
+    (testBitK c i).rec a
+      (let p : Nat := valueK (start.add i)
+       let d : Nat := p.mul 2
+       a.lor (((buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo d)
+                  (firstLocK (indexK (p.mul 7)) lo d) n).lor
+               (buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) (lo.add W) d)
+                  (firstLocK (indexK (p.mul 7)) (lo.add W) d) n)).land
+              (Nat.sub (Nat.shiftLeft 1 W) 1)))
+
+/-- The same two windows, the second taken from the first by a shift. A divisor's pattern repeats
+every `2 * p` positions, so the window `W` positions along carries the same mask moved back by
+`W % (2 * p)`, provided the first is built one period wider. -/
+@[expose] public noncomputable def orMask2SK (c lo Wm1 n start len W : Nat) : Nat :=
+  len.rec 0 fun i a =>
+    (testBitK c i).rec a
+      (let p : Nat := valueK (start.add i)
+       let d : Nat := p.mul 2
+       let base : Nat := buildMaskCK p (Wm1.add d) (firstLocK (indexK (p.mul 5)) lo d)
+         (firstLocK (indexK (p.mul 7)) lo d) n
+       a.lor ((base.lor (base.shiftRight (Nat.mod W d))).land
+              (Nat.sub (Nat.shiftLeft 1 W) 1)))
+
 /-- `orMaskCK` with the masks built by multiplication. -/
 @[expose] public noncomputable def orMaskMK (c lo Wm1 n start len : Nat) : Nat :=
   len.rec 0 fun i a =>
@@ -5438,10 +5465,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 63 then throwError "run_segment_variant: mode {mode} is not 0 to 63"
+  if mode > 65 then throwError "run_segment_variant: mode {mode} is not 0 to 65"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
-        || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63)
+        || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
+        || mode == 64 || mode == 65)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5483,6 +5511,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- built by doubling and by multiplication respectively, so the pair prices the construction.
   let maskProbe := mode == 62
   let maskMulProbe := mode == 63
+  -- Modes 64 and 65 add, per batch of the smallest band, one equation joining the masks of two
+  -- consecutive windows: 64 builds both by doubling, 65 takes the second from the first by a
+  -- shift. The pair prices sharing a divisor's construction across windows.
+  let twoWinProbe := mode == 64
+  let twoWinShiftProbe := mode == 65
   let tree := mode == 45 || mode == 53 || mode == 54 || derivedStrike || walkProbe || seedProbe
     || bucketProbe
   let wideLeaf := mode == 53 || mode == 54
@@ -5496,7 +5529,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
   let midLong := mode == 57
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong
-    || maskProbe || maskMulProbe
+    || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
@@ -6142,6 +6175,21 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         addSegThm walkName
           (mkSegBeqTrue (mkAppN (mkConst ``walkCountK) #[cE, mkRawNatLit stepN])
             (mkRawNatLit cnt)) Lean.reflBoolTrue
+      if (twoWinProbe || twoWinShiftProbe) && nrec == 0 then
+        let mut acc := 0
+        for j in setBitsLow (sVal >>> start) stepN do
+          let p := value (start + j)
+          let d := p * 2
+          let m1 := buildMaskC p wm1 (firstLoc (index (p * 5)) lo d)
+            (firstLoc (index (p * 7)) lo d) nb
+          let m2 := buildMaskC p wm1 (firstLoc (index (p * 5)) (lo + W) d)
+            (firstLoc (index (p * 7)) (lo + W) d) nb
+          acc := acc ||| ((m1 ||| m2) &&& ((1 <<< W) - 1))
+        let twoName := mkPrivateName env (parent ++ Name.mkSimple s!"stwo_{i}")
+        addSegThm twoName
+          (mkSegBeqTrue (mkAppN (mkConst (if twoWinShiftProbe then ``orMask2SK else ``orMask2CK))
+            #[cE, loE, wE, mkRawNatLit nb, mkRawNatLit start, mkRawNatLit stepN,
+              mkRawNatLit W]) (mkRawNatLit acc)) Lean.reflBoolTrue
       if (maskProbe || maskMulProbe) && nrec == 0 then
         let mut acc := 0
         for j in setBitsLow (sVal >>> start) stepN do
