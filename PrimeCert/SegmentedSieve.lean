@@ -5238,7 +5238,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 65 then throwError "run_segment_variant: mode {mode} is not 0 to 65"
+  if mode > 66 then throwError "run_segment_variant: mode {mode} is not 0 to 66"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
@@ -5301,7 +5301,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let marked := mode == 56
   -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
   let midLong := mode == 57
-  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong
+  -- Mode 66 is mode 28 with the twin that finds the next window reaching it through a byte array
+  -- rather than through a mask per divisor. The kernel checks the same literal either way.
+  let bytesTwin := mode == 66
+  let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || bytesTwin
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
@@ -5916,11 +5919,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       -- batch that has already assembled its mask needs no second marking pass to find it. Only
       -- an unsorted batch, which assembles nothing, still runs the twin. That pass used to sit
       -- inside the clock above, where it was reported as part of the sort; it is timed apart now.
-      let next := if twoPass then segLoopC sVal lo wm1 nb bits start stepN else
+      let twin := fun _ : Unit =>
+        if bytesTwin then segLoopCBytes sVal lo wm1 bits start stepN
+        else segLoopC sVal lo wm1 nb bits start stepN
+      let next := if twoPass then twin () else
         match sortRes, asmRes with
         | some (_, _, _, expect), _ => bits - (expect &&& bits)
         | _, some asm => bits - (asm &&& bits)
-        | _, _ => segLoopC sVal lo wm1 nb bits start stepN
+        | _, _ => twin ()
       forceAcc := forceAcc + next.land 1
       let t2 ← IO.monoNanosNow
       twinNanos := twinNanos + (t2 - t1)

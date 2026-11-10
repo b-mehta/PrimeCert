@@ -250,6 +250,66 @@ public def segAccLoopC (s lo Wm1 n acc start fuel : Nat) : Nat := Id.run do
     a := a ||| buildMaskC p Wm1 A B n
   return a
 
+/-- Join a list of `w0`-bit pieces, least significant first, into one number, combining them in
+pairs rather than shifting each into a full-width accumulator. The loop is bounded by 64 rounds,
+which covers any array this file builds. -/
+public def joinWords (ws : Array Nat) (w0 : Nat) : Nat := Id.run do
+  let mut cur := ws
+  let mut width := w0
+  for _ in [0:64] do
+    if cur.size > 1 then
+      let mut nxt : Array Nat := Array.emptyWithCapacity ((cur.size + 1) / 2)
+      let mut i := 0
+      for _ in [0:(cur.size + 1) / 2] do
+        if i + 1 < cur.size then
+          nxt := nxt.push (cur[i]! ||| (cur[i + 1]! <<< width))
+        else if i < cur.size then
+          nxt := nxt.push cur[i]!
+        i := i + 2
+      cur := nxt
+      width := width * 2
+  return if cur.isEmpty then 0 else cur[0]!
+
+/-- The number a byte array holds, least significant byte first. -/
+public def bytesToNat (ba : ByteArray) : Nat := Id.run do
+  let words := (ba.size + 7) / 8
+  let mut ws : Array Nat := Array.emptyWithCapacity words
+  let mut i := 0
+  for _ in [0:words] do
+    let mut w : Nat := 0
+    for b in [0:8] do
+      if i + b < ba.size then
+        w := w ||| ((ba.get! (i + b)).toNat <<< (8 * b))
+    ws := ws.push w
+    i := i + 8
+  return joinWords ws 64
+
+/-- What `segLoopC` returns, reached through a byte array instead of through masks.
+
+The emitter is not trusted: the kernel checks the literal this produces against `segLoopCK`, so
+this only has to agree, not to agree for the same reason. Clearing a divisor's bits one at a time
+and clearing the union of every divisor's bits come to the same window, so the strikes go into a
+byte array a bit at a time and the whole batch costs one `land` and one `sub` on a window-wide
+number rather than a mask built and applied per divisor.
+
+The progression a divisor contributes is every `b + j * 2p` up to `Wm1`, from each of its two
+starting positions. `buildMaskC` reaches exactly those: its rounds double while `2^(i+1) * p` fits
+in `Wm1`, and `nb` in `runSegmentV` is chosen so the doubling covers the batch's smallest
+divisor. Bits it places above `Wm1` are dropped when the mask meets the window. -/
+public def segLoopCBytes (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
+  let mut ba := ByteArray.mk (Array.replicate (Wm1 / 8 + 1) 0)
+  for i in setBitsLow (s >>> start) fuel do
+    let p := valueE (start + i)
+    let d := p * 2
+    for b in [firstLoc (indexE (p * 5)) lo d, firstLoc (indexE (p * 7)) lo d] do
+      if b ≤ Wm1 then
+        let mut X := b
+        for _ in [0:(Wm1 - b) / d + 1] do
+          ba := ba.set! (X >>> 3) (ba.get! (X >>> 3) ||| UInt8.ofNat (1 <<< (X &&& 7)))
+          X := X + d
+  let mask := bytesToNat ba
+  return seg - (mask &&& seg)
+
 /-- Twin of `segLoopCK`, reading the base primes from the batch's own slice of the base sieve.
 Every batch literal in `runSegmentV` comes from here, and `segLoopK` and `segLoopCK` agree on all
 of them: the seeds and rounds this drops carry bits above `Wm1` only, which `seg` never holds. -/
