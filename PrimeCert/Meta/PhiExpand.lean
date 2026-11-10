@@ -53,6 +53,11 @@ meta def mkNodeType (t B lo hi S : Nat) : Expr :=
   mkAppN (mkConst ``PhiEnclosure)
     #[mkRawNatLit t, mkRawNatLit B, mkRawNatLit lo, mkRawNatLit hi, mkRawNatLit S]
 
+/-- `n ≤ m` for two literals, by the `Bool` comparison the kernel decides. `0 < n` is `1 ≤ n`, so
+this serves for both. -/
+meta def mkLe (n m : Nat) : Expr :=
+  mkApp3 (mkConst ``Nat.le_of_ble_eq_true) (mkRawNatLit n) (mkRawNatLit m) Lean.reflBoolTrue
+
 /-- Add `name : type := value` as a theorem. -/
 meta def addNodeThm (name : Name) (type value : Expr) : MetaM Unit :=
   addDecl <| Declaration.thmDecl { name, levelParams := [], type, value }
@@ -64,7 +69,9 @@ meta partial def emitNode (S : Nat) (ns : Name) (tag : String) (cut : Nat) (dry 
     (seen : IO.Ref (Std.HashMap (Nat × Nat) Node)) (t B : Nat) : MetaM Node := do
   if let some n := (← seen.get)[(t, B)]? then return n
   -- below the cut a branch stops and is answered from outside, by a leaf the sieve produced
-  if cut != 0 && t < cut && B > 1 then
+  -- a bound below 3 sieves out almost nothing, and the leaf machinery wants survivors coprime to
+  -- 6, so such a branch is expanded rather than cut
+  if cut != 0 && t < cut && B ≥ 3 then
     let leafName := ns ++ Name.mkSimple s!"phiLeaf_{t}_{B}"
     match (← getEnv).find? leafName with
     | some info =>
@@ -154,6 +161,66 @@ meta def runPhiExpand (x B scaleExp cut : Nat) : MetaM Unit := do
   let root ← emitNode S ns tag cut false missing seen x B
   logInfo s!"run_phi_expand: phiB {x} {B} in [{root.lo}, {root.hi}] over {S}, \
 {(← seen.get).size} nodes, root {root.name}"
+
+/-- Emit `phiLeaf_{t}_{B}`, the value a cut branch waits on, for a leaf whose height lies below
+the square of its bound. There the survivors above `B` are the primes up to `t`, so the whole
+range is the difference of two runs of the base sieve and no segment is wanted. The two runs must
+already be in scope, from `run_harmonic t e batch` and `run_harmonic B e batch`. -/
+meta def runPhiLeaf (t B scaleExp batch : Nat) : MetaM Unit := do
+  if B < 3 then
+    throwError "run_phi_leaf: the bound {B} is below 3, so the wheel cannot name its survivors"
+  if t + 1 > B * B then
+    throwError "run_phi_leaf: the height {t} is at or above {B * B}, so this leaf wants a segment"
+  if t < B then
+    throwError "run_phi_leaf: the height {t} is below the bound {B}, so the value is 1"
+  let S := 10 ^ scaleExp
+  let ns ← getCurrNamespace
+  let env ← getEnv
+  let read := fun (bound : Nat) ↦ do
+    let nm := `PrimeCert ++ Name.mkSimple s!"primeRecipIcc_{bound}_{scaleExp}_{batch}"
+    let some info := env.find? nm
+      | throwError "run_phi_leaf: no enclosure {nm}; run `run_harmonic {bound} {scaleExp} \
+{batch}` above this command"
+    let some args := info.type.getAppArgs[1:3] |>.toArray.mapM Expr.rawNatLit?
+      | throwError "run_phi_leaf: the enclosure {nm} does not carry its two numerals"
+    pure (args[0]!, args[1]!, nm)
+  let (a₁, c₁, n₁) ← read t
+  let (a₂, c₂, n₂) ← read B
+  if a₁ < a₂ + c₂ then
+    throwError "run_phi_leaf: the two runs do not differ in the direction the leaf needs"
+  let lo := a₁ - a₂ - c₂
+  let cnt := c₁ + c₂
+  let lowEnd := S + lo
+  let highEnd := S + lo + cnt
+  let SE := mkRawNatLit S
+  let tE := mkRawNatLit t
+  let BE := mkRawNatLit B
+  -- the survivors from B+1 to t, as the difference of the two runs
+  let mid := mkAppN (mkConst ``sievedRecipRange_of_two_icc)
+    #[tE, BE, mkRawNatLit a₁, mkRawNatLit c₁, mkRawNatLit a₂, mkRawNatLit c₂, mkRawNatLit lo,
+      mkRawNatLit cnt, SE, mkLe 1 B, mkLe B t, mkLe (t + 1) (B * B),
+      mkConst n₁, mkConst n₂, Lean.reflBoolTrue, Lean.reflBoolTrue]
+  -- nothing at or below B survives it, so the range from 5 joins on with both totals unchanged
+  let whole := mkAppN (mkConst ``sievedRecipRange_add)
+    #[mkRawNatLit 5, mkRawNatLit (B + 1), mkRawNatLit (t + 1), BE, mkRawNatLit 0, mkRawNatLit 0,
+      mkRawNatLit lo, mkRawNatLit cnt, mkRawNatLit lo, mkRawNatLit cnt, SE,
+      Lean.reflBoolTrue, Lean.reflBoolTrue,
+      mkAppN (mkConst ``sievedRecipRange_below)
+        #[mkRawNatLit (B + 1), BE, SE, mkLe (B + 1) (B + 1)],
+      mid, Lean.reflBoolTrue, Lean.reflBoolTrue]
+  let leafName := ns ++ Name.mkSimple s!"phiLeaf_{t}_{B}"
+  addNodeThm leafName (mkNodeType t B lowEnd highEnd S)
+    (mkAppN (mkConst ``phiB_mem_Icc_of_range_scaled)
+      #[tE, BE, mkRawNatLit lo, mkRawNatLit cnt, SE, mkRawNatLit lowEnd, mkRawNatLit highEnd,
+        mkLe 1 t, mkLe 3 B, Lean.reflBoolTrue, whole,
+        Lean.reflBoolTrue, Lean.reflBoolTrue])
+  logInfo s!"run_phi_leaf: phiB {t} {B} in [{lowEnd}, {highEnd}] over {S}, \
+from the runs at {t} and {B}"
+
+/-- `run_phi_leaf t B e batch` emits the leaf a cut branch waits on (see `runPhiLeaf`). -/
+elab "run_phi_leaf" tStx:num bStx:num eStx:num cStx:num : command =>
+  liftTermElabM <|
+    runPhiLeaf tStx.getNat bStx.getNat eStx.getNat cStx.getNat
 
 /-- `run_phi_expand x B e cut` encloses `phiB x B` at scale `10 ^ e`, stopping a branch whose
 height falls below `cut` (see `runPhiExpand`). A `cut` of zero expands everything. -/
