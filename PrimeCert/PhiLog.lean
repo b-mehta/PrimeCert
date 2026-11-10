@@ -6,6 +6,7 @@ Authors: Bhavik Mehta
 module
 
 public import PrimeCert.Phi
+public import PrimeCert.LogEnclosure
 public import Mathlib.NumberTheory.Harmonic.EulerMascheroni
 
 import Mathlib.NumberTheory.Harmonic.Bounds
@@ -51,5 +52,15 @@ public theorem phiB_one_mem_Icc_of_log {t : ℕ} (ht : 0 < t) {L U G₁ G₂ : �
   simp only [Real.eulerMascheroniSeq, Real.eulerMascheroniSeq'] at h1 h2
   rw [if_neg (by omega : ¬ t = 0)] at h2
   exact ⟨by linarith, by linarith⟩
+
+/-- The same leaf, with the two logarithms taken from emitted enclosures at a shared scale. -/
+public theorem phiB_one_mem_Icc_of_logEnclosure {t lo₁ hi₁ lo₂ hi₂ S : ℕ} (ht : 0 < t)
+    (h₁ : LogEnclosure t 1 lo₁ hi₁ S) (h₂ : LogEnclosure (t + 1) 1 lo₂ hi₂ S)
+    {G₁ G₂ : ℝ} (hG₁ : G₁ ≤ Real.eulerMascheroniConstant)
+    (hG₂ : Real.eulerMascheroniConstant ≤ G₂) :
+    ((phiB t 1 : ℚ) : ℝ) ∈ Set.Icc (G₁ + (lo₁ : ℝ) / S) (G₂ + (hi₂ : ℝ) / S) := by
+  refine phiB_one_mem_Icc_of_log ht (logEnclosure_nat t lo₁ hi₁ S h₁).1 ?_ hG₁ hG₂
+  have := (logEnclosure_nat (t + 1) lo₂ hi₂ S h₂).2
+  rwa [Nat.cast_add, Nat.cast_one] at this
 
 end PrimeCert
