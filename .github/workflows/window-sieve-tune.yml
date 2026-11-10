@@ -20,12 +20,15 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: Is the window cost change mine or the runner's, both arms paired here
+      - name: What the per-window divisor count is worth, two windows to a runner
         run: |
-          chmod +x PrimeCertTest/SegTune/run.sh
           chmod +x PrimeCertTest/SegTune/pair.sh
-          chmod +x PrimeCertTest/SegTune/pair-commits.sh
-          RUNNER=pair PrimeCertTest/SegTune/pair-commits.sh HEAD 9df5cde S9_Par1 S9_Par2
+          for round in 1 2 3; do
+            echo "round $round | every divisor to 1e7"
+            PrimeCertTest/SegTune/pair.sh S9_Par1 S9_Par2
+            echo "round $round | the divisors a mid-range window needs"
+            PrimeCertTest/SegTune/pair.sh T3_Low1 T3_Low2
+          done
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
