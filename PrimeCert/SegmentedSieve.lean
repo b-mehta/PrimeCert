@@ -5552,7 +5552,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 72 then throwError "run_segment_variant: mode {mode} is not 0 to 72"
+  if mode > 73 then throwError "run_segment_variant: mode {mode} is not 0 to 73"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -5618,6 +5618,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   let marked := mode == 56
   -- Mode 57 is mode 28 with the two middle bands run in batches of 4096 rather than 512 and 768.
   let midLong := mode == 57
+  -- Mode 73 is mode 28 with every batch the length the call gives, rather than the schedule's.
+  let lenAll := mode == 73
   -- The twin that finds the next window reaches it through a byte array. Mode 66 keeps the older
   -- route, a mask built and subtracted per divisor, so the two can still be timed against each
   -- other; the kernel checks the same literal either way. Measured on a quiet 32 vCPU box, three
@@ -5626,6 +5628,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   -- default and the mask route is kept only for comparison.
   let maskTwin := mode == 66
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
+    || lenAll
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
@@ -6244,8 +6247,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     let mut forceAcc : Nat := 0
     while start ≤ fuel do
       let owed := fuel + 1 - start
+      -- Mode 73 takes the batch length from the call for every batch, where the others take it
+      -- from `batchLen`'s schedule below 700000 and from the call only above it. The schedule's
+      -- 256, 512 and 768 were set long ago; a uniform length lets them be priced against one.
       let stepN := Nat.min
-        (if start < 700000 then (if midLong then batchLenMid start else batchLen start)
+        (if lenAll then step0
+          else if start < 700000 then (if midLong then batchLenMid start else batchLen start)
           else step0) owed
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
