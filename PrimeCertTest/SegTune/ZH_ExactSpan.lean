@@ -12,8 +12,10 @@ public meta import PrimeCert.SegmentedSieve
 
 The other arm of the pair described in `ZG_Doubling`. Mode 69 stops the doubling one round before
 it passes the window and finishes the span with a single shift by a multiple of the divisor's
-period, which leaves the bits inside the window where they are. Simulated over a spread of
-divisors, the mask averages 0.637 of the width the doubling leaves.
+period, which leaves the bits inside the window where they are. Over the divisors this window is
+actually given, the spans total 0.762 of the doubling's, and 0.712 across the small band alone;
+the mean span falls from 1.47 windows to 1.12, and the widest from 2.00 to 1.43. An earlier
+figure of 0.637 came from a spread of divisors chosen by hand and flattered it.
 
 The kernel works out the round count and the final shift itself, from the divisor and the window,
 in operations it reduces directly, so this arm carries no literals the other does not. -/
