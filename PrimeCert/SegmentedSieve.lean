@@ -1657,14 +1657,20 @@ the bits inside the window where they are. -/
 
 /-- `buildMaskCK` with the doubling stopped one round before it passes the window, and the span
 then finished by a single shift. The mask it leaves spans the window and a little over, rather
-than up to twice it. -/
+than up to twice it.
+
+The finishing shift is round 32 of the same fold rather than an operation applied to the fold's
+result. Written the second way the fold appears twice in the term, and whether the kernel
+evaluates such a repeat once or twice is not something measured here; this way the mask is a
+bound value named twice, which is what `buildMaskCK` already does inside its own step. -/
 @[expose] public noncomputable def buildMaskEK (p M A B : Nat) : Nat :=
-  (Nat.rec ((seedK A M).lor (seedK B M))
-    (fun i Mk => ((p.shiftLeft i.succ.succ).ble M.succ).rec Mk
-      (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ)))) 32 : Nat).lor
-    ((Nat.rec ((seedK A M).lor (seedK B M))
-      (fun i Mk => ((p.shiftLeft i.succ.succ).ble M.succ).rec Mk
-        (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ)))) 32 : Nat).shiftLeft (shiftEK p M))
+  Nat.rec ((seedK A M).lor (seedK B M))
+    (fun i Mk =>
+      (Nat.beq i 32).rec
+        (((p.shiftLeft i.succ.succ).ble M.succ).rec Mk
+          (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
+        (Mk.lor (Mk.shiftLeft (shiftEK p M))))
+    33
 
 /-- `segMarkCK` with the mask built to the window's width. -/
 @[expose] public noncomputable def segMarkEK (seg p lo Wm1 : Nat) : Nat :=
