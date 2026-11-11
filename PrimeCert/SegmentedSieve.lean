@@ -336,6 +336,82 @@ seed of every prime it holds. -/
     ((Nat.blt Wm1 (entrySeedK lo start e)).rec st
       (st.lor (Nat.shiftLeft 1 (entryTallyK len e))))
 
+/-! ### A record that closes out the rest of its progression
+
+28.6% of the records above name a strike past the end of the window, and a screen measured that
+their walk is 32% of that band's kernel time. They exist only so that the tally accounts for every
+strike, which is what stops a divisor being skipped. The records below let the last in-window
+record of a progression account for the strikes after it instead, so the out-of-window ones need
+not be emitted at all.
+
+A record is `flag` at bit 15, the position in bits 3 to 14, and the strike in the low three, so a
+batch holds at most 4096 positions where the plain record allows 8192. That is the cost that comes
+with the saving, and it has to be measured apart from it: `ZZ_Len4096` is the plain record at the
+shorter length, so the three arms separate the two changes.
+
+A flagged record earns its tail: the kernel checks that the next strike of its progression really
+is past the end, and contributes nothing if it is not, so flagging early breaks the batch. -/
+
+/-- `entrySeedK` for a record whose position is twelve bits. -/
+@[expose] public noncomputable def entrySeedGK (lo start e : Nat) : Nat :=
+  Nat.add
+    ((Nat.beq ((e.land 7).land 1) 0).rec
+      (firstLocK (indexK ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 7)) lo
+        ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 2))
+      (firstLocK (indexK ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 5)) lo
+        ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 2)))
+    (Nat.mul ((e.land 7).shiftRight 1) ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 2))
+
+/-- The tally bit of a record whose position is twelve bits. -/
+@[expose] public noncomputable def entryTallyGK (len e : Nat) : Nat :=
+  Nat.add 65536 (Nat.add ((e.shiftRight 3).land 4095) (Nat.mul (e.land 7) len))
+
+/-- The tally bits of this record's strike and of every later strike of the same progression. The
+lanes of one progression are two apart, so this walks `w`, `w+2`, `w+4`, `w+6` and keeps those
+that exist. -/
+@[expose] public noncomputable def tailTallyGK (len e : Nat) : Nat :=
+  Nat.rec 0
+    (fun j acc =>
+      ((Nat.add (e.land 7) (Nat.mul 2 j)).ble 7).rec acc
+        (acc.lor (Nat.shiftLeft 1
+          (Nat.add 65536 (Nat.add ((e.shiftRight 3).land 4095)
+            (Nat.mul (Nat.add (e.land 7) (Nat.mul 2 j)) len))))))
+    4
+
+/-- `stripeEntryK` where a flagged record closes out its progression. The flag is honoured only
+when the next strike really is past the end of the window; otherwise the record contributes
+nothing and the batch's tally comes up short. -/
+@[expose] public noncomputable def stripeEntryGK (st c lo start Wm1 k len e : Nat) : Nat :=
+  (testBitK c ((e.shiftRight 3).land 4095)).rec st
+    ((Nat.beq ((entrySeedGK lo start e).shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedGK lo start e).land 65535)).lor
+        ((Nat.beq (e.shiftRight 15) 0).rec
+          ((Nat.ble (Nat.add (entrySeedGK lo start e)
+            ((valueK (start.add ((e.shiftRight 3).land 4095))).mul 2)) Wm1).rec
+              (tailTallyGK len e) 0)
+          (Nat.shiftLeft 1 (entryTallyGK len e))))))
+
+/-- The entries of one slice's list, through the closing-out record. -/
+@[expose] public noncomputable def stripeSlotGK (c lo start Wm1 k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryGK s c lo start Wm1 k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` through the closing-out record. There is no out-of-window list: slice `np` is
+gone, since a progression's tail is accounted for by its last in-window record. -/
+@[expose] public noncomputable def stripeUpToGK
+    (c lo start len W Wm1 slotW Ls Cs n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := stripeSlotGK c lo start Wm1 k len slot cnt 0
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- The assembled number of a batch whose records close out their own progressions. -/
+@[expose] public noncomputable def stripeBatchGK
+    (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToGK c lo start len W Wm1 slotW Ls Cs np
+
 /-- The same seed as `entrySeedK`, written so that the divisor's value and its stride each appear
 once rather than once per use. Timing only, until a measurement says whether the kernel cares. -/
 @[expose] public noncomputable def entrySeedTK (lo start e : Nat) : Nat :=
@@ -5476,7 +5552,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 71 then throwError "run_segment_variant: mode {mode} is not 0 to 71"
+  if mode > 72 then throwError "run_segment_variant: mode {mode} is not 0 to 72"
+  if mode == 72 && len > 4096 then
+    throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
+      4096 positions, not {len}"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
@@ -5818,7 +5897,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       bitsL := next
     return
   if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67
-      || mode == 68 || mode == 71 then
+      || mode == 68 || mode == 71 || mode == 72 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -5864,6 +5943,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         continue
       let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
         else if mode == 71 then SieveEmit.stripeSortW sVal lo wm1 start stepN W 8
+        else if mode == 72 then SieveEmit.stripeSortG sVal lo wm1 start stepN W 8
         else stripeSort sVal lo wm1 start stepN W 8
       -- The join of mode 68 is by depth, so the window's slice count has to be a power of two.
       let npJ := W / 65536
@@ -5878,6 +5958,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         else
           mkAppN (mkConst (if mode == 37 then ``stripeBatchTK
             else if mode == 67 then ``stripeBatchFK
+            else if mode == 72 then ``stripeBatchGK
             else if mode == 40 then ``stripeBatchS else ``stripeBatchK))
           #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
             mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
@@ -5888,8 +5969,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       -- Every mode but 71 asks the tally for all eight lanes of every divisor, which is what
       -- stops one being skipped. Mode 71 drops the records whose strike is past the window, so it
       -- asks only for the lanes it kept; that is why it is a screen and not a candidate.
-      let mut wantV := if mode == 71 then expect >>> W else 0
-      if mode != 71 then
+      -- Mode 72's tally is complete, as every other mode's is, but it is assembled by the records
+      -- that remain rather than one per lane, so the emitter states what it built.
+      let mut wantV := if mode == 71 || mode == 72 then expect >>> W else 0
+      if mode != 71 && mode != 72 then
         for w in [0:8] do
           wantV := wantV ||| (cVal <<< (w * stepN))
       addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue

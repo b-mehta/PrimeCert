@@ -209,6 +209,71 @@ public def stripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
+/-- `stripeSort` emitting only the records whose strike lands inside the window, with the last of
+each progression flagged so that it accounts for the strikes after it.
+
+A record is `flag` at bit 15, the position in bits 3 to 14, the strike in the low three, so a
+batch holds at most 4096 positions. There is no out-of-window list. A progression with no strike
+inside the window has nothing to flag, so its lanes are accounted for by flagging its first record
+anyway, which the kernel accepts because that record's own strike is already past the end. -/
+public def stripeSortG (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate np #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut seen := 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in setBitsLow c len do
+    let p := valueE (start + i)
+    let d := p * 2
+    let b5 := firstLoc (indexE (p * 5)) lo d
+    let b7 := firstLoc (indexE (p * 7)) lo d
+    -- The two progressions are the even and odd lanes; each is walked until it leaves the window.
+    for q in [0:2] do
+      let b := if q = 0 then b5 else b7
+      let lanes := (nrec + 1 - q) / 2
+      let mut last := q
+      let mut any := false
+      for j in [0:lanes] do
+        if b + j * d ≤ Wm1 then
+          last := q + 2 * j
+          any := true
+      -- In this band a progression always has its first strike inside the window, since its start
+      -- is below its period and the period is at most half the window. `any` is therefore always
+      -- true here, and a progression with nothing inside would have no record to carry its tail.
+      if !any then
+        panic! "stripeSortG: a progression with no strike inside the window has no record to flag"
+      for j in [0:lanes] do
+        let w := q + 2 * j
+        let X := b + j * d
+        if X ≤ Wm1 then
+          let flag := if w = last then 1 else 0
+          let e := (flag <<< 15) ||| (i <<< 3) ||| w
+          slots := slots.modify (X >>> 16) (·.push e)
+          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+          -- Each record speaks for its own lane, as the kernel's unflagged branch does.
+          seen := seen ||| (1 <<< (i + w * len))
+          if w = last then
+            -- and the flagged one also for every later lane of its progression.
+            for j2 in [0:lanes] do
+              let w2 := q + 2 * j2
+              if w2 ≥ w then
+                seen := seen ||| (1 <<< (i + w2 * len))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let mut slotW := 16
+  for k in [0:np] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- Twin of `segLoopStripeK`. -/
 public def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc
