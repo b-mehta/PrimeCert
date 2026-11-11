@@ -1682,6 +1682,17 @@ the statement has the same shape as the one it is timed against. -/
   fuel.rec seg fun i b =>
     (testBitK c i).rec b (segMarkEK b (valueK (start.add i)) lo Wm1)
 
+/-- The masks of a batch's divisors joined, each built to the window's width. The window is then
+cleared once for the batch rather than once a divisor. Joining was measured three times against
+masks built by doubling, which span up to twice the window, and lost each time; built to the
+window's width the join carries a narrower number, which is what this asks again. -/
+@[expose] public noncomputable def segAccLoopEK (c lo Wm1 acc start fuel : Nat) : Nat :=
+  fuel.rec acc fun i a =>
+    (testBitK c i).rec a
+      (a.lor (buildMaskEK (valueK (start.add i)) Wm1
+        (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
+        (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2))))
+
 /-- `segMarkCK` with the mask in the closed form of `buildMaskRK`. -/
 @[expose] public noncomputable def segMarkRK (seg p lo Wm1 : Nat) : Nat :=
   clearHitK seg
@@ -5459,7 +5470,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 69 then throwError "run_segment_variant: mode {mode} is not 0 to 69"
+  if mode > 70 then throwError "run_segment_variant: mode {mode} is not 0 to 70"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
@@ -6000,7 +6011,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
     return
-  if mode == 17 || mode == 18 || mode == 22 || mode == 69 then
+  if mode == 17 || mode == 18 || mode == 22 || mode == 69 || mode == 70 then
     -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through
     -- `segLoopSNK`, mode 18 through `segLoopSCK` and mode 22 through `segLoopSRK`, so the three
     -- isolate the mask builder. Mode 69 is mode 18 with the mask built to the window's width
@@ -6012,11 +6023,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let stepN := Nat.min step0 owed
       let next := if mode == 17 then segLoopN sVal lo wm1 rounds bitsT start stepN
         else if mode == 22 then segLoopR sVal lo wm1 bitsT start stepN
-        else if mode == 69 then SieveEmit.segLoopE sVal lo wm1 bitsT start stepN
+        else if mode == 69 || mode == 70 then SieveEmit.segLoopE sVal lo wm1 bitsT start stepN
         else segLoopC sVal lo wm1 rounds bitsT start stepN
       -- The narrower mask is a different construction, so the window it clears is checked against
       -- the window the existing twin clears rather than assumed equal.
-      if mode == 69 && next != segLoopC sVal lo wm1 rounds bitsT start stepN then
+      if (mode == 69 || mode == 70)
+          && next != segLoopC sVal lo wm1 rounds bitsT start stepN then
         throwError "run_segment_variant: the mask built to the window's width cleared a different \
           window from the mask built by doubling, at batch {i}"
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
@@ -6028,6 +6040,18 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         (mkApp2 (mkConst ``Nat.sub)
           (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit stepN)) (mkRawNatLit 1))
       addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
+      if mode == 70 then
+        -- The batch's masks joined, then the window cleared once rather than once a divisor.
+        let acc := SieveEmit.segAccLoopE sVal lo wm1 0 start stepN
+        let accE := mkAppN (mkConst ``segAccLoopEK)
+          #[cE, loE, wE, mkRawNatLit 0, mkRawNatLit start, mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue accE (mkRawNatLit acc)) Lean.reflBoolTrue
+        let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+        let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsT)
+          (mkApp2 (mkConst ``Nat.land) (mkRawNatLit bitsT) (mkRawNatLit acc))
+        addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsT := next
+        continue
       let batchE := if mode == 22 then
           mkAppN (mkConst ``segLoopSRK)
             #[cE, loE, wE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]

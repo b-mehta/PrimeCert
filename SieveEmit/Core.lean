@@ -351,6 +351,16 @@ public def segLoopE (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
     b := segMarkE b (valueE (start + i)) lo Wm1
   return b
 
+/-- Twin of `segAccLoopEK`. -/
+public def segAccLoopE (s lo Wm1 acc start fuel : Nat) : Nat := Id.run do
+  let mut a := acc
+  for i in setBitsLow (s >>> start) fuel do
+    let p := valueE (start + i)
+    let A := firstLoc (indexE (p * 5)) lo (p * 2)
+    let B := firstLoc (indexE (p * 7)) lo (p * 2)
+    a := a ||| buildMaskE p Wm1 A B
+  return a
+
 /-! ## The thirty wheel's twins
 
 Prototype, matching the kernel definitions of the same names. Nothing here is proved sound; it
