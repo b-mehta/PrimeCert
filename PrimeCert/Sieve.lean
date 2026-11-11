@@ -15,8 +15,13 @@ reduction. The state is one natural number used as a bitset, `M` is its top inde
 
 namespace PrimeCert.Sieve
 
-/-- Whether bit `i` of `b` is set (`testBitK_eq_testBit` in `SieveCorrect`). -/
-@[expose] public def testBitK (b i : Nat) : Bool := Nat.ble 1 (b.land (Nat.shiftLeft 1 i))
+/-- Whether bit `i` of `b` is set (`testBitK_eq_testBit` in `SieveCorrect`).
+
+The probe comes first in the `land`. The kernel's big-`Nat` path takes its first operand by value
+and reads the second in place (`mpz operator&` in `src/runtime/mpz.h` of v4.33.0, reached from
+`lean_nat_big_land` in `src/runtime/object.cpp`), so with the bitset first every bit test copies
+the whole bitset where this copies one limb. -/
+@[expose] public def testBitK (b i : Nat) : Bool := Nat.ble 1 ((Nat.shiftLeft 1 i).land b)
 
 /-- The number sitting at coprime-to-6 index `k`: `0↦1, 1↦5, 2↦7, 3↦11, 4↦13, …`. -/
 @[expose] public def value (k : Nat) : Nat := (k * 3 + 1) + k % 2
