@@ -310,6 +310,47 @@ public def segLoopCBytes (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
   let mask := bytesToNat ba
   return seg - (mask &&& seg)
 
+/-! ## A mask built to the window's width
+
+Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count and final shift
+those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
+against the window `segLoopC` produces and refuses to emit if they differ. -/
+
+/-- Twin of `spanEK`. -/
+public def spanE (p M : Nat) : Nat := Id.run do
+  let mut s := p * 2
+  for i in [0:32] do
+    if (p <<< (i + 2)) ≤ M + 1 then
+      s := s * 2
+  return s
+
+/-- Twin of `shiftEK`. -/
+public def shiftE (p M : Nat) : Nat :=
+  (p * 2) * ((M + 1 - spanE p M + (p * 2 - 1)) / (p * 2))
+
+/-- Twin of `buildMaskEK`. -/
+public def buildMaskE (p M A B : Nat) : Nat := Id.run do
+  let mut m := seedC A M ||| seedC B M
+  for i in [0:32] do
+    if (p <<< (i + 2)) ≤ M + 1 then
+      m := m ||| (m <<< (p <<< (i + 1)))
+  return m ||| (m <<< shiftE p M)
+
+/-- Twin of `segMarkEK`. -/
+public def segMarkE (seg p lo Wm1 : Nat) : Nat :=
+  let A := firstLoc (indexE (p * 5)) lo (p * 2)
+  let B := firstLoc (indexE (p * 7)) lo (p * 2)
+  let mask := if p * 2 ≤ Wm1 then buildMaskE p Wm1 A B else seedC A Wm1 ||| seedC B Wm1
+  let hit := seg &&& mask
+  if hit = 0 then seg else seg - hit
+
+/-- Twin of `segLoopEK`. -/
+public def segLoopE (s lo Wm1 seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  for i in setBitsLow (s >>> start) fuel do
+    b := segMarkE b (valueE (start + i)) lo Wm1
+  return b
+
 /-! ## The thirty wheel's twins
 
 Prototype, matching the kernel definitions of the same names. Nothing here is proved sound; it
