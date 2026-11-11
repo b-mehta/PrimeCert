@@ -167,6 +167,48 @@ public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × N
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
+/-- `stripeSort` with the records whose strike falls past the window left out, and the tally
+asking only for the ones that remain.
+
+Screening only, and **not sound as it stands**: what stops a divisor being skipped is that the
+tally accounts for every strike, and this accounts only for the strikes inside the window. It
+exists to measure what dropping those records could be worth before the sound version is designed,
+since that version needs a flag bit in the record, which would cap a batch at 4096 positions where
+the length is tuned to 8192. -/
+public def stripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate np #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut seen := 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in setBitsLow c len do
+    let p := valueE (start + i)
+    let d := p * 2
+    let b5 := firstLoc (indexE (p * 5)) lo d
+    let b7 := firstLoc (indexE (p * 7)) lo d
+    for w in [0:nrec] do
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
+      if X ≤ Wm1 then
+        slots := slots.modify (X >>> 16) (·.push (8 * i + w))
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        -- The tally bit of a record that is kept, so the two sides ask for the same set.
+        seen := seen ||| (1 <<< (i + w * len))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let mut slotW := 16
+  for k in [0:np] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- Twin of `segLoopStripeK`. -/
 public def segLoopStripe (s lo _Wm1 base acc start fuel : Nat) : Nat := Id.run do
   let mut a := acc

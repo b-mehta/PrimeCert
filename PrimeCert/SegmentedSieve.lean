@@ -5470,11 +5470,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 70 then throwError "run_segment_variant: mode {mode} is not 0 to 70"
+  if mode > 71 then throwError "run_segment_variant: mode {mode} is not 0 to 71"
   if (mode == 28 || mode == 34 || mode == 37 || mode == 38 || mode == 39 || mode == 40
         || mode == 45 || mode == 53 || mode == 54 || mode == 55 || mode == 57 || mode == 58
         || mode == 59 || mode == 60 || mode == 61 || mode == 62 || mode == 63
-        || mode == 64 || mode == 65 || mode == 67 || mode == 68)
+        || mode == 64 || mode == 65 || mode == 67 || mode == 68 || mode == 71)
       && len > 8192 then
     throwError "run_segment_variant: a record is 16 bits, of which three name which strike, so a \
       sorted batch holds at most 8192 positions, not {len}"
@@ -5812,7 +5812,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       bitsL := next
     return
   if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67
-      || mode == 68 then
+      || mode == 68 || mode == 71 then
     -- Measurement only, over the band whose divisors have their quadruple inside the segment and
     -- their octuple past it, so each strikes at most four times per progression and eight records
     -- name every strike. Mode 34 sorts them, mode 35 marks them as the sieve does today. This is
@@ -5857,6 +5857,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         bitsL := next
         continue
       let (ls, cs, slotW, expect) := if mode == 40 then stripeSortS sVal lo wm1 start stepN W 8
+        else if mode == 71 then SieveEmit.stripeSortW sVal lo wm1 start stepN W 8
         else stripeSort sVal lo wm1 start stepN W 8
       -- The join of mode 68 is by depth, so the window's slice count has to be a power of two.
       let npJ := W / 65536
@@ -5878,9 +5879,13 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
-      let mut wantV := 0
-      for w in [0:8] do
-        wantV := wantV ||| (cVal <<< (w * stepN))
+      -- Every mode but 71 asks the tally for all eight lanes of every divisor, which is what
+      -- stops one being skipped. Mode 71 drops the records whose strike is past the window, so it
+      -- asks only for the lanes it kept; that is why it is a screen and not a candidate.
+      let mut wantV := if mode == 71 then expect >>> W else 0
+      if mode != 71 then
+        for w in [0:8] do
+          wantV := wantV ||| (cVal <<< (w * stepN))
       addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
       let next := bitsL - (expect &&& bitsL)
       let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
