@@ -1644,16 +1644,16 @@ soundness is proved; the kernel checks each literal against the definition here.
 
 /-- The span the doubling below finishes with: the period `2 * p`, doubled while a further
 doubling would still fit inside the window. Scalar, so it costs nothing beside the mask. -/
-@[expose] public noncomputable def spanEK (p M : Nat) : Nat :=
+@[expose] public noncomputable def spanEK (p M n : Nat) : Nat :=
   Nat.rec (p.mul 2)
-    (fun i s => ((p.shiftLeft i.succ.succ).ble M.succ).rec s (s.mul 2)) 32
+    (fun i s => ((p.shiftLeft i.succ.succ).ble M.succ).rec s (s.mul 2)) n
 
 /-- The shift that finishes the span: the smallest multiple of the period that lifts `spanEK` to
 the window's width. The pattern repeats with that period, so shifting by a multiple of it leaves
 the bits inside the window where they are. -/
-@[expose] public noncomputable def shiftEK (p M : Nat) : Nat :=
+@[expose] public noncomputable def shiftEK (p M n : Nat) : Nat :=
   (p.mul 2).mul
-    (Nat.div (Nat.add (Nat.sub M.succ (spanEK p M)) (Nat.sub (p.mul 2) 1)) (p.mul 2))
+    (Nat.div (Nat.add (Nat.sub M.succ (spanEK p M n)) (Nat.sub (p.mul 2) 1)) (p.mul 2))
 
 /-- `buildMaskCK` with the doubling stopped one round before it passes the window, and the span
 then finished by a single shift. The mask it leaves spans the window and a little over, rather
@@ -1663,41 +1663,41 @@ The finishing shift is round 32 of the same fold rather than an operation applie
 result. Written the second way the fold appears twice in the term, and whether the kernel
 evaluates such a repeat once or twice is not something measured here; this way the mask is a
 bound value named twice, which is what `buildMaskCK` already does inside its own step. -/
-@[expose] public noncomputable def buildMaskEK (p M A B : Nat) : Nat :=
+@[expose] public noncomputable def buildMaskEK (p M A B n : Nat) : Nat :=
   Nat.rec ((seedK A M).lor (seedK B M))
     (fun i Mk =>
-      (Nat.beq i 32).rec
+      (Nat.beq i n).rec
         (((p.shiftLeft i.succ.succ).ble M.succ).rec Mk
           (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
-        (Mk.lor (Mk.shiftLeft (shiftEK p M))))
-    33
+        (Mk.lor (Mk.shiftLeft (shiftEK p M n))))
+    n.succ
 
 /-- `segMarkCK` with the mask built to the window's width. -/
-@[expose] public noncomputable def segMarkEK (seg p lo Wm1 : Nat) : Nat :=
+@[expose] public noncomputable def segMarkEK (seg p lo Wm1 n : Nat) : Nat :=
   ((p.mul 2).ble Wm1).rec
     (clearHitK seg
       (seg.land ((seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
         (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1))))
     (clearHitK seg
       (seg.land (buildMaskEK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
-        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)))))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)))
 
 /-- `segLoopSCK` marking with `segMarkEK`, reading the divisors from the batch's own slice so that
 the statement has the same shape as the one it is timed against. -/
-@[expose] public noncomputable def segLoopEK (c lo Wm1 seg start fuel : Nat) : Nat :=
+@[expose] public noncomputable def segLoopEK (c lo Wm1 n seg start fuel : Nat) : Nat :=
   fuel.rec seg fun i b =>
-    (testBitK c i).rec b (segMarkEK b (valueK (start.add i)) lo Wm1)
+    (testBitK c i).rec b (segMarkEK b (valueK (start.add i)) lo Wm1 n)
 
 /-- The masks of a batch's divisors joined, each built to the window's width. The window is then
 cleared once for the batch rather than once a divisor. Joining was measured three times against
 masks built by doubling, which span up to twice the window, and lost each time; built to the
 window's width the join carries a narrower number, which is what this asks again. -/
-@[expose] public noncomputable def segAccLoopEK (c lo Wm1 acc start fuel : Nat) : Nat :=
+@[expose] public noncomputable def segAccLoopEK (c lo Wm1 n acc start fuel : Nat) : Nat :=
   fuel.rec acc fun i a =>
     (testBitK c i).rec a
       (a.lor (buildMaskEK (valueK (start.add i)) Wm1
         (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
-        (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2))))
+        (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
 
 /-- `segMarkCK` with the mask in the closed form of `buildMaskRK`. -/
 @[expose] public noncomputable def segMarkRK (seg p lo Wm1 : Nat) : Nat :=
@@ -6034,7 +6034,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let stepN := Nat.min step0 owed
       let next := if mode == 17 then segLoopN sVal lo wm1 rounds bitsT start stepN
         else if mode == 22 then segLoopR sVal lo wm1 bitsT start stepN
-        else if mode == 69 || mode == 70 then SieveEmit.segLoopE sVal lo wm1 bitsT start stepN
+        else if mode == 69 || mode == 70 then
+          SieveEmit.segLoopE sVal lo wm1 rounds bitsT start stepN
         else segLoopC sVal lo wm1 rounds bitsT start stepN
       -- The narrower mask is a different construction, so the window it clears is checked against
       -- the window the existing twin clears rather than assumed equal.
@@ -6053,9 +6054,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       addSegThm chunkName (mkSegBeqTrue sliceE cE) Lean.reflBoolTrue
       if mode == 70 then
         -- The batch's masks joined, then the window cleared once rather than once a divisor.
-        let acc := SieveEmit.segAccLoopE sVal lo wm1 0 start stepN
+        let acc := SieveEmit.segAccLoopE sVal lo wm1 rounds 0 start stepN
         let accE := mkAppN (mkConst ``segAccLoopEK)
-          #[cE, loE, wE, mkRawNatLit 0, mkRawNatLit start, mkRawNatLit stepN]
+          #[cE, loE, wE, nE, mkRawNatLit 0, mkRawNatLit start, mkRawNatLit stepN]
         addSegThm stepName (mkSegBeqTrue accE (mkRawNatLit acc)) Lean.reflBoolTrue
         let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
         let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsT)
@@ -6068,7 +6069,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
             #[cE, loE, wE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
         else if mode == 69 then
           mkAppN (mkConst ``segLoopEK)
-            #[cE, loE, wE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
+            #[cE, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
         else
           mkAppN (mkConst (if mode == 17 then ``segLoopSNK else ``segLoopSCK))
             #[cE, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]
