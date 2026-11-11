@@ -22,6 +22,10 @@ Measure the ceiling first and design that only if the ceiling is worth it. -/
 
 namespace PrimeCert.SegTune.ZU_AllRecords
 
+-- The band reaches divisors up to 1048575, past the default sieve's million, so the larger base
+-- has to be built here rather than only named.
+run_sieve 10000000
+
 run_segment_variant 34 100000000000001 4194304 333333 8192 10000000
 
 end PrimeCert.SegTune.ZU_AllRecords

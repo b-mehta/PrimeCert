@@ -23,6 +23,9 @@ percent. If the measured gap is well under that, the sound version is not worth 
 
 namespace PrimeCert.SegTune.ZV_WindowRecords
 
+-- As in `ZU_AllRecords`: the band's divisors run past the default sieve's million.
+run_sieve 10000000
+
 run_segment_variant 71 100000000000001 4194304 333333 8192 10000000
 
 end PrimeCert.SegTune.ZV_WindowRecords
