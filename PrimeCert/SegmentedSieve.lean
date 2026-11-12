@@ -593,6 +593,91 @@ lane count times the batch length is 65536 in all three. -/
     (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToXK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
+/-! ### The sorted batch with the lane width left open
+
+The three families above bake the lane width into every definition, so each band width has meant a
+fresh copy of eight definitions and of the proofs over them. These take the width as an argument.
+
+The point of them is the four `rfl`s at the end: the families above are *definitionally* these at
+`lw = 3`, `4` and `5`. So a proof about `stripeBatchLK` applies to the band the sieve runs today
+without that band's kernel terms changing at all, and the emitter goes on naming `stripeBatchK`
+exactly as it does now. Nothing has to be measured again to use them. -/
+
+/-- The mask that keeps a record's lane: `2 ^ lw - 1`. -/
+@[expose] public noncomputable def laneMaskK (lw : Nat) : Nat :=
+  Nat.sub (Nat.shiftLeft 1 lw) 1
+
+/-- `entrySeedK` with the lane width left open. -/
+@[expose] public noncomputable def entrySeedLK (lw lo start e : Nat) : Nat :=
+  Nat.add
+    ((Nat.beq ((e.land (laneMaskK lw)).land 1) 0).rec
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight lw))).mul 7)) lo
+        ((valueK (start.add (e.shiftRight lw))).mul 2))
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight lw))).mul 5)) lo
+        ((valueK (start.add (e.shiftRight lw))).mul 2)))
+    (Nat.mul ((e.land (laneMaskK lw)).shiftRight 1)
+      ((valueK (start.add (e.shiftRight lw))).mul 2))
+
+/-- `entryTallyK` with the lane width left open. -/
+@[expose] public noncomputable def entryTallyLK (lw len e : Nat) : Nat :=
+  Nat.add 65536 (Nat.add (e.shiftRight lw) (Nat.mul (e.land (laneMaskK lw)) len))
+
+/-- `stripeEntryK` with the lane width left open. -/
+@[expose] public noncomputable def stripeEntryLK (lw st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight lw)).rec st
+    ((Nat.beq ((entrySeedLK lw lo start e).shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedLK lw lo start e).land 65535)).lor
+        (Nat.shiftLeft 1 (entryTallyLK lw len e)))))
+
+/-- `stripeOutK` with the lane width left open. -/
+@[expose] public noncomputable def stripeOutLK (lw st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight lw)).rec st
+    ((Nat.blt Wm1 (entrySeedLK lw lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyLK lw len e))))
+
+/-- `stripeSlotK` with the lane width left open. -/
+@[expose] public noncomputable def stripeSlotLK (lw c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryLK lw s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeOutSlotK` with the lane width left open. -/
+@[expose] public noncomputable def stripeOutSlotLK
+    (lw c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutLK lw s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` with the lane width left open. -/
+@[expose] public noncomputable def stripeUpToLK
+    (lw c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k np).rec
+      (stripeSlotLK lw c lo start k len slot cnt 0)
+      (stripeOutSlotLK lw c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- `stripeBatchK` with the lane width left open. -/
+@[expose] public noncomputable def stripeBatchLK
+    (lw c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToLK lw c lo start len W Wm1 slotW Ls Cs np (np + 1)
+
+/-- The three-bit family is this one at `lw = 3`, definitionally. -/
+public theorem stripeBatchLK_three {c lo start len W Wm1 slotW Ls Cs np : Nat} :
+    stripeBatchLK 3 c lo start len W Wm1 slotW Ls Cs np
+      = stripeBatchK c lo start len W Wm1 slotW Ls Cs np := rfl
+
+/-- The four-bit family is this one at `lw = 4`, definitionally. -/
+public theorem stripeBatchLK_four {c lo start len W Wm1 slotW Ls Cs np : Nat} :
+    stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np
+      = stripeBatchHK c lo start len W Wm1 slotW Ls Cs np := rfl
+
+/-- The five-bit family is this one at `lw = 5`, definitionally. -/
+public theorem stripeBatchLK_five {c lo start len W Wm1 slotW Ls Cs np : Nat} :
+    stripeBatchLK 5 c lo start len W Wm1 slotW Ls Cs np
+      = stripeBatchXK c lo start len W Wm1 slotW Ls Cs np := rfl
+
 /-- The entries of one slice's list, through the shared-subterm entry. -/
 @[expose] public noncomputable def stripeSlotTK (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
