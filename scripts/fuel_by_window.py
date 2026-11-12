@@ -78,8 +78,14 @@ FULL_B = 10**7                   # divisors the top window needs
 #
 # The split below is the measured one. `eight` and `four` share the sorted row because `run.sh`
 # reports them together; they are split evenly, which is the one guess left in this model.
+#
+# **Absolute seconds are host-dependent, by more than any change measured here.** Three fresh
+# c7i.8xlarge boxes ran the same file at 173 s, 177.5-184.1 s and 226 s. The last was checked and
+# is not explained by flags: `-Dtrace.profiler=true -Dtrace.profiler.threshold=0` cost nothing
+# measurable (178.1/177.7 against 177.5/184.1, alternated A B B A on one box). So **compare arms
+# only within one job on one box**, and read the figure below as 175-180 rather than exact.
 _SPLIT = {"small": 45.35, "eight": 47.85 / 2, "four": 47.85 / 2, "wide": 61.75}
-_PAIRED = 173.5                  # processor seconds for one window, measured alone
+_PAIRED = 178.0                  # processor seconds for one window alone; range 173-184 across hosts
 _SCALE = _PAIRED / sum(_SPLIT.values())
 COST = {k: v * _SCALE for k, v in _SPLIT.items()}
 OTHER = 0.0
@@ -152,7 +158,8 @@ SPEEDUP = 1.0
 def main() -> None:
     top = window_cost(FULL_B)
     print(f"primes per band: {PI}")
-    print(f"one window at the top of 1..1e14: {top:.1f} processor seconds (measured 2026-11-12)")
+    print(f"one window at the top of 1..1e14: {top:.1f} processor seconds "
+          f"(measured 2026-11-12; hosts vary 173-184)")
     print(f"windows a {RUNNER_GB:.0f} GB runner holds: {WINDOWS_PER_RUNNER} "
           f"(measured: 1.83 GB a copy over a 1.3 GB fixed part)")
     print()
