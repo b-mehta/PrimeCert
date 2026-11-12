@@ -21,7 +21,27 @@ Measured in isolation on 2026-11-12, that band alone came to kernel 22.59-22.88 
 arms in one job to resolve: hosts vary by far more than that.
 
 `PrimeCertTest.LaneChain` is imported because `stripeStepBand16` lives there; the emitter names
-that import if it is missing. -/
+that import if it is missing.
+
+**Measured 2026-11-12, and mode 82 loses. Do not land it.** Both arms in one job, fresh
+c7i.8xlarge, `run.sh 3`, load about 1, ranges not overlapping:
+
+|                     | mode 28         | mode 82         |
+| kernel total        | 161.2-163.3 s   | 166.6-168.1 s   |
+| batch lemmas        | 44.3-44.6       | 25.1-25.2       |
+| sorted batch lemmas | 49.3-49.5       | 72.3-73.5       |
+| processor           | 177.7-179.7 s   | 184.0-185.6 s   |
+| peak                | 2.60 GB         | 2.70 GB         |
+
+About **3% more kernel, 3.4% more processor, 4% more peak**. The masked band does fall by 19.3 s,
+exactly as intended, but the sorted band rises by 23.5 s, so sorting that octave costs more than
+the masks it replaces.
+
+**Why the isolated pair said otherwise.** `ZZV_Lane16` against `ZZW_Lane16Mask` ran both arms at
+batch length 4096, where sorting won by 13% of that band. Production reaches that band through the
+graded schedule, at 256 to 768. The isolated verdict was real at 4096 and did not transfer, which
+is the same trap as the void batch-length lead of 2026-11-11: **measure in the shape a run uses, or
+the number does not carry.** -/
 
 namespace PrimeCert.SegTune.ZZJ_FullWindow82
 

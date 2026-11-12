@@ -25,9 +25,17 @@ emitter sorted, so a green run also says the records decode the way they were pa
 **Measured 2026-11-12, and sorting wins on all three figures.** Fresh c7i.8xlarge, `run.sh 3`,
 load about 1. Sorted: kernel 22.59-22.88 s, processor 24.3-24.6 s, peak 1.84 GB. Masked
 (`ZZW_Lane16Mask`): kernel 25.95-26.25 s, processor 38.4-38.9 s, peak 5.28 GB. That is 13% less
-kernel, 37% less processor and under four tenths of the peak, and the peak is the figure that sets
-how many windows fit on a machine. So the sorted route is ahead an octave below the band it covers
-today, and the question worth asking next is how far down it stays ahead. -/
+kernel, 37% less processor and under four tenths of the peak.
+
+**That verdict did not transfer, and the band was not landed.** Both arms here run at batch length
+4096. Production reaches this band through the graded schedule, at 256 to 768, and measured there
+(`ZZJ_FullWindow82` against `ZZH_FullWindow28`, both arms in one job at the full divisor set)
+sorting the octave **loses** by about 3% of a window's kernel: the masked band falls 19.3 s and the
+sorted band rises 23.5 s.
+
+So read this pair as "sorting wins this band *at 4096*", which is true and useless, because no run
+uses 4096 here. **A band comparison has to use the batch length the schedule actually gives that
+band.** -/
 
 namespace PrimeCert.SegTune.ZZV_Lane16
 
