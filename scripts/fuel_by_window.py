@@ -124,11 +124,23 @@ def range_cost(n: int) -> tuple[int, float, float]:
 # with it off at 1.64 GB for the same processor seconds (measured alternated on a quiet box).
 # `run.sh` turns it off.
 #
-# At the full divisor set a window peaks at 2.61 GB rather than the 1.64 measured at a tenth of
-# them, so a 14 GB runner holds five. **That figure is the peak of a window measured alone**; what
-# several windows peak at while sharing a machine has not been measured, and it is the one number
-# here most likely to be wrong.
-WINDOWS_PER_RUNNER = 5
+# Measured 2026-11-12 on a fresh c7i.8xlarge, copies of `ZZ9_FullWindow` run together in batches
+# of 1, 4, 8, 8, 4, 1 with a 120 s settle:
+#
+#     copies | per-process max RSS | machine used peak | user s per copy
+#        1   |      2.58 GB        |     3.10 GB       |   225.2-225.9
+#        4   |      2.55 GB        |     8.56-8.59 GB  |   235.7-240.3
+#        8   |      2.54-2.57 GB   |    15.86-15.91 GB |   256.0-260.7
+#
+# **The peak per window does not climb with concurrency**, which was the open question. The machine
+# total grows by about 1.83 GB a copy, not 2.55, because the shared oleans are mapped once; the
+# fixed part is about 1.3 GB. So copies fitting in `R` gigabytes is `(R - 1.3) / 1.83`, which is
+# six on a 14 GB runner and core-bound rather than memory-bound on a 61 GB box.
+#
+# Not modelled here: CPU per copy rises with concurrency, 6% at four and 15% at eight, so the
+# figures below are optimistic by roughly that much at those packings. Beyond eight it is unmeasured.
+RUNNER_GB = 14.0
+WINDOWS_PER_RUNNER = int((RUNNER_GB - 1.3) / 1.83)
 
 # The anchor above is now a current measurement rather than a historical one: it was taken after
 # the byte-array route, the allocator settings, the operand order, clamped marking and the banded
@@ -141,7 +153,8 @@ def main() -> None:
     top = window_cost(FULL_B)
     print(f"primes per band: {PI}")
     print(f"one window at the top of 1..1e14: {top:.1f} processor seconds (measured 2026-11-12)")
-    print(f"windows a runner holds: {WINDOWS_PER_RUNNER} (from a 2.61 GB peak measured alone)")
+    print(f"windows a {RUNNER_GB:.0f} GB runner holds: {WINDOWS_PER_RUNNER} "
+          f"(measured: 1.83 GB a copy over a 1.3 GB fixed part)")
     print()
     print("  N        windows      s/window   runner-years   six-hour jobs   at two a runner")
     for e in (11, 12, 13, 14):
