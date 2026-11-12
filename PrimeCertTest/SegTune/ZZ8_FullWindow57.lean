@@ -20,9 +20,18 @@ Those figures predate clamped marking and the banded route reaching `run_segment
 landed on 2026-11-12 and took a window from about 86 s of kernel to 161-163, so the gap has to be
 re-measured against today's mode 28 rather than assumed to have survived.
 
-It also bears on why `ZZJ_FullWindow82` lost: the sixteen-record octave was ahead of its mask at
-batch length 4096 and behind it at the schedule's 512, and 4096 over the middle bands is exactly
-what this mode gives. If this wins, mode 82 is worth asking again on top of it. -/
+**Read the pair on windows per machine-hour, not seconds per window.** Longer batches buy time and
+cost peak memory, and a run packs windows onto a machine, so the figure that decides is
+`min(RAM / peak, cores)` times the rate. That is what the batch-length sweep of 2026-11-11 settled,
+and reading it the other way is what made an earlier uniform-length lead look real. Note that sweep
+compared the graded schedule against *uniform* lengths and never tested `batchLenMid`, so this
+pair is not a repeat of it. The 2026-11-07 run had mode 57 at a **lower** peak than its comparison
+(2.73 GB against 4.21), but that comparison was uniform 8192, not today's default; `run.sh` reports
+peak for both arms, so take it from there rather than from either of those.
+
+This does not bear on `ZZJ_FullWindow82`. `batchLenMid`'s tiers break at base index 174762 and the
+sixteen-record octave sits at 87381-174762, so it stays at 512 under this mode too, and that
+octave is settled anyway. -/
 
 namespace PrimeCert.SegTune.ZZ8_FullWindow57
 
