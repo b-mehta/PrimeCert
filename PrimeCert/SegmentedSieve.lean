@@ -6290,6 +6290,20 @@ meta def batchLenLow (start : Nat) : Nat :=
   else if start < 700000 then 768
   else 3072
 
+/-- The same four lengths, on boundaries that follow the bands rather than cutting across them.
+
+`batchLen`'s tiers break at 20000, 300000 and 700000, while the bands break at `index (Wm1 / 8)`,
+`index (Wm1 / 4)` and `index (Wm1 / 2)` — at a 4194304 window, 174762, 349524 and 699050. Only the
+last pair nearly agree. So today the masked band spans two tiers, the eight-record band spans two
+more, and no band is given a single length. This gives each band one, which is what tuning a band
+at a time assumes it already has. Taken from `Wm1` rather than written as literals, so it is right
+at any width. -/
+meta def batchLenBand (wm1 start : Nat) : Nat :=
+  if start < index (wm1 / 8) then 256
+  else if start < index (wm1 / 4) then 512
+  else if start < index (wm1 / 2) then 768
+  else 3072
+
 /-- `batchLen` with longer batches over the two middle bands, which hold the divisors striking the
 window four or eight times and span wheel indices of about 174762 to 699050. The shorter tiers
 there were set when four files shared a runner; two files now hold 7.67 GB summed. -/
@@ -6393,7 +6407,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 84 then throwError "run_segment_variant: mode {mode} is not 0 to 84"
+  if mode > 85 then throwError "run_segment_variant: mode {mode} is not 0 to 85"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6475,12 +6489,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   let lane16 := mode == 82
   let maskTwin := mode == 66
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
-    || lenAll || lane16 || mode == 83 || mode == 84
+    || lenAll || lane16 || mode == 83 || mode == 84 || mode == 85
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   -- Mode 84 is mode 28 with `batchLenLow`: the bottom tier at 1024 in place of 256, nothing else.
   -- It is the last of the schedule's four tiers to be varied on its own.
   let lowLong := mode == 84
+  -- Mode 85 keeps the four lengths and moves the boundaries onto the band edges, so that each band
+  -- is given one length. The values have been varied a tier at a time; the boundaries never have.
+  let bandTier := mode == 85
   -- Mode 83 is mode 28 with `batchLenWide`, which differs from `batchLen` in one tier: 1536 over
   -- the wide band in place of 3072. Mode 21 already selects that schedule but without the sorted
   -- route, so it cannot say what the batch length alone is worth over the band that now holds the
@@ -7502,6 +7519,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     let owed := fuel + 1 - start
     let stepN := Nat.min
       (if lowLong then batchLenLow start
+        else if bandTier then batchLenBand wm1 start
         else if wideTail then batchLenWide start
         else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
