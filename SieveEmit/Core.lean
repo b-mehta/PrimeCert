@@ -423,6 +423,46 @@ Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count 
 those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
 against the window `segLoopC` produces and refuses to emit if they differ. -/
 
+/-- Split a window into its even positions and its odd ones, the evens in the low half. -/
+public def splitWindow (seg W : Nat) : Nat := Id.run do
+  let mut a := 0
+  let mut b := 0
+  for j in [0:W / 2] do
+    if (seg >>> (2 * j)) &&& 1 == 1 then a := a ||| (1 <<< j)
+    if (seg >>> (2 * j + 1)) &&& 1 == 1 then b := b ||| (1 <<< j)
+  return a ||| (b <<< (W / 2))
+
+/-- Put a split window back the way it was, so the two can be compared. -/
+public def joinWindow (sp W : Nat) : Nat := Id.run do
+  let h := W / 2
+  let mut seg := 0
+  for j in [0:h] do
+    if (sp >>> j) &&& 1 == 1 then seg := seg ||| (1 <<< (2 * j))
+    if (sp >>> (h + j)) &&& 1 == 1 then seg := seg ||| (1 <<< (2 * j + 1))
+  return seg
+
+/-- Twin of `splitLoopK`. -/
+public def splitLoop (s lo H n seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  for i in setBitsLow (s >>> start) fuel do
+    let p := valueE (start + i)
+    let A := firstLoc (indexE (p * 5)) lo (p * 2)
+    let B := firstLoc (indexE (p * 7)) lo (p * 2)
+    let aA := (if A % 2 == 0 then A else B) / 2
+    let aB := ((if A % 2 == 0 then B else A) - 1) / 2
+    let mut c := 1
+    for i2 in [0:n] do
+      let sh := p <<< i2
+      if sh ≤ H - 1 then
+        c := c ||| (c <<< sh)
+    -- Clamped to a half each. The undivided window has no bits past its end, so a mask running
+    -- over does no harm there; here the low half's overflow would land on the high half.
+    let full := (1 <<< H) - 1
+    let mask := ((c <<< aA) &&& full) ||| (((c <<< aB) &&& full) <<< H)
+    let hit := b &&& mask
+    if hit != 0 then b := b - hit
+  return b
+
 /-- Twin of `buildCompK`: one period with the two strikes cleared, tiled by doubling. -/
 public def buildComp (p M A B n : Nat) : Nat := Id.run do
   let mut m := ((1 <<< (p * 2)) - 1) - (1 <<< A) - (1 <<< B)

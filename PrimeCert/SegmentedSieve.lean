@@ -1775,6 +1775,60 @@ window's width the join carries a narrower number, which is what this asks again
         (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
         (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
 
+/-! ### One comb for both halves of a split window
+
+A divisor's two progressions have stride `2 * p`, which is even, and their first positions differ
+by `2 * index p + 1`, which is odd. So one progression lands entirely on even window positions and
+the other entirely on odd ones, and neither ever crosses.
+
+Split the window accordingly — even positions in the low half, odd positions in the high half —
+and in half coordinates both progressions have stride `p`, differing only in where they start.
+One comb of stride `p` therefore serves both, shifted into place twice. The comb is built at half
+the window's width, where the doubling that dominates a divisor's cost writes half the bytes,
+while the `land` and the subtraction stay full width.
+
+The window this marks is a permutation of the usual one, so the emitter checks that unpermuting it
+gives what the masks give. Prototype; nothing is proved. -/
+
+/-- A comb of stride `p` from bit 0, doubled while it still fits in `M`. -/
+@[expose] public noncomputable def combK (p M n : Nat) : Nat :=
+  Nat.rec 1
+    (fun i c => ((p.shiftLeft i).ble M).rec c (c.lor (c.shiftLeft (p.shiftLeft i))))
+    n
+
+/-- The hits of `p` on a split window: one comb, placed into each half at its own offset. The
+placement is the fold's last round rather than an operation on its result, so the comb is a bound
+value named twice, as `buildMaskCK`'s own step already does. -/
+@[expose] public noncomputable def splitMaskK (p H Hm1 n aA aB : Nat) : Nat :=
+  Nat.rec 1
+    (fun i c =>
+      (Nat.beq i n).rec
+        (((p.shiftLeft i).ble Hm1).rec c (c.lor (c.shiftLeft (p.shiftLeft i))))
+        -- Each placement is clamped to its own half. In the undivided window a mask may run past
+        -- the end harmlessly, because the window has no bits there; here the low half's overflow
+        -- would land on the high half and clear positions the divisor never strikes.
+        ((Nat.land (c.shiftLeft aA) (Nat.sub (Nat.shiftLeft 1 H) 1)).lor
+          ((Nat.land (c.shiftLeft aB) (Nat.sub (Nat.shiftLeft 1 H) 1)).shiftLeft H)))
+    n.succ
+
+/-- `segMarkCK` on a split window. The two starts are worked out here rather than supplied: one of
+the usual pair is even and the other odd, and halving each gives its offset in its own half. -/
+@[expose] public noncomputable def splitMarkK (seg p lo H Hm1 n : Nat) : Nat :=
+  clearHitK seg
+    (seg.land
+      (splitMaskK p H Hm1 n
+        ((Nat.beq (Nat.land (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) 1) 0).rec
+          (Nat.shiftRight (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 1)
+          (Nat.shiftRight (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) 1))
+        ((Nat.beq (Nat.land (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) 1) 0).rec
+          (Nat.shiftRight (Nat.sub (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) 1) 1)
+          (Nat.shiftRight (Nat.sub (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 1) 1))))
+
+/-- `segLoopSCK` on a split window. -/
+@[expose] public noncomputable def splitLoopK (c lo H Hm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (splitMarkK b (valueK (start.add i)) lo H Hm1 n)
+
 /-! ### Keeping what survives instead of removing what does not
 
 `segMarkCK` builds the divisor's hits, ands them into the window and subtracts: a compare, two
@@ -5624,7 +5678,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 76 then throwError "run_segment_variant: mode {mode} is not 0 to 76"
+  if mode > 77 then throwError "run_segment_variant: mode {mode} is not 0 to 77"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6179,6 +6233,27 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
+    return
+  if mode == 77 then
+    -- Mode 18 on a split window: one comb of stride p, built at half the width, placed into each
+    -- half. The emitter checks that unsplitting gives what the masks give. Timing only, no chain.
+    let hw := W / 2
+    let mut bitsT := SieveEmit.splitWindow (initSeg W) W
+    let mut plain := initSeg W
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (fuel - i * step0)
+      let next := SieveEmit.splitLoop sVal lo hw rounds bitsT start stepN
+      plain := segLoopC sVal lo wm1 rounds plain start stepN
+      if SieveEmit.joinWindow next W != plain then
+        throwError "run_segment_variant: the split window differs from the plain one, batch {i}"
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+        (mkSegBeqTrue (mkAppN (mkConst ``splitLoopK)
+          #[mkRawNatLit cVal, loE, mkRawNatLit hw, mkRawNatLit (hw - 1), nE,
+            mkRawNatLit bitsT, mkRawNatLit start, mkRawNatLit stepN]) (mkRawNatLit next))
+        Lean.reflBoolTrue
+      bitsT := next
     return
   if mode == 76 then
     -- Mode 18 with the window marked by keeping rather than removing: one `land` a divisor in
