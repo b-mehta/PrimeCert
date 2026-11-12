@@ -423,23 +423,53 @@ Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count 
 those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
 against the window `segLoopC` produces and refuses to emit if they differ. -/
 
+/-- Interleave two `h`-bit numbers, `a` onto the even positions and `b` onto the odd ones.
+
+Done by halving rather than a bit at a time: reading bit `j` of a window-sized number costs a pass
+over the whole number, so a bit-at-a-time interleave is quadratic in the width and will not finish
+at the sizes the sieve runs at. `fuel` bounds the halving and needs only to reach `h ≤ 32`. -/
+public def interleaveB : Nat → Nat → Nat → Nat → Nat
+  | 0, h, a, b => Id.run do
+    let mut r := 0
+    for j in [0:h] do
+      if (a >>> j) &&& 1 == 1 then r := r ||| (1 <<< (2 * j))
+      if (b >>> j) &&& 1 == 1 then r := r ||| (1 <<< (2 * j + 1))
+    return r
+  | fuel + 1, h, a, b =>
+    if h ≤ 32 then interleaveB 0 h a b
+    else
+      let g := h / 2
+      let m := (1 <<< g) - 1
+      interleaveB fuel g (a &&& m) (b &&& m) |||
+        (interleaveB fuel (h - g) (a >>> g) (b >>> g)) <<< (2 * g)
+
+/-- Take `h` even positions and `h` odd ones apart, the inverse of `interleaveB`. -/
+public def deinterleaveB : Nat → Nat → Nat → Nat × Nat
+  | 0, h, x => Id.run do
+    let mut a := 0
+    let mut b := 0
+    for j in [0:h] do
+      if (x >>> (2 * j)) &&& 1 == 1 then a := a ||| (1 <<< j)
+      if (x >>> (2 * j + 1)) &&& 1 == 1 then b := b ||| (1 <<< j)
+    return (a, b)
+  | fuel + 1, h, x =>
+    if h ≤ 32 then deinterleaveB 0 h x
+    else
+      let g := h / 2
+      let lo := deinterleaveB fuel g (x &&& ((1 <<< (2 * g)) - 1))
+      let hi := deinterleaveB fuel (h - g) (x >>> (2 * g))
+      (lo.1 ||| (hi.1 <<< g), lo.2 ||| (hi.2 <<< g))
+
 /-- Split a window into its even positions and its odd ones, the evens in the low half. -/
-public def splitWindow (seg W : Nat) : Nat := Id.run do
-  let mut a := 0
-  let mut b := 0
-  for j in [0:W / 2] do
-    if (seg >>> (2 * j)) &&& 1 == 1 then a := a ||| (1 <<< j)
-    if (seg >>> (2 * j + 1)) &&& 1 == 1 then b := b ||| (1 <<< j)
-  return a ||| (b <<< (W / 2))
+public def splitWindow (seg W : Nat) : Nat :=
+  let h := W / 2
+  let ab := deinterleaveB 32 h seg
+  ab.1 ||| (ab.2 <<< h)
 
 /-- Put a split window back the way it was, so the two can be compared. -/
-public def joinWindow (sp W : Nat) : Nat := Id.run do
+public def joinWindow (sp W : Nat) : Nat :=
   let h := W / 2
-  let mut seg := 0
-  for j in [0:h] do
-    if (sp >>> j) &&& 1 == 1 then seg := seg ||| (1 <<< (2 * j))
-    if (sp >>> (h + j)) &&& 1 == 1 then seg := seg ||| (1 <<< (2 * j + 1))
-  return seg
+  interleaveB 32 h (sp &&& ((1 <<< h) - 1)) (sp >>> h)
 
 /-- Twin of `splitLoopK`. -/
 public def splitLoop (s lo H n seg start fuel : Nat) : Nat := Id.run do
