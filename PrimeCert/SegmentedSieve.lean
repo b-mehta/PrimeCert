@@ -6382,7 +6382,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 82 then throwError "run_segment_variant: mode {mode} is not 0 to 82"
+  if mode > 83 then throwError "run_segment_variant: mode {mode} is not 0 to 83"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6464,10 +6464,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   let lane16 := mode == 82
   let maskTwin := mode == 66
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
-    || lenAll || lane16
+    || lenAll || lane16 || mode == 83
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
-  let wideTail := mode == 21
+  -- Mode 83 is mode 28 with `batchLenWide`, which differs from `batchLen` in one tier: 1536 over
+  -- the wide band in place of 3072. Mode 21 already selects that schedule but without the sorted
+  -- route, so it cannot say what the batch length alone is worth over the band that now holds the
+  -- largest share of a window's kernel. This can.
+  let wideTail := mode == 21 || mode == 83
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
   let slice := mode % 4 == 2 || mode % 4 == 3 || sched
   let tree := (mode % 8 ≥ 4 && !sched) || wideTail
