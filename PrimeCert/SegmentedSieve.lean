@@ -468,6 +468,70 @@ and then the list of seeds past its end. -/
 @[expose] public noncomputable def stripeBatchK (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
   stripeUpToK c lo start len W Wm1 slotW Ls Cs np (np + 1)
 
+/-! ### Sixteen records to a divisor
+
+The octave below the one above: a divisor whose eightfold fits the window and whose sixteenfold does
+not strikes at most eight times on each progression, so sixteen records name every strike. These
+definitions are the eight-record ones with the lane field widened from three bits to four. A record
+is still sixteen bits, so the extra lane bit comes out of the position, which caps a batch at 4096
+divisors where the eight-record route takes 8192. The tally is the same width either way, since
+sixteen lanes of 4096 and eight of 8192 both come to 65536 bits. -/
+
+/-- `entrySeedK` with a four-bit lane: the low bit still picks the progression and the other three
+step it on, so a record reaches the eighth strike rather than the fourth. -/
+@[expose] public noncomputable def entrySeedHK (lo start e : Nat) : Nat :=
+  Nat.add
+    ((Nat.beq ((e.land 15).land 1) 0).rec
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight 4))).mul 7)) lo
+        ((valueK (start.add (e.shiftRight 4))).mul 2))
+      (firstLocK (indexK ((valueK (start.add (e.shiftRight 4))).mul 5)) lo
+        ((valueK (start.add (e.shiftRight 4))).mul 2)))
+    (Nat.mul ((e.land 15).shiftRight 1) ((valueK (start.add (e.shiftRight 4))).mul 2))
+
+/-- The bit a four-bit-lane record adds to the tally: one per position for each of sixteen lanes. -/
+@[expose] public noncomputable def entryTallyHK (len e : Nat) : Nat :=
+  Nat.add 65536 (Nat.add (e.shiftRight 4) (Nat.mul (e.land 15) len))
+
+/-- `stripeEntryK` over four-bit lanes. -/
+@[expose] public noncomputable def stripeEntryHK (st c lo start k len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 4)).rec st
+    ((Nat.beq ((entrySeedHK lo start e).shiftRight 16) k).rec st
+      (st.lor ((Nat.shiftLeft 1 ((entrySeedHK lo start e).land 65535)).lor
+        (Nat.shiftLeft 1 (entryTallyHK len e)))))
+
+/-- `stripeOutK` over four-bit lanes. -/
+@[expose] public noncomputable def stripeOutHK (st c lo start Wm1 len e : Nat) : Nat :=
+  (testBitK c (e.shiftRight 4)).rec st
+    ((Nat.blt Wm1 (entrySeedHK lo start e)).rec st
+      (st.lor (Nat.shiftLeft 1 (entryTallyHK len e))))
+
+/-- The entries of one slice's list, packed 16 bits each, over four-bit lanes. -/
+@[expose] public noncomputable def stripeSlotHK (c lo start k len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeEntryHK s c lo start k len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- The entries of the out-of-window list, over four-bit lanes. -/
+@[expose] public noncomputable def stripeOutSlotHK (c lo start Wm1 len slot cnt st : Nat) : Nat :=
+  cnt.rec st fun j s =>
+    stripeOutHK s c lo start Wm1 len ((slot.shiftRight (j.mul 16)).land 65535)
+
+/-- `stripeUpToK` over four-bit lanes. -/
+@[expose] public noncomputable def stripeUpToHK
+    (c lo start len W Wm1 slotW Ls Cs np n : Nat) : Nat :=
+  n.rec 0 fun k asm =>
+    let slot : Nat := (Ls.shiftRight (slotW.mul k)).land (Nat.sub (Nat.shiftLeft 1 slotW) 1)
+    let cnt : Nat := (Cs.shiftRight (k.mul 16)).land 65535
+    let st : Nat := (Nat.beq k np).rec
+      (stripeSlotHK c lo start k len slot cnt 0)
+      (stripeOutSlotHK c lo start Wm1 len slot cnt 0)
+    (asm.lor ((st.land (Nat.sub (Nat.shiftLeft 1 65536) 1)).shiftLeft (k.mul 65536))).lor
+      ((st.shiftRight 65536).shiftLeft W)
+
+/-- `stripeBatchK` over four-bit lanes. -/
+@[expose] public noncomputable def stripeBatchHK
+    (c lo start len W Wm1 slotW Ls Cs np : Nat) : Nat :=
+  stripeUpToHK c lo start len W Wm1 slotW Ls Cs np (np + 1)
+
 /-- The entries of one slice's list, through the shared-subterm entry. -/
 @[expose] public noncomputable def stripeSlotTK (c lo start k len slot cnt st : Nat) : Nat :=
   cnt.rec st fun j s =>
@@ -5678,7 +5742,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 77 then throwError "run_segment_variant: mode {mode} is not 0 to 77"
+  if mode > 79 then throwError "run_segment_variant: mode {mode} is not 0 to 79"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6024,6 +6088,48 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
       addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
       bitsL := next
+    return
+  if mode == 78 || mode == 79 then
+    -- The octave below the one modes 34 and 35 cover: a divisor whose eightfold fits the window
+    -- and whose sixteenfold does not, so sixteen records name every strike. Mode 78 sorts them,
+    -- mode 79 marks them as the sieve does today, so the pair asks whether the sorted route is
+    -- still ahead one octave further down. Measurement only, no chain.
+    if step0 > 4096 then
+      throwError "run_segment_variant: mode {mode} packs a four-bit lane and a twelve-bit \
+        position into a sixteen-bit record, so a batch takes at most 4096 divisors, not {step0}"
+    let mut first := 1
+    while 16 * value first ≤ wm1 do
+      first := first + 1
+    let mut last := first
+    while 8 * value (last + 1) ≤ wm1 do
+      last := last + 1
+    let count := last + 1 - first
+    let mut bitsH := initSeg W
+    for i in [0:(count + step0 - 1) / step0] do
+      let start := first + i * step0
+      let stepN := Nat.min step0 (count - i * step0)
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      if mode == 79 then
+        let next := segLoopC sVal lo wm1 rounds bitsH start stepN
+        let batchE := mkAppN (mkConst ``segLoopSCK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsH, mkRawNatLit start,
+            mkRawNatLit stepN]
+        addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit next)) Lean.reflBoolTrue
+        bitsH := next
+        continue
+      let (ls, cs, slotW, expect) := SieveEmit.stripeSortH sVal lo wm1 start stepN W
+      let batchE := mkAppN (mkConst ``stripeBatchHK)
+        #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
+          mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
+      let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
+      let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
+      -- Asking the tally for all sixteen lanes of every divisor is what stops one being skipped.
+      let mut wantV := 0
+      for w in [0:16] do
+        wantV := wantV ||| (cVal <<< (w * stepN))
+      addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
     return
   if mode == 34 || mode == 35 || mode == 37 || mode == 40 || mode == 41 || mode == 67
       || mode == 68 || mode == 71 || mode == 72 then
