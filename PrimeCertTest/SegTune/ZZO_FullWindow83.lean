@@ -40,8 +40,12 @@ shared oleans map once, and stays flat with concurrency. **Under load the two ar
 and mode 83 fits one more window per 14 GB runner — **14-17% more windows a runner-hour**.
 
 **So it wins where memory binds and loses where cores do**, since on a 61 GiB box with 32 vCPU both
-fit far more copies than there are cores and 83 is the slower of the two. The runner's own base
-memory was not measured and decides whether it is 7 against 6 or 8 against 7. -/
+fit far more copies than there are cores and 83 is the slower of the two.
+
+**Not landed**, because the runs this project makes are on 32-core AWS boxes, where cores bind and
+the slower window simply loses. Kept, with its numbers, because the answer reverses on a 14 GB
+runner, where it is worth 14-17% more windows an hour. If that is ever the target, measure the
+runner's own base memory first: it decides whether the packing is 7 against 6 or 8 against 7. -/
 
 namespace PrimeCert.SegTune.ZZO_FullWindow83
 
