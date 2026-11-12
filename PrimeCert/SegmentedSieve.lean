@@ -5675,8 +5675,20 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
   let sE := mkConst baseLit
   let loE := mkRawNatLit lo
   let wE := mkRawNatLit wm1
+  -- Marking is clamped: seeds that fall outside the window are dropped, a divisor too large to
+  -- repeat skips the doubling rounds altogether, and a batch that hits nothing is not subtracted
+  -- from. `segLoopCK_eq_stride` proves this loop equal to `segLoopK`, so `segEq_of_clamped` turns
+  -- the chain back into a statement about `segLoopK` and the theorem this command emits is
+  -- unchanged. Measured 2026-11-12 on a fresh c7i.8xlarge, `run.sh 3`, load about 1, at
+  -- W = 4194304 and 333333 divisors: kernel 85.98-86.76 s against 89.40-89.61 unclamped and
+  -- processor 130.6-131.9 against 135.7-136.1, ranges not overlapping, peak unchanged at 1.9 GB.
+  -- `run_segment_variant 0` is the unclamped loop, kept as the arm this was measured against.
+  let rounds := Nat.log2 wm1 + 1
+  let nE := mkRawNatLit rounds
   let initE := mkApp (mkConst ``initSegK) (mkRawNatLit W)
-  let lhsLoop := mkSegLoopK sE loE wE initE 1 fuel
+  let loopE (segE : Expr) (start n : Nat) : Expr :=
+    mkAppN (mkConst ``segLoopCK) #[sE, loE, wE, nE, segE, mkRawNatLit start, mkRawNatLit n]
+  let lhsLoop := loopE initE 1 fuel
   let tag := s!"{a}_{W}_{fuel}_{step0}"
   let parent := ns ++ Name.mkSimple s!"segEq_{tag}"
   let litName := ns ++ Name.mkSimple s!"segBits_{tag}"
@@ -5687,24 +5699,27 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
     let start := 1 + i * step0
     let owed := fuel - i * step0
     let stepN := Nat.min step0 owed
-    let next := segLoop sVal lo wm1 bits start stepN
+    let next := segLoopC sVal lo wm1 rounds bits start stepN
     let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
     addSegThm stepName
-      (mkSegBeqTrue (mkSegLoopK sE loE wE bitsE start stepN) (mkRawNatLit next)) Lean.reflBoolTrue
+      (mkSegBeqTrue (loopE bitsE start stepN) (mkRawNatLit next)) Lean.reflBoolTrue
     proof := if owed == stepN then
-        mkAppN (mkConst ``segLoopK_last)
-          #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
-            proof, mkConst stepName]
+        mkAppN (mkConst ``segLoopCK_last)
+          #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
+            mkRawNatLit stepN, proof, mkConst stepName]
       else
-        mkAppN (mkConst ``segLoopK_chain)
-          #[lhsLoop, sE, loE, wE, bitsE, mkRawNatLit next, mkRawNatLit start, mkRawNatLit stepN,
-            mkRawNatLit (owed - stepN), proof, mkConst stepName]
+        mkAppN (mkConst ``segLoopCK_chain)
+          #[lhsLoop, sE, loE, wE, nE, bitsE, mkRawNatLit next, mkRawNatLit start,
+            mkRawNatLit stepN, mkRawNatLit (owed - stepN), proof, mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
   addDecl <| Declaration.defnDecl
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
-  addSegThm parent (mkNatEq lhsLoop (mkConst litName)) proof
+  addSegThm parent (mkNatEq (mkSegLoopK sE loE wE initE 1 fuel) (mkConst litName))
+    (mkAppN (mkConst ``segEq_of_clamped)
+      #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkRawNatLit bits,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, proof])
   let bVal := value fuel
   addSegThm (ns ++ Name.mkSimple s!"segEqI_{a}_{W}_{fuel}_{step0}")
     (mkNatEq (mkAppN (mkConst ``segRun)

@@ -8,7 +8,16 @@ module
 public meta import PrimeCert.Meta.Sieve
 public meta import PrimeCert.SegmentedSieve
 
-/-! # What the sieve actually emits today
+/-! # What the sieve emitted before 2026-11-12
+
+**Superseded: `run_segment` now marks the clamped way, so this case no longer measures the
+unclamped loop.** The arm that does is `run_segment_variant 0`. Kept for the record of the pair
+that settled it: at `244790d`, fresh c7i.8xlarge, `run.sh 3`, load about 1, this case measured
+kernel 89.40-89.61 s, window 134.4-134.7 s, processor 135.7-136.1 s, peak 1.89 GB, against
+`ZZ2_ProdClamped`'s 85.98-86.76, 129.3-130.5, 130.6-131.9, 1.90 GB — **3.5% on both kernel and
+processor, ranges not overlapping**, which is what moved the command.
+
+The original description follows.
 
 Plain `run_segment`, which is the command that produces a real window certificate. It marks
 through `segMarkK`: a mask built with a fixed 32 doubling rounds, no dropping of seeds that fall
