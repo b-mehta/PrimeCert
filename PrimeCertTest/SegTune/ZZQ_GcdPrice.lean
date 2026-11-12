@@ -23,7 +23,19 @@ the product of a slice's survivors against the product of the base primes above 
 
 **This proves nothing about the sieve.** It is a stopwatch. Read the kernel seconds against
 `WA_Narrow`'s 40 seconds of batch lemmas: if sixty-four gcds cost more than that, the direction is
-dead for the price of one run rather than a week of proofs. -/
+dead for the price of one run rather than a week of proofs.
+
+**Priced 2026-11-12, and the kernel side is cheap: the cost has moved to the emitter.** Fresh
+c7i.8xlarge, `run.sh 3`, load about 1, split by `run.sh`'s own rows. Sixty-four gcds cost
+**1.88-1.90 s** of `addDecl` against `WA_Narrow`'s **66.1-66.8 s**, of which the batch lemmas this
+would replace are **44.4-44.8 s**. Peak 0.96 GB against 1.72.
+
+Against that, the window command takes **64.0-64.3 s** here against 72.3-73.1 for `WA_Narrow`, and
+every batch and slice lemma row is zero, so that 64 s is this case building the two numbers and
+nothing else. The next thing to measure is how that 64 s divides between `primorialOver`, which is
+the same for every window of a run and so can be built once, and `sliceProduct`, which depends on
+the window's survivors and cannot. Only the second is a per-window cost, and whether the direction
+lives or dies turns on it. -/
 
 namespace PrimeCert.SegTune.ZZQ_GcdPrice
 
