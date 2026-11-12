@@ -3292,6 +3292,144 @@ theorem testBit_seed16 {A B M j d e f : Nat} (hj : j ≤ M) :
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))
 
+/-! `entrySeedLK_lane` at a four-bit lane, split by parity. The `Bool.rec` on the lane's low bit
+does not reduce for `lia` even when the lane is a literal, so the branch is taken here instead and
+a band proof names the parity at the call. Two lemmas rather than one per lane. -/
+
+/-- An even lane names the first progression. -/
+public theorem entrySeedLK_lane4_even {lo start i w : Nat} (hw : w < 16) (he : w % 2 = 0) :
+    entrySeedLK 4 lo start (16 * i + w)
+      = Nat.add (firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2))
+          (Nat.mul (w / 2) ((valueK (start + i)).mul 2)) := by
+  -- `exact`, not `rw`: `2 ^ 4 * i + w` is the same term as `16 * i + w` but not the same syntax,
+  -- so a rewrite does not find it.
+  have h := entrySeedLK_lane (lw := 4) (lo := lo) (start := start) (i := i) (w := w) hw
+  rw [he] at h
+  exact h
+
+/-- An odd lane names the second. -/
+public theorem entrySeedLK_lane4_odd {lo start i w : Nat} (hw : w < 16) (ho : w % 2 = 1) :
+    entrySeedLK 4 lo start (16 * i + w)
+      = Nat.add (firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2))
+          (Nat.mul (w / 2) ((valueK (start + i)).mul 2)) := by
+  have h := entrySeedLK_lane (lw := 4) (lo := lo) (start := start) (i := i) (w := w) hw
+  rw [ho] at h
+  exact h
+
+/-- The octave below `testBit_segAccLoopSK_band8`: every divisor of the batch has its octuple
+inside the window and its sixteenfold past the end, so each has sixteen strikes and the batch's
+joined mask holds exactly the in-window ones of the divisors the slice names. -/
+public theorem testBit_segAccLoopSK_band16 {c lo Wm1 n start len j : Nat} (hj : j ≤ Wm1)
+    (hn : 3 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 8 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 16) :
+    (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+      ∃ i, i < len ∧ ∃ w, w < 16 ∧ testBitK c i = true
+        ∧ entrySeedLK 4 lo start (16 * i + w) = j := by
+  induction len with
+  | zero =>
+    have hz : segAccLoopSK c lo Wm1 n 0 start 0 = 0 := rfl
+    rw [hz]
+    constructor
+    · intro h
+      simp at h
+    · rintro ⟨i, hi, -⟩
+      lia
+  | succ len ih =>
+    have ih' := ih fun i hi => hband i (by lia)
+    cases hb : testBitK c len with
+    | false =>
+      rw [segAccLoopSK_skip hb, ih']
+      constructor
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil, hb] at hc
+          simp at hc
+    | true =>
+      obtain ⟨hp8, hp16⟩ := hband len (by lia)
+      have hm2 : valueK (start + len) * 2 ≤ Wm1 := by lia
+      have hm4 : valueK (start + len) * 4 ≤ Wm1 := by lia
+      rw [segAccLoopSK_take hb, segAccK_eq, buildMaskCK_hexa hp16 hn, buildMaskCK_three hp8,
+        buildMaskCK_two hm2 hm4, Nat.testBit_or, Bool.or_eq_true, testBit_seed16 hj, ih']
+      constructor
+      · rintro ((h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h) | h)
+        · exact ⟨len, by lia, 0, by lia, hb, by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 1, by lia, hb, by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 2, by lia, hb, by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 3, by lia, hb, by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 4, by lia, hb, by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 5, by lia, hb, by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 6, by lia, hb, by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 7, by lia, hb, by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 8, by lia, hb, by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 9, by lia, hb, by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 10, by lia, hb,
+            by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 11, by lia, hb,
+            by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 12, by lia, hb,
+            by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 13, by lia, hb,
+            by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 14, by lia, hb,
+            by rw [entrySeedLK_lane4_even (by lia) (by lia)]; lia⟩
+        · exact ⟨len, by lia, 15, by lia, hb,
+            by rw [entrySeedLK_lane4_odd (by lia) (by lia)]; lia⟩
+        · obtain ⟨i, hi, w, hw, hc, hs⟩ := h
+          exact ⟨i, by lia, w, hw, hc, hs⟩
+      · rintro ⟨i, hi, w, hw, hc, hs⟩
+        rcases Nat.lt_or_ge i len with h | h
+        · exact Or.inr ⟨i, h, w, hw, hc, hs⟩
+        · have hil : i = len := by lia
+          rw [hil] at hs
+          refine Or.inl ?_
+          rcases (by lia : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7
+            ∨ w = 8 ∨ w = 9 ∨ w = 10 ∨ w = 11 ∨ w = 12 ∨ w = 13 ∨ w = 14 ∨ w = 15)
+            with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 | h8 | h9 | h10 | h11 | h12 | h13 | h14 | h15
+          · rw [h0, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inl (by lia)
+          · rw [h1, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inl (by lia))
+          · rw [h2, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inl (by lia)))
+          · rw [h3, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inl (by lia))))
+          · rw [h4, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))
+          · rw [h5, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))
+          · rw [h6, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
+          · rw [h7, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))))
+          · rw [h8, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inl (by lia)))))))))
+          · rw [h9, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inl (by lia))))))))))
+          · rw [h10, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inl (by lia)))))))))))
+          · rw [h11, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inl (by lia))))))))))))
+          · rw [h12, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inr (Or.inl (by lia)))))))))))))
+          · rw [h13, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))))))))))
+          · rw [h14, entrySeedLK_lane4_even (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))))))))))
+          · rw [h15, entrySeedLK_lane4_odd (by lia) (by lia)] at hs
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))))))))))
+
 /-- Where every divisor of the batch has its quadruple inside the window and its octuple past the
 end, the batch's joined mask holds exactly the in-window strikes of the divisors the slice names,
 and each has eight of them. -/
