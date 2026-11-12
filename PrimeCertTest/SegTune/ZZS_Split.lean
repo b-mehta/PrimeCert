@@ -23,7 +23,14 @@ shaped so the final answer has to be put back before anything else reads it.
 
 Pair with `ZG_Doubling`, which is mode 18 over the same divisors. The emitter unsplits mode 77's
 window after every batch and refuses to emit unless it matches the plain one, so a green run also
-says the construction is right. -/
+says the construction is right.
+
+**Measured 2026-11-12, and it loses badly. Do not rebuild it.** Fresh c7i.8xlarge, `run.sh 3`,
+load about 1: kernel 119.4-121.2 s against Doubling's 95.5-96.3 (+25%), processor 213-217 against
+136.8-138.3 (+56%), peak 14.0 GB against 11.7. The construction count really does halve, and the
+run is a quarter dearer in the kernel regardless, so halving that count is not what decides this.
+Counting window-widths of construction predicted a win here and was wrong, which is the same trap
+`ZH_ExactSpan` fell into. -/
 
 namespace PrimeCert.SegTune.ZZS_Split
 

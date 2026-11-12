@@ -15,7 +15,14 @@ half that. Read the two as kernel seconds per integer covered, and read their pe
 arm holds a window twice the size, so it may win on processor seconds and still lose a run the
 packing a smaller peak allows.
 
-The reasoning for why the answer is not obvious is in `ZZX_WindowNarrow`. -/
+The reasoning for why the answer is not obvious is in `ZZX_WindowNarrow`.
+
+**Measured 2026-11-12, and the width should stay where it is.** Fresh c7i.8xlarge, `run.sh 3`,
+load about 1. Narrow: kernel 104.7-106.1 s, processor 152.2-155.2 s, peak 11.76 GB. Wide: kernel
+201.7-205.2 s, processor 324-330 s, peak 22.47 GB. Per integer covered that is 3% less kernel, 7%
+more processor, and 1.9 times the peak. Since a run packs windows onto a machine and the peak sets
+how many fit, 3% of kernel does not buy back half the packing. The width is now measured rather
+than assumed, which it had never been. -/
 
 namespace PrimeCert.SegTune.ZZY_WindowWide
 
