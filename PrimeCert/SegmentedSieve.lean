@@ -5780,6 +5780,30 @@ public theorem segLoopK_eq_self_of_blocks {s lo Wm1 seg start fuel P bs nb : Nat
       exact segMarkK_eq_self_of_not_dvd hseg hW h6 h5 hlo
         fun j hj hlive => not_dvd_of_blocks hbs hcover (by lia) hP hgcd hj hlive
 
+public theorem valueK_mod6 (k : Nat) : valueK k % 6 = 1 ∨ valueK k % 6 = 5 := by
+  rw [valueK_eq_add]
+  omega
+
+public theorem five_le_valueK {k : Nat} (hk : k ≠ 0) : 5 ≤ valueK k := by
+  rw [valueK_eq_add]
+  omega
+
+/-- The certificate with `P` taken as the product of the range's own values, which is what the
+emitter would build anyway, so divisibility costs nothing to establish. What is left for the
+emitter is the window starting above each divisor's seventh multiple, and the gcds themselves. -/
+public theorem segLoopK_eq_self_of_range {s lo Wm1 seg start fuel bs nb : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 2 ^ 32)
+    (hbs : 0 < bs) (hcover : Wm1 + 1 ≤ nb * bs) (hstart : start ≠ 0)
+    (hgcd : ∀ k, k < nb →
+      Nat.gcd (prodLiveFromK seg lo (k * bs) bs) (prodLiveFromK s 0 start fuel) = 1)
+    (hlo : ∀ i, i < fuel → testBitK s (start + i) = true →
+      index (valueK (start + i) * 7) ≤ lo) :
+    segLoopK s lo Wm1 seg start fuel = seg := by
+  refine segLoopK_eq_self_of_blocks hseg hW hbs hcover hgcd fun i hi hbit => ?_
+  refine ⟨valueK_mod6 _, five_le_valueK (by omega), hlo i hi hbit, ?_⟩
+  have hd := dvd_prodLiveFromK (seg := s) (lo := 0) (off := start) (n := fuel) hi hbit
+  rwa [Nat.zero_add] at hd
+
 /-! ## Compiled twins
 
 Executable copies of the definitions above, used by `run_segment` to compute the batch literals.
