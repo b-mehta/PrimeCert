@@ -62,8 +62,24 @@ FULL_B = 10**7                   # divisors the top window needs
 # scaled, because the anchor and the newer measurements come from different machines and the whole
 # point of the anchor is that it was measured in the shape a real run uses. Re-anchor by repeating
 # that paired measurement on the machine a run will actually use.
-_SPLIT = {"small": 53.96, "eight": 42.69 / 2, "four": 42.69 / 2, "wide": 69.99}
-_PAIRED = 149.0 / 2              # seconds of runner time one window takes, two to a runner
+# RE-ANCHORED 2026-11-12 on a window with the divisors a run actually needs.
+#
+# Everything above describes the old anchor and is kept because its reasoning still holds. The
+# numbers below replace it. `ZZ9_FullWindow` is one window of 4194304 wheel positions from
+# 10^14 + 1 sieved by every prime to 10^7, which is what the topmost window needs, measured on a
+# fresh c7i.8xlarge with `run.sh 3` after a 120 s settle, three rounds within 0.6%:
+#
+#     kernel 156.7-157.7 s, processor 173.0-174.0 s, peak 2.61 GB, 1469 batch lemmas
+#     wide band 61.6-61.9 s | sorted bands 47.6-48.1 s | masked small band 45.2-45.5 s
+#
+# Every earlier SegTune case used divisors to about 10^6, a tenth of these, which is enough to
+# compare two routes and not enough to apportion a run: the widest band holds almost all the
+# divisors and is barely represented at a tenth. It is the largest share here, at 39% of kernel.
+#
+# The split below is the measured one. `eight` and `four` share the sorted row because `run.sh`
+# reports them together; they are split evenly, which is the one guess left in this model.
+_SPLIT = {"small": 45.35, "eight": 47.85 / 2, "four": 47.85 / 2, "wide": 61.75}
+_PAIRED = 173.5                  # processor seconds for one window, measured alone
 _SCALE = _PAIRED / sum(_SPLIT.values())
 COST = {k: v * _SCALE for k, v in _SPLIT.items()}
 OTHER = 0.0
@@ -106,25 +122,28 @@ def range_cost(n: int) -> tuple[int, float, float]:
 # How many windows a runner carries at once. This is set by peak memory, not by cores, and the
 # peak depends on a flag: with Lean's asynchronous kernel checking a window peaked at 4.85 GB, and
 # with it off at 1.64 GB for the same processor seconds (measured alternated on a quiet box).
-# `run.sh` now turns it off, so a 14 GB runner holds four windows rather than two. That doubling
-# counts for exactly as much as halving the time would, which is why it is written here rather
-# than left in the harness.
-WINDOWS_PER_RUNNER = 4
+# `run.sh` turns it off.
+#
+# At the full divisor set a window peaks at 2.61 GB rather than the 1.64 measured at a tenth of
+# them, so a 14 GB runner holds five. **That figure is the peak of a window measured alone**; what
+# several windows peak at while sharing a machine has not been measured, and it is the one number
+# here most likely to be wrong.
+WINDOWS_PER_RUNNER = 5
 
-# What the measured changes of 2026-11-11 did to a window, as a multiple of the anchor above,
-# which predates all of them: the byte-array route to the next window, the allocator settings and
-# the operand order of one `land` together took 111.8 s to about 76. Applied as a factor because
-# the anchor and those runs are from different machines, so only the ratio carries over.
-SPEEDUP = 76.0 / 111.8
+# The anchor above is now a current measurement rather than a historical one: it was taken after
+# the byte-array route, the allocator settings, the operand order, clamped marking and the banded
+# route had all landed. So there is nothing left to scale it by, and anything that lands from here
+# re-anchors rather than multiplies.
+SPEEDUP = 1.0
 
 
 def main() -> None:
     top = window_cost(FULL_B)
     print(f"primes per band: {PI}")
-    print(f"one window at the top of 1..1e14: {top:.1f} s of runner time (anchor, before 11-11)")
-    print(f"measured factor since: {SPEEDUP:.3f}; windows a runner holds: {WINDOWS_PER_RUNNER}")
+    print(f"one window at the top of 1..1e14: {top:.1f} processor seconds (measured 2026-11-12)")
+    print(f"windows a runner holds: {WINDOWS_PER_RUNNER} (from a 2.61 GB peak measured alone)")
     print()
-    print("  N        windows      s/window   runner-years   six-hour jobs   as the anchor stood")
+    print("  N        windows      s/window   runner-years   six-hour jobs   at two a runner")
     for e in (11, 12, 13, 14):
         n = 10 ** e
         windows, mean, years = range_cost(n)
