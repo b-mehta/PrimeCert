@@ -51,9 +51,22 @@ probe: it uses the plain `segLoopC` twin over every divisor in one go, where the
 against the 65.5 s of kernel a window costs today.** That is the largest remaining idea by a wide
 margin.
 
-It prices arithmetic and nothing else. A certificate of this shape still has to prove that a
-slice's survivors, being coprime to the product of the base primes above 32768, are the primes of
-that slice — and that proof does not exist. The measurement says it is worth writing. -/
+**But read what the gcd here actually says, because it is weaker than it looks.** `bits` is the
+window sieved by *every* divisor at indices `1 … fuel`, and `bigP` is the product of the sieve
+primes in `(32768, value fuel]`. Every prime in `bigP` has therefore already been swept out of
+`bits`, so the gcd is 1 for a trivial reason and tells us nothing the sieve had not established
+before the gcd was stated.
+
+So the timings above price a `Nat.gcd` at these sizes, which is a real and reusable number, and
+they are **not** evidence that a gcd can replace sieving work. A window sieved only by the small
+primes still holds survivors divisible by the large ones — two factors above 32768 multiply to
+something in range — so for a partially sieved window the gcd would simply not be 1.
+
+What would have to be designed, and has not been, is a statement that is both cheap and
+informative. One shape worth pricing: state the window literal, certify by one gcd a slice that
+every position it keeps is prime, and justify every position it drops with a factor the emitter
+supplies and the kernel checks. That is a different cost model from this probe's and nobody has
+measured it. -/
 
 namespace PrimeCert.SegTune.ZZQ_GcdPrice
 
