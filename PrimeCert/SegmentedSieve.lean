@@ -6502,7 +6502,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   -- the wide band in place of 3072. Mode 21 already selects that schedule but without the sorted
   -- route, so it cannot say what the batch length alone is worth over the band that now holds the
   -- largest share of a window's kernel. This can.
-  let wideTail := mode == 21 || mode == 83
+  -- `wideTail` also turns on `tree` below, so a mode that only wants `batchLenWide` must not use
+  -- it. Mode 83 did, and so measured the tree route rather than a batch length; it has its own
+  -- flag now.
+  let wideTail := mode == 21
+  let wideShort := mode == 83
   let clamped := mode % 4 == 1 || mode % 4 == 3 || sched
   let slice := mode % 4 == 2 || mode % 4 == 3 || sched
   let tree := (mode % 8 ≥ 4 && !sched) || wideTail
@@ -7307,9 +7311,20 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       -- Mode 73 takes the batch length from the call for every batch, where the others take it
       -- from `batchLen`'s schedule below 700000 and from the call only above it. The schedule's
       -- 256, 512 and 768 were set long ago; a uniform length lets them be priced against one.
+      -- Every schedule variant is chosen here, because this is the loop the banded run uses. The
+      -- other site, in the branch below, is only reached by a mode that is not `stripes`; putting
+      -- a flag there and expecting a banded run to see it leaves the mode inert, which is what
+      -- happened to 84 and 85 first time and shows up as an unchanged batch lemma count.
+      -- Note mode 28 takes the call's `len` above 700000, not `batchLen`'s 3072, so a variant that
+      -- means to change one tier must leave that fall-through alone.
       let stepN := Nat.min
         (if lenAll then step0
-          else if start < 700000 then (if midLong then batchLenMid start else batchLen start)
+          else if start < 700000 then
+            (if midLong then batchLenMid start
+              else if lowLong then batchLenLow start
+              else if bandTier then batchLenBand wm1 start
+              else batchLen start)
+          else if wideShort then 1536
           else step0) owed
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
