@@ -1701,6 +1701,43 @@ public theorem entryTallyK_inj {len e i w : Nat} (hi : (e.shiftRight 3) < len) (
   have hmul : (e.land 7) * len = w * len := by lia
   exact Nat.eq_of_mul_eq_mul_right hlen hmul
 
+/-! ### The record decode, for any lane width
+
+The six lemmas after these bake in a three-bit lane. A band wanting sixteen lanes needs four bits,
+and these are the same facts with the width left open: div and mod, which generalise without
+effort. Having them is what makes a wider band affordable, since the proofs above the decode reach
+it only through these. -/
+
+public theorem shiftRightLw_eq {e lw : Nat} : e.shiftRight lw = e / 2 ^ lw := by
+  have h : e.shiftRight lw = e >>> lw := rfl
+  rw [h, Nat.shiftRight_eq_div_pow]
+
+public theorem landLw_eq {e lw : Nat} : e.land (2 ^ lw - 1) = e % 2 ^ lw := by
+  have h : e.land (2 ^ lw - 1) = e &&& (2 ^ lw - 1) := rfl
+  rw [h, Nat.and_two_pow_sub_one_eq_mod]
+
+/-- An entry is its position and which strike it names, at any lane width. -/
+public theorem entry_splitLw {e lw : Nat} :
+    2 ^ lw * (e.shiftRight lw) + e.land (2 ^ lw - 1) = e := by
+  rw [shiftRightLw_eq, landLw_eq]
+  have := Nat.div_add_mod e (2 ^ lw)
+  lia
+
+/-- A strike is one of `2 ^ lw`. -/
+public theorem landLw_lt {e lw : Nat} : e.land (2 ^ lw - 1) < 2 ^ lw := by
+  rw [landLw_eq]
+  exact Nat.mod_lt _ (Nat.two_pow_pos lw)
+
+/-- The position an assembled entry names, at any lane width. -/
+public theorem shiftRightLw_pair {i w lw : Nat} (hw : w < 2 ^ lw) :
+    (2 ^ lw * i + w).shiftRight lw = i := by
+  rw [shiftRightLw_eq, Nat.mul_add_div (Nat.two_pow_pos lw), Nat.div_eq_of_lt hw, Nat.add_zero]
+
+/-- The strike an assembled entry names, at any lane width. -/
+public theorem landLw_pair {i w lw : Nat} (hw : w < 2 ^ lw) :
+    (2 ^ lw * i + w).land (2 ^ lw - 1) = w := by
+  rw [landLw_eq, Nat.mul_add_mod, Nat.mod_eq_of_lt hw]
+
 /-- Dividing by eight, two ways. -/
 public theorem shiftRight3_eq {e : Nat} : e.shiftRight 3 = e / 8 := by
   have h : e.shiftRight 3 = e >>> 3 := rfl
