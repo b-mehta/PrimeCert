@@ -520,4 +520,19 @@ public theorem stripeBatchLK_complete {lw c lo start len W Wm1 slotW Ls Cs np i 
       have := Nat.le_of_ble_eq_true hble
       lia
 
+/-- Which strike a record names, at any lane width. The three-bit `entrySeedK_pair` is bounded at
+`w < 8`, and the eight named lane lemmas above it are that one at `w = 0 … 7`. With the width open
+there is no need to name sixteen of them: a band proof can instantiate this at each `w` directly.
+-/
+public theorem entrySeedLK_pair {lw lo start i w : Nat} (hw : w < 2 ^ lw) :
+    entrySeedLK lw lo start (2 ^ lw * i + w)
+      = Nat.add
+          ((Nat.beq (w.land 1) 0).rec
+            (firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2))
+            (firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)))
+          (Nat.mul (w.shiftRight 1) ((valueK (start + i)).mul 2)) := by
+  unfold entrySeedLK
+  rw [shiftRightLw_pair hw, laneMaskK_eq, landLw_pair hw]
+  rfl
+
 end PrimeCert.Sieve
