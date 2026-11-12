@@ -512,4 +512,92 @@ public theorem stripeBatchLK_complete {lw c lo start len W Wm1 slotW Ls Cs np i 
       have := Nat.le_of_ble_eq_true hble
       lia
 
+/-! ## The sixteen-strike band
+
+`segLoopSCK_eq_stripe_band8` with the four-bit lane throughout. The three wrappers below exist
+only because `2 ^ 4` and `16` are the same term written two ways, which `rw` does not see through.
+-/
+
+/-- An entry is its position and its lane, at a four-bit lane. -/
+public theorem entry_splitLw4 {e : Nat} : 16 * (e.shiftRight 4) + e.land (laneMaskK 4) = e := by
+  rw [laneMaskK_eq]
+  exact entry_splitLw (lw := 4)
+
+/-- A four-bit lane is one of sixteen. -/
+public theorem landLw_lt4 {e : Nat} : e.land (laneMaskK 4) < 16 := by
+  rw [laneMaskK_eq]
+  exact landLw_lt (lw := 4)
+
+/-- `stripeBatchLK_complete` with `2 ^ 4` written as the literal it is. -/
+public theorem stripeBatchLK_complete4 {c lo start len W Wm1 slotW Ls Cs np i w : Nat}
+    (hc2 : c < 2 ^ len) (hi : i < len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (htally : (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).testBit
+      (W + (i + w * len)) = true)
+    (hX : entrySeedLK 4 lo start (16 * i + w) ≤ Wm1) :
+    (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).testBit
+      (entrySeedLK 4 lo start (16 * i + w)) = true :=
+  stripeBatchLK_complete (lw := 4) hc2 hi hW hWm1 htally hX
+
+/-- One batch of the octave below the eight-strike band, settled by sorting its strikes into
+slices. -/
+public theorem segLoopSCK_eq_stripe_band16 {c lo start len n W Wm1 slotW Ls Cs np seg : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hc2 : c < 2 ^ len) (hW : np * 65536 ≤ W) (hWm1 : Wm1 < W)
+    (hn : 3 ≤ n)
+    (hband : ∀ i, i < len → valueK (start + i) * 8 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 16)
+    (htal : ∀ i, i < len → ∀ w, w < 16 → testBitK c i = true →
+      (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).testBit
+        (W + (i + w * len)) = true) :
+    segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np) := by
+  have hz : ∀ x : Nat, Nat.ldiff x 0 = x := by
+    intro x
+    refine Nat.eq_of_testBit_eq fun i => ?_
+    simp
+  have hrun : segLoopSCK c lo Wm1 n seg start len
+      = Nat.ldiff seg (segAccLoopSK c lo Wm1 n 0 start len) := by
+    have h := segLoopSCK_eq_ldiff (c := c) (lo := lo) (Wm1 := Wm1) (n := n) (seg := seg)
+      (acc := 0) (start := start) (fuel := len)
+    rwa [hz] at h
+  rw [hrun]
+  refine Nat.eq_of_testBit_eq fun j => ?_
+  rw [Nat.testBit_ldiff, Nat.testBit_ldiff]
+  cases hs : seg.testBit j with
+  | false => rfl
+  | true =>
+    have hj : j ≤ Wm1 := by
+      by_contra hgt
+      rw [Nat.testBit_lt_two_pow
+        (Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia)))] at hs
+      simp at hs
+    have hiff : (segAccLoopSK c lo Wm1 n 0 start len).testBit j = true ↔
+        (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).testBit j = true := by
+      constructor
+      · intro h
+        obtain ⟨i, hi, w, hw, hc, hsd⟩ := (testBit_segAccLoopSK_band16 hj hn hband).mp h
+        have hX : entrySeedLK 4 lo start (16 * i + w) ≤ Wm1 := by rw [hsd]; exact hj
+        have := stripeBatchLK_complete4 (c := c) (lo := lo) (start := start) (len := len) (W := W)
+          (Wm1 := Wm1) (slotW := slotW) (Ls := Ls) (Cs := Cs) hc2 hi hW hWm1
+          (htal i hi w hw hc) hX
+        rwa [hsd] at this
+      · intro h
+        obtain ⟨k, m, hk, hm, hcbit, hk16, hsd⟩ :=
+          (testBit_stripeBatchLK_eq (by lia : j < W)).mp h
+        refine (testBit_segAccLoopSK_band16 hj hn hband).mpr
+          ⟨(entryOf Ls slotW k m).shiftRight 4, ?_, (entryOf Ls slotW k m).land (laneMaskK 4),
+            landLw_lt4, hcbit, ?_⟩
+        · by_contra hge
+          rw [testBitK_of_lt hc2 (by lia)] at hcbit
+          simp at hcbit
+        · rw [entry_splitLw4]
+          exact hsd
+    cases h1 : (segAccLoopSK c lo Wm1 n 0 start len).testBit j with
+    | false =>
+      cases h2 : (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).testBit j with
+      | false => rfl
+      | true =>
+        rw [h1, h2] at hiff
+        simp at hiff
+    | true =>
+      rw [hiff.mp h1]
+
 end PrimeCert.Sieve
