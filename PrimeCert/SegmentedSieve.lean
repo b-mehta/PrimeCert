@@ -5650,6 +5650,95 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     exact hno (value t) htB hprime
       (dvd_of_testBit_mask (value_mod6 t) ht5 hlo (Nat.le_sub_one_of_lt hj) hW hmask)
 
+/-! ## A product of the values a window still holds
+
+Groundwork for a certificate that sieves by one `Nat.gcd` per slice in place of a mask per divisor.
+A window of 4194304 bits costs about 65.5 s of kernel today; the gcd shape was priced on
+2026-11-12 at 1.85 s of kernel and 2.0 s of emitter per window, which is why it is worth proving
+rather than guessing at.
+
+The arithmetic those timings measured is sound already, since `Nat.gcd` is on the kernel's fast
+path. What was missing is the bridge from a coprimality statement to the window, and that is what
+these three give: the product of the live values, the fact that each live value divides it, and
+the step a certificate is actually made of — a divisor coprime to that product leaves the window
+exactly as it was, so its mask need never be built. -/
+
+/-- The product of the values at the live bits among the low `n` bits of `seg`, counting from base
+index `b`. -/
+@[expose] public noncomputable def prodLiveK (seg b n : Nat) : Nat :=
+  n.rec 1 fun i acc => (testBitK seg i).rec acc (acc.mul (valueK (b.add i)))
+
+/-- A live value divides the product of the live values. -/
+public theorem dvd_prodLiveK {seg b n i : Nat} (hi : i < n) (h : testBitK seg i = true) :
+    valueK (b + i) ∣ prodLiveK seg b n := by
+  induction n with
+  | zero => omega
+  | succ n ih =>
+    have hstep : prodLiveK seg b (n + 1)
+        = (testBitK seg n).rec (prodLiveK seg b n)
+            ((prodLiveK seg b n).mul (valueK (b.add n))) := rfl
+    rw [hstep]
+    rcases Nat.lt_succ_iff_lt_or_eq.mp hi with hlt | heq
+    · have hd := ih hlt
+      cases hb : testBitK seg n with
+      | false => simpa using hd
+      | true => exact Dvd.dvd.mul_right hd _
+    · subst heq
+      rw [h]
+      exact Dvd.dvd.mul_left dvd_rfl _
+
+/-- Once the product of a window's live values is coprime to `P`, no divisor of `P` divides the
+value at a live position. This is what one `Nat.gcd` buys: every divisor of `P` is ruled out at
+every live position at once. -/
+public theorem not_dvd_of_gcd_eq_one {seg b n i p P : Nat}
+    (hi : i < n) (h : testBitK seg i = true) (hp : 1 < p) (hpP : p ∣ P)
+    (hg : Nat.gcd (prodLiveK seg b n) P = 1) : ¬ p ∣ valueK (b + i) := by
+  intro hdvd
+  have h2 : p ∣ Nat.gcd (prodLiveK seg b n) P :=
+    Nat.dvd_gcd (hdvd.trans (dvd_prodLiveK hi h)) hpP
+  rw [hg] at h2
+  have := Nat.le_of_dvd Nat.one_pos h2
+  omega
+
+/-- A divisor that the gcd certificate has ruled out leaves the window exactly as it was, so its
+mask need never be built. -/
+public theorem segMarkK_eq_self_of_gcd {seg lo Wm1 p P : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 2 ^ 32)
+    (hp6 : p % 6 = 1 ∨ p % 6 = 5) (hp5 : 5 ≤ p) (hlo : index (p * 7) ≤ lo)
+    (hpP : p ∣ P) (hg : Nat.gcd (prodLiveK seg lo (Wm1 + 1)) P = 1) :
+    segMarkK seg p lo Wm1 = seg := by
+  -- Generalised over the mask, so the long term is written once and the content stands out: a
+  -- mask that is clear wherever the window is live meets the window in nothing.
+  have key : ∀ M : Nat, (∀ j, j ≤ Wm1 → Nat.testBit seg j = true → M.testBit j = false) →
+      seg.land M = 0 := by
+    intro M hM
+    have hland : seg.land M = seg &&& M := rfl
+    rw [hland]
+    refine Nat.eq_of_testBit_eq fun j => ?_
+    rw [Nat.testBit_and, Nat.zero_testBit]
+    by_cases hj : j ≤ Wm1
+    · by_cases hs : Nat.testBit seg j = true
+      · rw [hM j hj hs, Bool.and_false]
+      · simp only [Bool.not_eq_true] at hs
+        rw [hs, Bool.false_and]
+    · have hlt : seg < 2 ^ j :=
+        Nat.lt_of_lt_of_le hseg (Nat.pow_le_pow_right (by lia) (by lia))
+      rw [Nat.testBit_eq_false_of_lt hlt, Bool.false_and]
+  have hzero : seg.land (buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32) = 0 := by
+    refine key _ fun j hj hs => ?_
+    have hlive : testBitK seg j = true := by rw [testBitK_eq_testBit]; exact hs
+    have hnd : ¬ p ∣ valueK (lo + j) :=
+      not_dvd_of_gcd_eq_one (by lia) hlive (by lia) hpP hg
+    by_contra hc
+    simp only [Bool.not_eq_false] at hc
+    exact hnd (dvd_of_testBit_mask hp6 hp5 hlo hj hW hc)
+  have hsub : seg.sub (seg.land (buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+      (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32))
+      = seg - seg.land (buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+        (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32) := rfl
+  rw [segMarkK, hsub, hzero, Nat.sub_zero]
+
 /-! ## Compiled twins
 
 Executable copies of the definitions above, used by `run_segment` to compute the batch literals.
