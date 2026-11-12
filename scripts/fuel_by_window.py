@@ -103,19 +103,35 @@ def range_cost(n: int) -> tuple[int, float, float]:
     return windows, mean, windows * mean / 3600 / 24 / 365
 
 
+# How many windows a runner carries at once. This is set by peak memory, not by cores, and the
+# peak depends on a flag: with Lean's asynchronous kernel checking a window peaked at 4.85 GB, and
+# with it off at 1.64 GB for the same processor seconds (measured alternated on a quiet box).
+# `run.sh` now turns it off, so a 14 GB runner holds four windows rather than two. That doubling
+# counts for exactly as much as halving the time would, which is why it is written here rather
+# than left in the harness.
+WINDOWS_PER_RUNNER = 4
+
+# What the measured changes of 2026-11-11 did to a window, as a multiple of the anchor above,
+# which predates all of them: the byte-array route to the next window, the allocator settings and
+# the operand order of one `land` together took 111.8 s to about 76. Applied as a factor because
+# the anchor and those runs are from different machines, so only the ratio carries over.
+SPEEDUP = 76.0 / 111.8
+
+
 def main() -> None:
     top = window_cost(FULL_B)
     print(f"primes per band: {PI}")
-    print(f"one window at the top of 1..1e14: {top:.1f} s of runner time")
+    print(f"one window at the top of 1..1e14: {top:.1f} s of runner time (anchor, before 11-11)")
+    print(f"measured factor since: {SPEEDUP:.3f}; windows a runner holds: {WINDOWS_PER_RUNNER}")
     print()
-    # A GitHub job runs at most six hours and takes two windows at once, so it carries
-    # 2 * 21600 / mean windows.
-    print("  N        windows      s/window   runner-years   six-hour jobs")
+    print("  N        windows      s/window   runner-years   six-hour jobs   as the anchor stood")
     for e in (11, 12, 13, 14):
         n = 10 ** e
         windows, mean, years = range_cost(n)
-        jobs = windows * mean / 2 / 21600
-        print(f"  1e{e:<6} {windows:>10}   {mean:>8.1f}   {years:>12.2f}   {jobs:>13.0f}")
+        was = windows * mean / 2 / 21600
+        now = windows * mean * SPEEDUP / WINDOWS_PER_RUNNER / 21600
+        print(f"  1e{e:<6} {windows:>10}   {mean:>8.1f}   {years * SPEEDUP:>12.2f}   "
+              f"{now:>13.0f}   {was:>19.0f}")
 
 
 if __name__ == "__main__":
