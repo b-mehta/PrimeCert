@@ -6382,7 +6382,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 81 then throwError "run_segment_variant: mode {mode} is not 0 to 81"
+  if mode > 82 then throwError "run_segment_variant: mode {mode} is not 0 to 82"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6456,9 +6456,15 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   -- rounds alternating: the mask route spent 29.3 s of a 111.8 s window finding next windows, the
   -- byte array 4.2 s of 86.3 s, with the kernel unmoved, which is why the byte array is the
   -- default and the mask route is kept only for comparison.
+  -- Mode 82 is mode 28 with one more sorted band: the octave where a divisor's eightfold fits the
+  -- window and its sixteenfold does not, at sixteen records a divisor. Behind its own mode rather
+  -- than inside 28, because 28 is what `run_segment` emits and the pair has not been measured at
+  -- the full divisor set yet. Its case files must also import `PrimeCertTest.LaneChain`, which is
+  -- where `stripeStepBand16` lives.
+  let lane16 := mode == 82
   let maskTwin := mode == 66
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
-    || lenAll
+    || lenAll || lane16
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
   let wideTail := mode == 21
@@ -7275,7 +7281,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       let cE := mkRawNatLit cVal
       let sorted := !marked && (wm1 < 2 * value start
         || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start)
-        || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start))
+        || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start)
+        || (lane16 && 8 * value (start + stepN) ≤ wm1 && wm1 < 16 * value start))
       let chunkName := mkPrivateName env (parent ++ Name.mkSimple s!"chunk_{i}")
       let sliceE := mkApp2 (mkConst ``Nat.land)
         (mkApp2 (mkConst ``Nat.shiftRight) sE (mkRawNatLit start))
@@ -7289,7 +7296,19 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
         else if wm1 < 2 * value start then 2
         else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
         else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
+        else if lane16 && 8 * value (start + stepN) ≤ wm1 && wm1 < 16 * value start then 16
         else 0
+      -- A sixteen-bit record holds a four-bit lane and a twelve-bit position, so a sixteen-record
+      -- batch takes at most 4096 divisors. The graded schedule gives 256 to 768 over this band, so
+      -- this never fires in practice; it is here so that it cannot fail silently if it ever would.
+      if nrec == 16 && stepN > 4096 then
+        throwError "run_segment_variant: a sixteen-record batch holds at most 4096 divisors, \
+          not {stepN}"
+      if nrec == 16 && !((← getEnv).contains (`PrimeCert.Sieve ++ Name.mkSimple
+          "stripeStepBand16")) then
+        throwError "run_segment_variant: mode {mode} closes its sixteen-record batches with \
+          PrimeCert.Sieve.stripeStepBand16, which this file does not import. Add \
+          `public meta import PrimeCertTest.LaneChain`."
       -- The widest band gets its own prefix in both modes, so that `run.sh` reports the band the
       -- tree replaces apart from the two it leaves alone and a pair can be read band by band.
       let batchName := mkPrivateName env (parent ++ Name.mkSimple
@@ -7297,6 +7316,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       let treeHere := tree && (nrec == 2 || (allTree && nrec > 0))
       let t0 ← IO.monoNanosNow
       let sortRes := if nrec == 0 || treeHere then none
+        else if nrec == 16 then some (SieveEmit.stripeSortH sVal lo wm1 start stepN W)
         else some (stripeSort sVal lo wm1 start stepN W nrec)
       let asmRes := if treeHere then some (treeAsmN sVal lo wm1 start stepN W nrec) else none
       -- Looking at the answer is what forces the work, so each clock below covers what precedes
@@ -7341,8 +7361,14 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
             mkRawNatLit stepN, mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
             mkRawNatLit (W / 65536), bitsE, mkRawNatLit expect, mkRawNatLit next]
           let refls := Array.replicate (if nrec == 2 then 8 else 10) Lean.reflBoolTrue
+          -- `stripeStepBand16` is in `PrimeCertTest.LaneChain`, which imports this module, so it
+          -- is not in scope here; it is in scope wherever a case file imports both. Naming it by
+          -- `Name.mkSimple` rather than `` ` `` is what lets that work, and the check above says
+          -- so plainly if a case file forgot the import.
+          let band16 := `PrimeCert.Sieve ++ Name.mkSimple "stripeStepBand16"
           mkAppN (mkConst (if nrec == 2 then ``stripeStep
-            else if nrec == 4 then ``stripeStepBand else ``stripeStepBand8)) (args ++ refls)
+            else if nrec == 4 then ``stripeStepBand
+            else if nrec == 16 then band16 else ``stripeStepBand8)) (args ++ refls)
       let batchRef ← if fold then pure batchProof else do
         addSegThm batchName (mkSegBeqTrue batchE (mkRawNatLit next)) batchProof
         pure (mkConst batchName)
