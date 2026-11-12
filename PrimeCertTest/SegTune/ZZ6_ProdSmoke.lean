@@ -20,4 +20,9 @@ namespace PrimeCert.SegTune.ZZ6_ProdSmoke
 
 run_segment 100000000000001 262144 20000 2048 1000000
 
+-- The names, spelled out. A route change that renamed what the command emits would break every
+-- consumer silently, so this fails the build rather than leaving it to be noticed later.
+#check (segEq_100000000000001_262144_20000_2048)
+#check (segEqI_100000000000001_262144_20000_2048)
+
 end PrimeCert.SegTune.ZZ6_ProdSmoke

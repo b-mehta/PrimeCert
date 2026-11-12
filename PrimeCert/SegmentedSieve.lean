@@ -5790,18 +5790,6 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
         mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
         mkConst parent])
 
-/-- `run_segment a W fuel len` sieves the window of `W` wheel positions from `a` by the base
-primes at wheel indices `1 … fuel`, in batches of `len` steps. A trailing numeral names another
-base sieve by its bound, as `run_segment a W fuel len 100000000`; the default base is the
-`1000000` sieve from `PrimeCert.SieveBase`. The emitted names carry all four numerals, so
-distinct calls never collide. -/
-elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
-  liftTermElabM <| do
-    let base := match bStx with
-      | none => ``sieveBits_1000000
-      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
-    runSegment (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
-
 /-- `runSegment` with a choice of loop and of batch assembly, for timing the draft variants
 against each other. The loop is `mode % 4`: 0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK`
 and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the base sieve
@@ -5814,7 +5802,8 @@ Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 1
 command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
 the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
 and a chain, so mode 11 is the arm to compare it against. -/
-meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit := do
+meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
+    (prodNames : Bool := false) : MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
@@ -5916,9 +5905,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       mkAppN (mkConst ``segLoopCK) #[sE, loE, wE, nE, segE, mkRawNatLit start, mkRawNatLit n]
     else mkSegLoopK sE loE wE segE start n
   let lhsLoop := loopE initE 1 fuel
-  let tag := s!"{a}_{W}_{fuel}_{step0}_m{mode}"
-  let parent := ns ++ Name.mkSimple s!"segEqV_{tag}"
-  let litName := ns ++ Name.mkSimple s!"segBitsV_{tag}"
+  -- `run_segment` emits through this function too, and the names it has always emitted carry no
+  -- mode and no `V`, so that a consumer of the sieve cannot tell which route built the window.
+  let tag := if prodNames then s!"{a}_{W}_{fuel}_{step0}"
+    else s!"{a}_{W}_{fuel}_{step0}_m{mode}"
+  let parent := ns ++ Name.mkSimple (if prodNames then s!"segEq_{tag}" else s!"segEqV_{tag}")
+  let litName := ns ++ Name.mkSimple (if prodNames then s!"segBits_{tag}" else s!"segBitsV_{tag}")
   if mode == 19 then
     -- Measurement only: the command's own computation, with one declaration emitted at the end,
     -- so its peak separates the loop's own footprint from the 2171 literals the other modes keep.
@@ -7034,6 +7026,37 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       #[sE, mkRawNatLit a, loE, mkRawNatLit W, wE, mkRawNatLit bVal, mkRawNatLit fuel,
         mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
         mkConst parent])
+
+/-- `run_segment a W fuel len` sieves the window of `W` wheel positions from `a` by the base
+primes at wheel indices `1 … fuel`. A trailing numeral names another base sieve by its bound, as
+`run_segment a W fuel len 100000000`; the default base is the `1000000` sieve from
+`PrimeCert.SieveBase`. The emitted names carry all four numerals, so distinct calls never collide.
+
+It sieves by bands: a divisor striking the window only once or twice has its strikes sorted into
+the slice each lands in, and only a divisor striking often enough to be worth one is given a mask.
+`len` is the batch length above base index 700000; below it the graded schedule of `batchLen`
+applies, which was settled on windows per machine-hour rather than seconds per window.
+
+The sorted route writes each strike into one 65536-bit slice of the window, so it needs a window
+that is a whole number of slices. A narrower window, or one that is not a multiple of 65536, goes
+through the single clamped loop instead, which sieves the same window to the same literal and ends
+at the same two theorems. The ladder of small windows at the end of this file takes that path.
+
+Measured against the single clamped loop this command used before, both arms in one job on a fresh
+c7i.8xlarge at W = 4194304 over 333333 divisors: kernel **65.5-65.9 s against 85.5-86.3**,
+processor **73.2-73.6 against 128.5-130.0**, peak 1.72 GB against 1.90. The old loop is
+`run_segment_variant 0` unclamped and `9` clamped. -/
+elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
+  liftTermElabM <| do
+    let base := match bStx with
+      | none => ``sieveBits_1000000
+      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
+    let W := wStx.getNat
+    if W % 65536 == 0 then
+      runSegmentV (← getCurrNamespace) base 28 aStx.getNat W fStx.getNat lStx.getNat
+        (prodNames := true)
+    else
+      runSegment (← getCurrNamespace) base aStx.getNat W fStx.getNat lStx.getNat
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
 the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
