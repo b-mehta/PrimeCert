@@ -150,6 +150,10 @@ def range_cost(n: int) -> tuple[int, float, float]:
 #
 # Not modelled here: CPU per copy rises with concurrency, 6% at four and 15% at eight, so the
 # figures below are optimistic by roughly that much at those packings. Beyond eight it is unmeasured.
+# Both constants are **mode 28's**, which is what `run_segment` emits. They do not transfer to
+# another route: a route with a different per-window peak has its own marginal, and that marginal
+# is what decides packing, not the peak of one window measured alone. Comparing two routes on
+# throughput therefore needs a concurrency run of each, not one of them and a ratio.
 RUNNER_GB = 14.0
 WINDOWS_PER_RUNNER = int((RUNNER_GB - 1.3) / 1.83)
 
