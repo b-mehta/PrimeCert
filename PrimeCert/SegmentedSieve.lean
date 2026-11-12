@@ -1823,6 +1823,28 @@ public theorem landLw_pair {i w lw : Nat} (hw : w < 2 ^ lw) :
     (2 ^ lw * i + w).land (2 ^ lw - 1) = w := by
   rw [landLw_eq, Nat.mul_add_mod, Nat.mod_eq_of_lt hw]
 
+/-- The lane mask, as the decode lemmas write it. `Nat.shiftLeft 1 lw` only reduces to `2 ^ lw`
+when `lw` is a literal, so with the width open the two forms need connecting. -/
+public theorem laneMaskK_eq {lw : Nat} : laneMaskK lw = 2 ^ lw - 1 := by
+  unfold laneMaskK
+  have h : Nat.shiftLeft 1 lw = 1 <<< lw := rfl
+  rw [h, Nat.shiftLeft_eq, Nat.one_mul]
+  rfl
+
+/-- Which strike a record names, at any lane width. The three-bit `entrySeedK_pair` is bounded at
+`w < 8`, and the eight named lane lemmas after it are that one at `w = 0 … 7`. With the width open
+a band proof can instantiate this at each `w` instead, so a wider band names no new lemmas. -/
+public theorem entrySeedLK_pair {lw lo start i w : Nat} (hw : w < 2 ^ lw) :
+    entrySeedLK lw lo start (2 ^ lw * i + w)
+      = Nat.add
+          ((Nat.beq (w.land 1) 0).rec
+            (firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2))
+            (firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)))
+          (Nat.mul (w.shiftRight 1) ((valueK (start + i)).mul 2)) := by
+  unfold entrySeedLK
+  rw [shiftRightLw_pair hw, laneMaskK_eq, landLw_pair hw]
+  rfl
+
 /-- Dividing by eight, two ways. -/
 public theorem shiftRight3_eq {e : Nat} : e.shiftRight 3 = e / 8 := by
   have h : e.shiftRight 3 = e >>> 3 := rfl

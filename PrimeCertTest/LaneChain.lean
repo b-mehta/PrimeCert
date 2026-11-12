@@ -413,14 +413,6 @@ public theorem testBit_stripeBatchLK_eq {lw c lo start len W Wm1 slotW Ls Cs np 
     rw [← entryOf_eq, hc, hk16', hbeq]
     simp
 
-/-- The lane mask, as the decode lemmas write it. `Nat.shiftLeft 1 lw` only reduces to `2 ^ lw`
-when `lw` is a literal, so with the width open the two forms need bridging. -/
-public theorem laneMaskK_eq {lw : Nat} : laneMaskK lw = 2 ^ lw - 1 := by
-  unfold laneMaskK
-  have h : Nat.shiftLeft 1 lw = 1 <<< lw := rfl
-  rw [h, Nat.shiftLeft_eq, Nat.one_mul]
-  rfl
-
 /-- A tally bit names one position of the batch and one of a divisor's strikes. -/
 public theorem entryTallyLK_inj {lw len e i w : Nat} (hi : (e.shiftRight lw) < len) (hi' : i < len)
     (h : entryTallyLK lw len e = Nat.add 65536 (Nat.add i (Nat.mul w len))) :
@@ -519,20 +511,5 @@ public theorem stripeBatchLK_complete {lw c lo start len W Wm1 slotW Ls Cs np i 
       have hble : Nat.ble (Wm1 + 1) (entrySeedLK lw lo start (2 ^ lw * i + w)) = true := hblt
       have := Nat.le_of_ble_eq_true hble
       lia
-
-/-- Which strike a record names, at any lane width. The three-bit `entrySeedK_pair` is bounded at
-`w < 8`, and the eight named lane lemmas above it are that one at `w = 0 … 7`. With the width open
-there is no need to name sixteen of them: a band proof can instantiate this at each `w` directly.
--/
-public theorem entrySeedLK_pair {lw lo start i w : Nat} (hw : w < 2 ^ lw) :
-    entrySeedLK lw lo start (2 ^ lw * i + w)
-      = Nat.add
-          ((Nat.beq (w.land 1) 0).rec
-            (firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2))
-            (firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)))
-          (Nat.mul (w.shiftRight 1) ((valueK (start + i)).mul 2)) := by
-  unfold entrySeedLK
-  rw [shiftRightLw_pair hw, laneMaskK_eq, landLw_pair hw]
-  rfl
 
 end PrimeCert.Sieve
