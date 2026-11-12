@@ -600,4 +600,49 @@ public theorem segLoopSCK_eq_stripe_band16 {c lo start len n W Wm1 slotW Ls Cs n
     | true =>
       rw [hiff.mp h1]
 
+/-- Two tests settle the whole batch one octave below `octave_of_tests`: the last divisor's
+octuple still fits the window, and the first divisor's sixteenfold already passes its end. -/
+public theorem hexa_of_tests {Wm1 start len : Nat}
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 8) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 16) = true) :
+    ∀ i, i < len → valueK (start + i) * 8 ≤ Wm1 ∧ Wm1 < valueK (start + i) * 16 := by
+  intro i hi
+  have h1 : valueK (start + len) * 8 ≤ Wm1 := Nat.le_of_ble_eq_true hlast
+  have hb : Nat.ble (Wm1 + 1) (Nat.mul (valueK start) 16) = true := hfirst
+  have h2 : Wm1 + 1 ≤ valueK start * 16 := Nat.le_of_ble_eq_true hb
+  have h3 : valueK (start + i) ≤ valueK (start + len) := valueK_le (by lia)
+  have h4 : valueK start ≤ valueK (start + i) := valueK_le (by lia)
+  exact ⟨by lia, by lia⟩
+
+/-- One batch of the sixteen-strike band, with the side conditions as Boolean tests the kernel
+settles. The shape `stripeStepBand8` has, an octave down, and the tally stated as the fold
+`tallyUpToK` rather than a chain of sixteen shifts. -/
+public theorem stripeStepBand16 {c lo Wm1 n W start len slotW Ls Cs np seg lit next : Nat}
+    (hWeq : Nat.beq (Wm1 + 1) W = true) (hsegW : Nat.beq (seg.shiftRight W) 0 = true)
+    (hc0 : Nat.beq (c.shiftRight len) 0 = true) (hW : Nat.ble (Nat.mul np 65536) W = true)
+    (hn : Nat.ble 3 n = true)
+    (hlast : Nat.ble (Nat.mul (valueK (start + len)) 8) Wm1 = true)
+    (hfirst : Nat.blt Wm1 (Nat.mul (valueK start) 16) = true)
+    (hbatch : Nat.beq (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np) lit = true)
+    (htally : Nat.beq (lit.shiftRight W) (tallyUpToK c len 16) = true)
+    (hclear : Nat.beq (Nat.sub seg (Nat.land lit seg)) next = true) :
+    (segLoopSCK c lo Wm1 n seg start len).beq next = true := by
+  have hWe : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hWeq
+  have hW' : np * 65536 ≤ W := Nat.le_of_ble_eq_true hW
+  have hWm1' : Wm1 < W := by lia
+  have hseg : seg < 2 ^ (Wm1 + 1) := by
+    rw [hWe]
+    exact lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hsegW)
+  have hb := Nat.eq_of_beq_eq_true hbatch
+  have hsr : (stripeBatchLK 4 c lo start len W Wm1 slotW Ls Cs np).shiftRight W
+      = tallyUpToK c len 16 := by
+    rw [hb]
+    exact Nat.eq_of_beq_eq_true htally
+  have hc2 := lt_two_pow_of_shiftRight (Nat.eq_of_beq_eq_true hc0)
+  have htal := tallyN_of_shiftRight hsr
+  refine Nat.beq_eq.mpr ?_
+  rw [segLoopSCK_eq_stripe_band16 hseg hc2 hW' hWm1' (Nat.le_of_ble_eq_true hn)
+    (hexa_of_tests hlast hfirst) htal, hb, ldiff_eq_sub]
+  exact Nat.eq_of_beq_eq_true hclear
+
 end PrimeCert.Sieve
