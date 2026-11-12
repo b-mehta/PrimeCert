@@ -1845,6 +1845,19 @@ public theorem entrySeedLK_pair {lw lo start i w : Nat} (hw : w < 2 ^ lw) :
   rw [shiftRightLw_pair hw, laneMaskK_eq, landLw_pair hw]
   rfl
 
+/-- The same with the lane's two halves as `%` and `/`, which reduce when the lane is a literal.
+This is what lets a band proof take its cases without a named lemma per lane. -/
+public theorem entrySeedLK_lane {lw lo start i w : Nat} (hw : w < 2 ^ lw) :
+    entrySeedLK lw lo start (2 ^ lw * i + w)
+      = Nat.add
+          ((Nat.beq (w % 2) 0).rec
+            (firstLocK (indexK ((valueK (start + i)).mul 7)) lo ((valueK (start + i)).mul 2))
+            (firstLocK (indexK ((valueK (start + i)).mul 5)) lo ((valueK (start + i)).mul 2)))
+          (Nat.mul (w / 2) ((valueK (start + i)).mul 2)) := by
+  have h1 : w.land 1 = w % 2 := landLw_eq (lw := 1)
+  have h2 : w.shiftRight 1 = w / 2 := shiftRightLw_eq (lw := 1)
+  rw [entrySeedLK_pair hw, h1, h2]
+
 /-- Dividing by eight, two ways. -/
 public theorem shiftRight3_eq {e : Nat} : e.shiftRight 3 = e / 8 := by
   have h : e.shiftRight 3 = e >>> 3 := rfl
