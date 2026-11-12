@@ -11,6 +11,14 @@
 # other. LEAN_FLAGS=-Ddebug.skipKernelTC=true times the elaborator with the kernel check switched
 # off.
 #
+# Kernel checking runs on this thread rather than asynchronously, because the asynchronous check
+# holds several windows' worth of environment at once. Measured on a quiet box, alternated on off
+# off on: peak 4.85 GB against 1.64, for the same processor seconds (74.6 against 73.7) and 7
+# percent more wall clock. A run packs windows onto a machine, so the peak is what decides how
+# many fit: a 14 GB runner takes four windows instead of two and a 64 GB box is left core-bound
+# rather than memory-bound, which is twice the throughput and more. Set ASYNC=1 to measure the
+# other way.
+#
 # Two peak figures are reported. `peak` is `/usr/bin/time`'s maximum resident set size for the lean
 # process it launches; `sampled tree peak` is the largest half-second sample of that process plus
 # its children summed. They agree while lean stays a single process, and the second is the one to
@@ -36,6 +44,14 @@ export LEAN_PATH=$(lake env printenv LEAN_PATH)
 # TUNE=0 turns it off, which is how the pair above was measured.
 if [ "${TUNE:-1}" = "1" ]; then
   export GLIBC_TUNABLES=${GLIBC_TUNABLES:-glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=17179869184:glibc.malloc.top_pad=268435456}
+fi
+
+# The asynchronous kernel check costs three times the peak for nothing, as the header explains.
+if [ "${ASYNC:-0}" = "0" ]; then
+  case "$LEAN_FLAGS" in
+    *Elab.async*) ;;
+    *) LEAN_FLAGS="-DElab.async=false $LEAN_FLAGS" ;;
+  esac
 fi
 
 # These cases call lean directly rather than through lake, so nothing hands it the shared objects
