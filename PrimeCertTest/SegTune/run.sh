@@ -58,9 +58,27 @@ fi
 # the precompiled libraries build. Without the flags below that code runs in the interpreter
 # whatever the lakefile says. A library the lakefile does not precompile leaves no object, so this
 # names exactly the ones there are.
+# Named rather than globbed. A glob over libPrimeCert_*.so also picks up a shared object another
+# project left in this build tree, and lean then exits 127 on an undefined symbol before it
+# measures anything, which reads as a failed case rather than a poisoned run. So this lists the
+# libraries this lakefile precompiles, and stops on any other object rather than loading it.
+precompiled="SieveEmit"
 plugin=""
+for lib in $precompiled; do
+  so=".lake/build/lib/libPrimeCert_$lib.so"
+  if [ ! -f "$so" ]; then
+    echo "run.sh: $so is missing; run lake build $lib first" >&2
+    exit 1
+  fi
+  plugin="$plugin --plugin=$so"
+done
 for so in .lake/build/lib/libPrimeCert_*.so; do
-  [ -f "$so" ] && plugin="$plugin --plugin=$so"
+  [ -f "$so" ] || continue
+  case " $precompiled " in
+    *" $(basename "$so" .so | sed 's/^libPrimeCert_//') "*) ;;
+    *) echo "run.sh: $so is not one of this project's precompiled libraries ($precompiled); \
+delete it or add it to the list" >&2; exit 1 ;;
+  esac
 done
 
 # ksum <file> <pattern>: the sum of the [Kernel] seconds on lines matching the pattern.
