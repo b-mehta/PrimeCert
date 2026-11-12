@@ -39,9 +39,21 @@ the masks it replaces.
 
 **Why the isolated pair said otherwise.** `ZZV_Lane16` against `ZZW_Lane16Mask` ran both arms at
 batch length 4096, where sorting won by 13% of that band. Production reaches that band through the
-graded schedule, at 256 to 768. The isolated verdict was real at 4096 and did not transfer, which
-is the same trap as the void batch-length lead of 2026-11-11: **measure in the shape a run uses, or
-the number does not carry.** -/
+graded schedule, at 512. The isolated verdict was real at 4096 and did not transfer, which is the
+same trap as the void batch-length lead of 2026-11-11: **measure in the shape a run uses, or the
+number does not carry.**
+
+**All four cells are now measured, and they close the question without another run.** What this
+octave costs, by route and batch length:
+
+|        | batch 512 | batch 4096 |
+| masked |  19.3 s   |   26.0 s   |
+| sorted |  23.5 s   |   22.7 s   |
+
+The 512 column is this pair's difference in the two band rows; the 4096 column is `ZZV_Lane16`
+against `ZZW_Lane16Mask`. **Masking at 512 is the cheapest of the four**, and it is what mode 28
+already does. Sorting cannot be rescued by giving the octave 4096 either, since 22.7 still loses to
+19.3. There is nothing left to try here. -/
 
 namespace PrimeCert.SegTune.ZZJ_FullWindow82
 
