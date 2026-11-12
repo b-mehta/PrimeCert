@@ -79,13 +79,18 @@ FULL_B = 10**7                   # divisors the top window needs
 # The split below is the measured one. `eight` and `four` share the sorted row because `run.sh`
 # reports them together; they are split evenly, which is the one guess left in this model.
 #
-# **Absolute seconds are host-dependent, by more than any change measured here.** Three fresh
-# c7i.8xlarge boxes ran the same file at 173 s, 177.5-184.1 s and 226 s. The last was checked and
-# is not explained by flags: `-Dtrace.profiler=true -Dtrace.profiler.threshold=0` cost nothing
-# measurable (178.1/177.7 against 177.5/184.1, alternated A B B A on one box). So **compare arms
-# only within one job on one box**, and read the figure below as 175-180 rather than exact.
+# **Absolute seconds are host-dependent, by more than any change measured here.** Four fresh
+# c7i.8xlarge boxes ran this same window at **161.6-162.5, 173.0-174.0, 177.5-184.1 and 226 s** of
+# processor. The 226 was checked and is not explained by flags: `-Dtrace.profiler=true
+# -Dtrace.profiler.threshold=0`, which `run.sh` adds, cost nothing measurable (178.1/177.7 against
+# 177.5/184.1, alternated A B B A on one box). Even setting it aside the spread is about 7%.
+# So **compare arms only within one job on one box**, and read the figure below as a round number
+# with a 160-185 range behind it, not as a measurement.
+#
+# The band split is from the 173-174 box. A split from a faster box would scale down together, so
+# the proportions carry even though the seconds do not.
 _SPLIT = {"small": 45.35, "eight": 47.85 / 2, "four": 47.85 / 2, "wide": 61.75}
-_PAIRED = 178.0                  # processor seconds for one window alone; range 173-184 across hosts
+_PAIRED = 174.0                  # processor seconds for one window alone; 161-185 across hosts
 _SCALE = _PAIRED / sum(_SPLIT.values())
 COST = {k: v * _SCALE for k, v in _SPLIT.items()}
 OTHER = 0.0
@@ -159,7 +164,7 @@ def main() -> None:
     top = window_cost(FULL_B)
     print(f"primes per band: {PI}")
     print(f"one window at the top of 1..1e14: {top:.1f} processor seconds "
-          f"(measured 2026-11-12; hosts vary 173-184)")
+          f"(measured 2026-11-12; hosts vary 161-185)")
     print(f"windows a {RUNNER_GB:.0f} GB runner holds: {WINDOWS_PER_RUNNER} "
           f"(measured: 1.83 GB a copy over a 1.3 GB fixed part)")
     print()
