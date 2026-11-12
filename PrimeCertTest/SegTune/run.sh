@@ -137,10 +137,14 @@ for round in $(seq 1 "$rounds"); do
       grep -E 'error' "$out" | head -5
     fi
     total=$(ksum "$out" "")
-    steps=$(ksum "$out" "segEqV_.*[^sw]step_")
-    sorted=$(ksum "$out" "segEqV_.*sstep_")
-    wide=$(ksum "$out" "segEqV_.*wstep_")
-    chunks=$(ksum "$out" "segEqV_.*chunk_")
+    # `segEqV\?_` matches both name shapes. `run_segment_variant` emits `segEqV_…` and plain
+    # `run_segment` emits `segEq_…`, so a pattern naming only the first reports every band row as
+    # zero on a production run while `addDecl` plainly shows the time. That is how `ZZ9_FullWindow`
+    # and `ZZ1_ProdPlain` came back with a batch lemma count of 0.
+    steps=$(ksum "$out" "segEqV\?_.*[^sw]step_")
+    sorted=$(ksum "$out" "segEqV\?_.*sstep_")
+    wide=$(ksum "$out" "segEqV\?_.*wstep_")
+    chunks=$(ksum "$out" "segEqV\?_.*chunk_")
     elab=$(esum "$out" "Elab.command")
     basecmd=$(cmdsum "$out" "run_sieve")
     wincmd=$(cmdsum "$out" "run_segment")
@@ -149,7 +153,7 @@ for round in $(seq 1 "$rounds"); do
     wall=$(grep 'Elapsed (wall clock)' "$tim" | awk '{print $8}')
     cpu=$(grep -E 'User time|System time' "$tim" | awk '{s += $NF} END {printf "%.1f", s}')
     peak=$(grep 'Maximum resident set size' "$tim" | awk '{print $6}')
-    nsteps=$(grep -c 'typechecking declarations \[.*segEqV_.*step_' "$out")
+    nsteps=$(grep -c 'typechecking declarations \[.*segEqV\?_.*step_' "$out")
     # The emitter's own report of how long it spent sorting batches into slices, which is the part
     # of the non-kernel remainder that the compiled twins are responsible for.
     sortms=$(grep -oE 'stripeSort total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s}')
