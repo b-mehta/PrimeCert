@@ -154,11 +154,18 @@ for round in $(seq 1 "$rounds"); do
     # of the non-kernel remainder that the compiled twins are responsible for.
     sortms=$(grep -oE 'stripeSort total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s}')
     twinms=$(grep -oE 'segLoopC total [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s+0}')
+    # Mode 75 times its emitter in three. Only the slice products are a per-window cost the gcd
+    # design would add: the window is work the sieve does anyway and the primorial is the same for
+    # every window of a run. Reported here so they survive the box the run was done on.
+    gwin=$(grep -oE 'gcd emitter: window [0-9]+ ms' "$out" | awk '{s += $4} END {printf "%d", s+0}')
+    gpri=$(grep -oE 'primorial [0-9]+ ms' "$out" | awk '{s += $2} END {printf "%d", s+0}')
+    gprod=$(grep -oE 'slice products [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s+0}')
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
       "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
       "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
-      "segLoopC ${twinms}ms |" \
+      "segLoopC ${twinms}ms | gcd window ${gwin}ms | gcd primorial ${gpri}ms |" \
+      "gcd slice products ${gprod}ms |" \
       "wall $wall | processor ${cpu}s | peak ${peak} KiB | sampled tree peak ${sampled} KiB |" \
       "batch lemma count $nsteps"
   done
