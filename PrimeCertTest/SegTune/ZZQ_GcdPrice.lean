@@ -35,7 +35,25 @@ every batch and slice lemma row is zero, so that 64 s is this case building the 
 nothing else. The next thing to measure is how that 64 s divides between `primorialOver`, which is
 the same for every window of a run and so can be built once, and `sliceProduct`, which depends on
 the window's survivors and cannot. Only the second is a per-window cost, and whether the direction
-lives or dies turns on it. -/
+lives or dies turns on it.
+
+**Split and measured, and the direction lives.** Same box and settings, three rounds: window
+**37.3-38.4 s**, primorial **21.9-22.5 s**, slice products **2.01 s**, covering 97% of the 63.3-64.1
+window command.
+
+Read it carefully, because two of those three are not costs of the design. The primorial is the
+same for every window of a run and is built once. The 37-38 s window build is an artefact of this
+probe: it uses the plain `segLoopC` twin over every divisor in one go, where the banded route
+`run_segment` now takes does the same job with the stripe twins in about 6 s (`WA_Narrow`: window
+71.9-72.3 s against kernel 65.5-65.9).
+
+**So the per-window cost the design would add is 2.01 s of slice products plus 1.85 s of kernel,
+against the 65.5 s of kernel a window costs today.** That is the largest remaining idea by a wide
+margin.
+
+It prices arithmetic and nothing else. A certificate of this shape still has to prove that a
+slice's survivors, being coprime to the product of the base primes above 32768, are the primes of
+that slice — and that proof does not exist. The measurement says it is worth writing. -/
 
 namespace PrimeCert.SegTune.ZZQ_GcdPrice
 
