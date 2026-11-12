@@ -3197,6 +3197,66 @@ theorem testBit_seedOct {A B M j d e : Nat} (hj : j ≤ M) :
         (testBit_seedQuad (M := M) (A := A) (B := B) (d := d) (j := j - e) (by lia)).mpr
           (Or.inr (Or.inr (Or.inr (by lia))))⟩
 
+/-- The octave below: the eight-strike mask joined with itself an octuple along holds sixteen
+strikes. Doubling `testBit_seedOct` exactly as that doubles `testBit_seedQuad`. -/
+theorem testBit_seed16 {A B M j d e f : Nat} (hj : j ≤ M) :
+    ((((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d)
+        ||| ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d) <<< e)
+      ||| (((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d)
+        ||| ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< d) <<< e)
+          <<< f).testBit j = true ↔
+      (A = j ∨ B = j ∨ A + d = j ∨ B + d = j
+        ∨ A + e = j ∨ B + e = j ∨ A + d + e = j ∨ B + d + e = j
+        ∨ A + f = j ∨ B + f = j ∨ A + d + f = j ∨ B + d + f = j
+        ∨ A + e + f = j ∨ B + e + f = j ∨ A + d + e + f = j ∨ B + d + e + f = j) := by
+  rw [Nat.testBit_or, Nat.testBit_shiftLeft, Bool.or_eq_true, Bool.and_eq_true,
+    testBit_seedOct hj]
+  -- The rewrite above has already turned the unshifted half into its disjunction, so only the
+  -- shifted half needs the lemma again, and it is named once per branch rather than re-elaborated
+  -- per case: `first` across sixteen cases pays for this expression twice a case, which is what
+  -- timed this proof out when it was written that way.
+  constructor
+  · rintro (h | ⟨hd, h2⟩)
+    · exact h.imp id (Or.imp id (Or.imp id (Or.imp id (Or.imp id (Or.imp id
+        (Or.imp id Or.inl))))))
+    · have hge : f ≤ j := of_decide_eq_true hd
+      have hhigh := testBit_seedOct (M := M) (A := A) (B := B) (d := d) (e := e) (j := j - f)
+        (by lia)
+      refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ?_)))))))
+      rcases hhigh.mp h2 with h | h | h | h | h | h | h | h
+      · exact Or.inl (by lia)
+      · exact Or.inr (Or.inl (by lia))
+      · exact Or.inr (Or.inr (Or.inl (by lia)))
+      · exact Or.inr (Or.inr (Or.inr (Or.inl (by lia))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))
+  · intro h
+    rcases h with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    · exact Or.inl (Or.inl h)
+    · exact Or.inl (Or.inr (Or.inl h))
+    · exact Or.inl (Or.inr (Or.inr (Or.inl h)))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr (Or.inl h))))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h)))))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h))))))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h)))))))
+    · exact Or.inl (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr h)))))))
+    all_goals
+      refine Or.inr ⟨decide_eq_true (by lia), ?_⟩
+    all_goals
+      have hhigh := testBit_seedOct (M := M) (A := A) (B := B) (d := d) (e := e) (j := j - f)
+        (by lia)
+      refine hhigh.mpr ?_
+    · exact Or.inl (by lia)
+    · exact Or.inr (Or.inl (by lia))
+    · exact Or.inr (Or.inr (Or.inl (by lia)))
+    · exact Or.inr (Or.inr (Or.inr (Or.inl (by lia))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia))))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl (by lia)))))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by lia)))))))
+
 /-- Where every divisor of the batch has its quadruple inside the window and its octuple past the
 end, the batch's joined mask holds exactly the in-window strikes of the divisors the slice names,
 and each has eight of them. -/
