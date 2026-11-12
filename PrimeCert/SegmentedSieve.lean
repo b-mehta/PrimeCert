@@ -2400,6 +2400,32 @@ public theorem buildMaskCK_two {p M A B : Nat} (h2 : p * 2 ≤ M) (h4 : p * 4 �
   have hp : (2 : Nat) ^ (1 + 1) = 4 := rfl
   rw [buildMaskCK_succ, hp, if_pos h4, buildMaskCK_one h2]
 
+/-- The octave below: where the divisor's sixteenfold passes the window's end, three rounds are
+all the mask ever gets, however many it is given. -/
+public theorem buildMaskCK_hexa {p M A B n : Nat} (h16 : M < p * 16) (hn : 3 ≤ n) :
+    buildMaskCK p M A B n = buildMaskCK p M A B 3 := by
+  induction n with
+  | zero => exact absurd hn (by lia)
+  | succ n ih =>
+    rcases Nat.eq_or_lt_of_le hn with h | h
+    · rw [← h]
+    · have hn' : 3 ≤ n := by lia
+      rw [buildMaskCK_succ, ih hn']
+      have h2 : (16 : Nat) ≤ 2 ^ (n + 1) := by
+        have hx : (2 : Nat) ^ 4 ≤ 2 ^ (n + 1) := Nat.pow_le_pow_right (by lia) (by lia)
+        have hy : (2 : Nat) ^ 4 = 16 := rfl
+        rw [hy] at hx
+        exact hx
+      have hle : p * 16 ≤ p * 2 ^ (n + 1) := Nat.mul_le_mul_left p h2
+      rw [if_neg (by lia)]
+
+/-- Those three rounds are the two-round mask joined with the same mask an octuple along. -/
+public theorem buildMaskCK_three {p M A B : Nat} (h8 : p * 8 ≤ M) :
+    buildMaskCK p M A B 3
+      = buildMaskCK p M A B 2 ||| (buildMaskCK p M A B 2) <<< (p * 8) := by
+  have hp : (2 : Nat) ^ (2 + 1) = 8 := rfl
+  rw [buildMaskCK_succ, hp, if_pos h8]
+
 /-- Below `M`, the clamped mask is the mask. -/
 public theorem buildMaskCK_testBit {p M A B n : Nat} :
     ∀ i ≤ M, (buildMaskCK p M A B n).testBit i = (buildMaskK p M A B n).testBit i := by
