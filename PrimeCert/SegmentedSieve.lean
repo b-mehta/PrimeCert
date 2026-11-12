@@ -3234,6 +3234,46 @@ public theorem segLoopSCK_eq_stripe {c lo start len n W Wm1 slotW Ls Cs np seg :
     | true =>
       rw [hiff.mp h1]
 
+/-! ### The tally, folded, so a band of any width needs no case per lane
+
+`tally_of_shiftRight` and the two below it split into as many cases as the band has lanes, which is
+fine at two, four and eight and tiresome at sixteen. Folding the tally lets the same fact be proved
+once by induction on the lane count. -/
+
+/-- The tally a complete batch carries: the batch's own slice once per lane. -/
+@[expose] public noncomputable def tallyUpToK (c len n : Nat) : Nat :=
+  n.rec 0 fun w acc => acc.lor (c.shiftLeft (w.mul len))
+
+/-- Every lane of every position the batch names is set in the folded tally. -/
+public theorem testBit_tallyUpToK {c len n i w : Nat} (hw : w < n)
+    (hc : c.testBit i = true) : (tallyUpToK c len n).testBit (i + w * len) = true := by
+  induction n with
+  | zero => omega
+  | succ n ih =>
+    have hstep : tallyUpToK c len (n + 1)
+        = (tallyUpToK c len n).lor (c.shiftLeft (n.mul len)) := rfl
+    have hlor : ∀ a b : Nat, a.lor b = a ||| b := fun _ _ => rfl
+    rw [hstep, hlor, Nat.testBit_or]
+    rcases Nat.lt_succ_iff_lt_or_eq.mp hw with hlt | heq
+    · rw [ih hlt, Bool.true_or]
+    · subst heq
+      have hsl : c.shiftLeft (w.mul len) = c <<< (w * len) := rfl
+      rw [hsl, Nat.testBit_shiftLeft]
+      simp [hc]
+
+/-- What the per-lane tally lemmas say, for any lane count and without a case per lane. -/
+public theorem tallyN_of_shiftRight {X c len W n : Nat}
+    (h : X.shiftRight W = tallyUpToK c len n) :
+    ∀ i, i < len → ∀ w, w < n → testBitK c i = true →
+      X.testBit (W + (i + w * len)) = true := by
+  intro i _ w hw hc
+  have hcb : c.testBit i = true := by rw [← testBitK_eq_testBit]; exact hc
+  have hsr : (X.shiftRight W).testBit (i + w * len) = X.testBit (W + (i + w * len)) := by
+    have hx : X.shiftRight W = X >>> W := rfl
+    rw [hx, Nat.testBit_shiftRight]
+  rw [← hsr, h]
+  exact testBit_tallyUpToK hw hcb
+
 /-- Where a divisor has four strikes, the tally a finished batch carries is its own slice once per
 strike, so again one equation above the window settles every position. -/
 public theorem tally4_of_shiftRight {c lo start len W Wm1 slotW Ls Cs np : Nat}
