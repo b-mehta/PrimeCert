@@ -10,9 +10,14 @@ public meta import PrimeCert.SegmentedSieve
 
 /-! # The same window with the wide band in shorter batches
 
-Mode 83 is mode 28 with `batchLenWide` in place of `batchLen`. The two schedules agree everywhere
-but one tier: above base index 700000, which is the band where a divisor strikes the window once or
-twice, `batchLenWide` gives **1536** where `batchLen` gives 3072. No proof is involved.
+Mode 83 is mode 28 with the wide band's batches at **1536** in place of the call's length, which is
+what mode 28 uses above base index 700000. No proof is involved.
+
+**The measurement recorded below is not of this.** Mode 83 was first defined by reusing the
+`wideTail` flag, which also turns on the tree route, and its batch-length use sat at a schedule
+site a banded mode never reaches. So what was measured was mode 28 with the widest band on the
+tree — real numbers, wrong label. The mode now has its own flag and selects at the site the banded
+loop uses. **It needs re-running**; the figures below belong to the tree route.
 
 Pair with `ZZH_FullWindow28`. **That band is now the largest single share of a window's kernel**,
 56.7-57.2 s of 146.6-147.6 at the full divisor set, and its batch length appears never to have been

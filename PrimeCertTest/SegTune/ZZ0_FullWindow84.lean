@@ -20,6 +20,12 @@ both decided against. The sweep of 2026-11-11 that settled batch length moved ev
 as uniform lengths, so it never isolated this one. Those smallest divisors carry the densest masks
 in the run and sit in the masked band, about 44 s of a window's 150.
 
+**The first run of this pair was inert and must be ignored.** It came back a tie with both arms
+reporting 1469 batch lemmas, which cannot happen if the bottom tier really moved from 256 to 1024;
+the flag had been wired to a schedule site that a banded mode never reaches. Fixed, and checked
+with `ZZ_TierProbe28` against `ZZ_TierProbe84`: 79 batches against 20, which is 20000/256 against
+20000/1024. **Compare the batch lemma counts before reading any seconds.**
+
 Pair with `ZZH_FullWindow28`, both arms in one job, and report peak for each. The two tiers already
 measured went opposite ways — longer middle batches bought time and cost memory, shorter wide ones
 cost time and saved it — so this needs reading on windows per machine-hour rather than seconds, and
