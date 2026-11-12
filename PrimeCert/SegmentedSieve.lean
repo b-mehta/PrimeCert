@@ -1775,6 +1775,45 @@ window's width the join carries a narrower number, which is what this asks again
         (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
         (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
 
+/-! ### One mask for the four smallest divisors
+
+Each divisor's mask repeats with period `2 * p`, so the union of 5, 7, 11 and 13 repeats with
+period `2 * 5 * 7 * 11 * 13 = 10010` positions. That union can be built once at 10010 bits, where
+the numbers are small, and then doubled to the window, instead of four masks each doubled all the
+way. The window's width caps which divisors can share this way: the next prime takes the period
+to 170170 and then 3233230, past which nothing fits, so at most six divisors of the small band's
+43390 are ever eligible.
+
+The arithmetic therefore says the ceiling is a few thousandths of a percent, and this exists
+because Bhavik asked for it to be measured rather than rejected on that arithmetic. Prototype,
+no soundness proved; the kernel checks the literal. -/
+
+/-- 5, 7, 11, 13, five bits each. -/
+@[expose] public def comboSetK : Nat := 437477
+
+/-- The union of those four divisors' masks across one shared period of 10010 positions. -/
+@[expose] public noncomputable def comboBaseK (lo : Nat) : Nat :=
+  Nat.rec 0
+    (fun j acc =>
+      acc.lor
+        (buildMaskCK (Nat.land (Nat.shiftRight comboSetK (Nat.mul 5 j)) 31) 10009
+          (firstLocK (indexK ((Nat.land (Nat.shiftRight comboSetK (Nat.mul 5 j)) 31).mul 5)) lo
+            ((Nat.land (Nat.shiftRight comboSetK (Nat.mul 5 j)) 31).mul 2))
+          (firstLocK (indexK ((Nat.land (Nat.shiftRight comboSetK (Nat.mul 5 j)) 31).mul 7)) lo
+            ((Nat.land (Nat.shiftRight comboSetK (Nat.mul 5 j)) 31).mul 2)) 14))
+    4
+
+/-- That shared period tiled up to the window by doubling. -/
+@[expose] public noncomputable def comboMaskK (lo M : Nat) : Nat :=
+  Nat.rec (comboBaseK lo)
+    (fun i Mk => ((Nat.shiftLeft 10010 i).ble M).rec Mk
+      (Mk.lor (Mk.shiftLeft (Nat.shiftLeft 10010 i))))
+    12
+
+/-- The window with all four of those divisors cleared at once. -/
+@[expose] public noncomputable def comboClearK (seg lo M : Nat) : Nat :=
+  clearHitK seg (seg.land (comboMaskK lo M))
+
 /-- `segMarkCK` with the mask in the closed form of `buildMaskRK`. -/
 @[expose] public noncomputable def segMarkRK (seg p lo Wm1 : Nat) : Nat :=
   clearHitK seg
@@ -5552,7 +5591,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 73 then throwError "run_segment_variant: mode {mode} is not 0 to 73"
+  if mode > 74 then throwError "run_segment_variant: mode {mode} is not 0 to 74"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6107,6 +6146,30 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
+    return
+  if mode == 74 then
+    -- Mode 18 with 5, 7, 11 and 13 cleared by one mask built at their shared period, then the
+    -- rest of the divisors marked as usual from base index 5. Timing only, no chain.
+    let combo := SieveEmit.comboClear (initSeg W) lo wm1
+    if combo != segLoopC sVal lo wm1 rounds (initSeg W) 1 4 then
+      throwError "run_segment_variant: the shared-period mask cleared a different window from \
+        the four separate masks"
+    addSegThm (mkPrivateName env (parent ++ Name.mkSimple "combo"))
+      (mkSegBeqTrue (mkAppN (mkConst ``comboClearK) #[initE, loE, wE]) (mkRawNatLit combo))
+      Lean.reflBoolTrue
+    let mut bitsT := combo
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 5 + i * step0
+      let stepN := Nat.min step0 (fuel + 1 - start)
+      if stepN == 0 then break
+      let next := segLoopC sVal lo wm1 rounds bitsT start stepN
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      addSegThm stepName
+        (mkSegBeqTrue (mkAppN (mkConst ``segLoopSCK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start,
+            mkRawNatLit stepN]) (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsT := next
     return
   if mode == 17 || mode == 18 || mode == 22 || mode == 69 || mode == 70 then
     -- Timing only: the per-batch checks with no chain and no final theorem, mode 17 through

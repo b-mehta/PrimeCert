@@ -423,6 +423,26 @@ Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count 
 those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
 against the window `segLoopC` produces and refuses to emit if they differ. -/
 
+/-- Twin of `comboMaskK`: the union of 5, 7, 11 and 13 built once at their shared period of 10010
+positions and then tiled to the window. -/
+public def comboMask (lo M : Nat) : Nat := Id.run do
+  let mut base := 0
+  for p in [5, 7, 11, 13] do
+    let A := firstLoc (indexE (p * 5)) lo (p * 2)
+    let B := firstLoc (indexE (p * 7)) lo (p * 2)
+    base := base ||| buildMaskC p 10009 A B 14
+  let mut m := base
+  for i in [0:12] do
+    let sh := 10010 <<< i
+    if sh ≤ M then
+      m := m ||| (m <<< sh)
+  return m
+
+/-- Twin of `comboClearK`. -/
+public def comboClear (seg lo M : Nat) : Nat :=
+  let hit := seg &&& comboMask lo M
+  if hit = 0 then seg else seg - hit
+
 /-- Twin of `spanEK`. -/
 public def spanE (p M n : Nat) : Nat := Id.run do
   let mut s := p * 2
