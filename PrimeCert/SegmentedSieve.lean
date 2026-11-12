@@ -1775,6 +1775,39 @@ window's width the join carries a narrower number, which is what this asks again
         (firstLocK (indexK ((valueK (start.add i)).mul 5)) lo ((valueK (start.add i)).mul 2))
         (firstLocK (indexK ((valueK (start.add i)).mul 7)) lo ((valueK (start.add i)).mul 2)) n))
 
+/-! ### Keeping what survives instead of removing what does not
+
+`segMarkCK` builds the divisor's hits, ands them into the window and subtracts: a compare, two
+copies of the window and a subtraction pass beyond the mask construction itself. The complement
+costs the same to build — the pattern repeats with the same period `2 * p`, so the same doubling
+tiles it — and then marking is one `land` and nothing else.
+
+The seed is one period with the two strike positions cleared. Those positions are always distinct:
+`index (7p) - index (5p)` is `2 * index p + 1`, which is odd, and the period is even, so they
+cannot coincide. Prototype; the emitter checks it clears the window the masks clear. -/
+
+/-- One period of the complement: `2 * p` ones with the two strike positions removed. -/
+@[expose] public noncomputable def seedCompK (p A B : Nat) : Nat :=
+  Nat.sub (Nat.sub (Nat.sub (Nat.shiftLeft 1 (p.mul 2)) 1) (Nat.shiftLeft 1 A))
+    (Nat.shiftLeft 1 B)
+
+/-- That period tiled to the window by the doubling `buildMaskCK` uses. -/
+@[expose] public noncomputable def buildCompK (p M A B n : Nat) : Nat :=
+  Nat.rec (seedCompK p A B)
+    (fun i Mk => ((p.shiftLeft i.succ).ble M).rec Mk
+      (Mk.lor (Mk.shiftLeft (p.shiftLeft i.succ))))
+    n
+
+/-- Marking by keeping: one `land`, no compare and no subtraction. -/
+@[expose] public noncomputable def segMarkKeepK (seg p lo Wm1 n : Nat) : Nat :=
+  seg.land (buildCompK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+    (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n)
+
+/-- `segLoopSCK` marking by keeping. -/
+@[expose] public noncomputable def segLoopKeepK (c lo Wm1 n seg start fuel : Nat) : Nat :=
+  fuel.rec seg fun i b =>
+    (testBitK c i).rec b (segMarkKeepK b (valueK (start.add i)) lo Wm1 n)
+
 /-! ### One mask for the four smallest divisors
 
 Each divisor's mask repeats with period `2 * p`, so the union of 5, 7, 11 and 13 repeats with
@@ -5591,7 +5624,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 75 then throwError "run_segment_variant: mode {mode} is not 0 to 75"
+  if mode > 76 then throwError "run_segment_variant: mode {mode} is not 0 to 76"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6146,6 +6179,23 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
+    return
+  if mode == 76 then
+    -- Mode 18 with the window marked by keeping rather than removing: one `land` a divisor in
+    -- place of a mask, an `and`, a compare and a subtraction. Timing only, no chain.
+    let mut bitsT := initSeg W
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (fuel - i * step0)
+      let next := SieveEmit.segLoopKeep sVal lo wm1 rounds bitsT start stepN
+      if next != segLoopC sVal lo wm1 rounds bitsT start stepN then
+        throwError "run_segment_variant: keeping left a different window from removing, batch {i}"
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}"))
+        (mkSegBeqTrue (mkAppN (mkConst ``segLoopKeepK)
+          #[mkRawNatLit cVal, loE, wE, nE, mkRawNatLit bitsT, mkRawNatLit start,
+            mkRawNatLit stepN]) (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsT := next
     return
   if mode == 75 then
     -- Prices one `Nat.gcd` per slice at the sizes a certificate of that shape would use: the

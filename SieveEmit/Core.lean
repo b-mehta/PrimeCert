@@ -423,6 +423,25 @@ Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count 
 those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
 against the window `segLoopC` produces and refuses to emit if they differ. -/
 
+/-- Twin of `buildCompK`: one period with the two strikes cleared, tiled by doubling. -/
+public def buildComp (p M A B n : Nat) : Nat := Id.run do
+  let mut m := ((1 <<< (p * 2)) - 1) - (1 <<< A) - (1 <<< B)
+  for i in [0:n] do
+    let sh := p <<< (i + 1)
+    if sh ≤ M then
+      m := m ||| (m <<< sh)
+  return m
+
+/-- Twin of `segLoopKeepK`. -/
+public def segLoopKeep (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
+  let mut b := seg
+  for i in setBitsLow (s >>> start) fuel do
+    let p := valueE (start + i)
+    let A := firstLoc (indexE (p * 5)) lo (p * 2)
+    let B := firstLoc (indexE (p * 7)) lo (p * 2)
+    b := b &&& buildComp p Wm1 A B n
+  return b
+
 /-! ## Pricing a gcd certificate
 
 An idea worth a number before it is worth a design: instead of a mask for every divisor, sieve by
