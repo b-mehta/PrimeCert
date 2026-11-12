@@ -19,7 +19,17 @@ three figures: kernel 22.59-22.88 s against 25.95-26.25, processor 24.3-24.6 aga
 peak 1.84 GB against 5.28 (`ZZV_Lane16`). Going down one more octave doubles the records a divisor
 owes while what a mask costs does not move with them, so this is where the two should meet. Where
 that happens decides how much of the small band the sorted route should take, which is the largest
-open question left in the forty seconds of batch lemmas. -/
+open question left in the forty seconds of batch lemmas.
+
+**Measured 2026-11-12, and this is where it stops: the mask wins here by 41% of kernel.** Fresh
+c7i.8xlarge, `run.sh 3`, rounds agreeing within 1.5%. Sorted: kernel 19.37-19.60 s, processor
+21.0-21.3 s, peak 1.88 GB. Masked (`ZZ5_Lane32Mask`): kernel 13.60-13.82 s, processor 20.7-21.0 s,
+peak 3.29 GB. Processor time is level, because what the records save the emitter they spend in the
+kernel, and records still hold 43% less peak.
+
+**So the crossover is between sixteen records and thirty-two.** Sorting wins the `8p ≤ Wm1 < 16p`
+octave on all three figures and loses the one below it on kernel. The sorted route should be
+extended by exactly that one octave and no further; going on down is now measured, not guessed. -/
 
 namespace PrimeCert.SegTune.ZZ4_Lane32
 
