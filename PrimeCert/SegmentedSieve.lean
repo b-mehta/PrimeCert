@@ -6279,6 +6279,17 @@ meta def batchLenWide (start : Nat) : Nat :=
   else if start < 700000 then 768
   else 1536
 
+/-- `batchLen` with a longer run over the smallest divisors. The schedule's four tiers have been
+tested one at a time: `batchLenWide` moves the top tier and `batchLenMid` the two middle ones, both
+measured on 2026-11-12. This moves the bottom tier, 256 to 1024 below base index 20000, which is
+the only one never varied on its own. Those are the densest masks in the run and they sit in the
+masked band, about 44 s of a window's 150. -/
+meta def batchLenLow (start : Nat) : Nat :=
+  if start < 20000 then 1024
+  else if start < 300000 then 512
+  else if start < 700000 then 768
+  else 3072
+
 /-- `batchLen` with longer batches over the two middle bands, which hold the divisors striking the
 window four or eight times and span wheel indices of about 174762 to 699050. The shorter tiers
 there were set when four files shared a runner; two files now hold 7.67 GB summed. -/
@@ -6382,7 +6393,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 83 then throwError "run_segment_variant: mode {mode} is not 0 to 83"
+  if mode > 84 then throwError "run_segment_variant: mode {mode} is not 0 to 84"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6464,9 +6475,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   let lane16 := mode == 82
   let maskTwin := mode == 66
   let stripes := mode == 28 || fold || sortOnly || tree || twoPass || marked || midLong || maskTwin
-    || lenAll || lane16 || mode == 83
+    || lenAll || lane16 || mode == 83 || mode == 84
     || maskProbe || maskMulProbe || twoWinProbe || twoWinShiftProbe
   let sched := mode == 20 || mode == 21 || stripes
+  -- Mode 84 is mode 28 with `batchLenLow`: the bottom tier at 1024 in place of 256, nothing else.
+  -- It is the last of the schedule's four tiers to be varied on its own.
+  let lowLong := mode == 84
   -- Mode 83 is mode 28 with `batchLenWide`, which differs from `batchLen` in one tier: 1536 over
   -- the wide band in place of 3072. Mode 21 already selects that schedule but without the sorted
   -- route, so it cannot say what the batch length alone is worth over the band that now holds the
@@ -7487,7 +7501,9 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   while start ≤ fuel do
     let owed := fuel + 1 - start
     let stepN := Nat.min
-      (if wideTail then batchLenWide start else if sched then batchLen start else step0) owed
+      (if lowLong then batchLenLow start
+        else if wideTail then batchLenWide start
+        else if sched then batchLen start else step0) owed
     let next := if fastTwin then segLoopC sVal lo wm1 rounds bits start stepN
       else segLoop sVal lo wm1 bits start stepN
     -- A batch settled by sorting is named `sstep_` rather than `step_`, so that a timing run can
