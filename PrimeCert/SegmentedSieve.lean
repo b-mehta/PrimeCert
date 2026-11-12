@@ -6504,10 +6504,17 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     -- about the sieve; it exists so the idea has a number before it has a design.
     -- Timed in three, because the first part is work the sieve already does and the second is the
     -- same for every window of a run, so only the third is a per-window cost this design adds.
+    -- Each value is forced inside its own bracket, by a branch that cannot be taken without it.
+    -- A `let` is not evaluated where it is written, and neither is `acc := acc + x.land 1`, which
+    -- only builds another thunk: both leave the timers bracketing a binding while the work
+    -- happens later, under whichever timer first needs the value. Only control flow forces.
+    let mut forceAcc : Nat := 0
     let t0 ← IO.monoNanosNow
     let bits := segLoopC sVal lo wm1 rounds (initSeg W) 1 fuel
+    if bits.land 1 == 0 then forceAcc := forceAcc + 1
     let t1 ← IO.monoNanosNow
     let bigP := SieveEmit.primorialOver sVal 32768 (value fuel)
+    if bigP.land 1 == 0 then forceAcc := forceAcc + 2
     let t2 ← IO.monoNanosNow
     logInfo m!"primorial bits {bigP.log2 + 1}"
     logInfo m!"gcd emitter: window {(t1 - t0) / 1000000} ms, primorial {(t2 - t1) / 1000000} ms \
@@ -6516,6 +6523,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
     for k in [0:W / 65536] do
       let t3 ← IO.monoNanosNow
       let prod := SieveEmit.sliceProduct bits lo k
+      if prod.land 1 == 0 then forceAcc := forceAcc + 4
       let t4 ← IO.monoNanosNow
       prodNanos := prodNanos + (t4 - t3)
       if k == 0 then logInfo m!"slice product bits {prod.log2 + 1}"
@@ -6523,7 +6531,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
         (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit prod) (mkRawNatLit bigP))
           (mkRawNatLit 1)) Lean.reflBoolTrue
     logInfo m!"gcd emitter: slice products {prodNanos / 1000000} ms (this is the per-window cost \
-      the design adds)"
+      the design adds, forced {forceAcc})"
     return
   if mode == 74 then
     -- Mode 18 with 5, 7, 11 and 13 cleared by one mask built at their shared period, then the
