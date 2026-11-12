@@ -423,6 +423,35 @@ Twins of `buildMaskEK` and `segLoopEK`, together with the choice of round count 
 those take as arguments. Nothing here is trusted: `runSegmentV` checks the window this produces
 against the window `segLoopC` produces and refuses to emit if they differ. -/
 
+/-! ## Pricing a gcd certificate
+
+An idea worth a number before it is worth a design: instead of a mask for every divisor, sieve by
+the small ones only and let one `Nat.gcd` per slice certify that nothing left in that slice has a
+factor in the rest of the range. The kernel's `gcd` is on its fast path, so the statement needs no
+new definitions, but nobody knows what a gcd of these sizes costs. These build the two numbers at
+the sizes the real design would use, so a probe can time it. -/
+
+/-- The product of the primes in `(lo, hi]`, read off a base sieve bitset. -/
+public def primorialOver (s lo hi : Nat) : Nat := Id.run do
+  let mut acc := 1
+  let mut i := 1
+  for _ in [0:hi] do
+    let p := valueE i
+    if p > hi then
+      break
+    if p > lo && (s >>> i) &&& 1 == 1 then
+      acc := acc * p
+    i := i + 1
+  return acc
+
+/-- The product of the window positions still set in one 65536-bit slice. -/
+public def sliceProduct (bits lo k : Nat) : Nat := Id.run do
+  let slice := (bits >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+  let mut acc := 1
+  for j in setBitsLow slice 65536 do
+    acc := acc * valueE (lo + k * 65536 + j)
+  return acc
+
 /-- Twin of `comboMaskK`: the union of 5, 7, 11 and 13 built once at their shared period of 10010
 positions and then tiled to the window. -/
 public def comboMask (lo M : Nat) : Nat := Id.run do

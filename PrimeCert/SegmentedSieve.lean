@@ -5591,7 +5591,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 74 then throwError "run_segment_variant: mode {mode} is not 0 to 74"
+  if mode > 75 then throwError "run_segment_variant: mode {mode} is not 0 to 75"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6146,6 +6146,22 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat) : MetaM Unit 
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[mkRawNatLit 0, loE, wE, nE, initLit, mkRawNatLit start, mkRawNatLit stepN]
       addSegThm stepName (mkSegBeqTrue batchE initLit) Lean.reflBoolTrue
+    return
+  if mode == 75 then
+    -- Prices one `Nat.gcd` per slice at the sizes a certificate of that shape would use: the
+    -- product of a slice's survivors against the product of the base primes above 32768. Both
+    -- numbers are the emitter's, the statement is `Nat.beq (Nat.gcd a b) 1 = true`, and `gcd` is
+    -- already on the kernel's fast path, so this needs no new definitions. It proves nothing
+    -- about the sieve; it exists so the idea has a number before it has a design.
+    let bits := segLoopC sVal lo wm1 rounds (initSeg W) 1 fuel
+    let bigP := SieveEmit.primorialOver sVal 32768 (value fuel)
+    logInfo m!"primorial bits {bigP.log2 + 1}"
+    for k in [0:W / 65536] do
+      let prod := SieveEmit.sliceProduct bits lo k
+      if k == 0 then logInfo m!"slice product bits {prod.log2 + 1}"
+      addSegThm (mkPrivateName env (parent ++ Name.mkSimple s!"gcd_{k}"))
+        (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit prod) (mkRawNatLit bigP))
+          (mkRawNatLit 1)) Lean.reflBoolTrue
     return
   if mode == 74 then
     -- Mode 18 with 5, 7, 11 and 13 cleared by one mask built at their shared period, then the
