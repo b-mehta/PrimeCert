@@ -136,6 +136,12 @@ for round in $(seq 1 "$rounds"); do
       echo "RUN FAILED $f round $round exit $status" | tee -a bench-failures.txt
       grep -E 'error' "$out" | head -5
     fi
+    # The skip emitter writes its phase lines to a fixed path, outside the message log so that a
+    # case the watchdog kills still leaves them. Kept per case here, because the next case
+    # overwrites the file and a killed case's lines are the ones worth having.
+    if [ -f /tmp/skip-rss.log ]; then
+      cp /tmp/skip-rss.log "skip-${TAG}$f-$round.txt"
+    fi
     total=$(ksum "$out" "")
     # `segEqV\?_` matches both name shapes. `run_segment_variant` emits `segEqV_…` and plain
     # `run_segment` emits `segEq_…`, so a pattern naming only the first reports every band row as
@@ -145,6 +151,9 @@ for round in $(seq 1 "$rounds"); do
     sorted=$(ksum "$out" "segEqV\?_.*sstep_")
     wide=$(ksum "$out" "segEqV\?_.*wstep_")
     chunks=$(ksum "$out" "segEqV\?_.*chunk_")
+    # The skip set's certificate, one `Nat.gcd` a slice. Reported apart from the batch lemmas
+    # because that design trades the two against each other, so a single total hides the point.
+    gcds=$(ksum "$out" "skipGcd_")
     elab=$(esum "$out" "Elab.command")
     basecmd=$(cmdsum "$out" "run_sieve")
     wincmd=$(cmdsum "$out" "run_segment")
@@ -166,6 +175,7 @@ for round in $(seq 1 "$rounds"); do
     gprod=$(grep -oE 'slice products [0-9]+ ms' "$out" | awk '{s += $3} END {printf "%d", s+0}')
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
+      "skip gcds ${gcds}s |" \
       "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
       "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
       "segLoopC ${twinms}ms | gcd window ${gwin}ms | gcd primorial ${gpri}ms |" \
