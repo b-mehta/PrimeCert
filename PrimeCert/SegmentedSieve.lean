@@ -7870,6 +7870,17 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     hits := hits ||| h
     nHit := nHit + nh
     nTot := nTot + nt
+    -- Force all four, every batch. `let (b, h, nh, nt) := …` destructures lazily and `full := b`
+    -- stores a thunk, so without a use in control flow the 407 batches pile up as one nested
+    -- chain and the first thing to look at `full` forces the whole marking at once. That is
+    -- exactly what happened: the per-batch lines sat flat at 938 MiB while nothing was being
+    -- computed, and the 40 GB arrived at the `final != full` comparison further down.
+    --
+    -- The sum has to be built first and tested as a whole: `&&` short-circuits, so a chain of
+    -- conjunctions would force only as far as the first false.
+    let force := full.land 1 + hits.land 1 + nHit.land 1 + nTot.land 1
+    if force == 99 then
+      nTot := nTot + 1
     -- Logged inside the loop, because every run so far has died before reaching any line after
     -- it, which tells us only that it got no further than here.
     if i % 32 == 0 || i + 1 == nBatch then
@@ -7895,6 +7906,9 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     for i in [0:(fuel + step0 - 1) / step0] do
       let start := 1 + i * step0
       final := segLoopC sMark lo wm1 rounds final start (Nat.min step0 (fuel - i * step0))
+      -- Forced per batch, for the reason the marking loop above is.
+      if final.land 1 == 99 then
+        final := final + 1
   if final != full then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
