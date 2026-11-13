@@ -7863,6 +7863,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let mut nHit := 0
   let mut nTot := 0
   for i in [0:nBatch] do
+    let tb0 ← IO.monoMsNow
     let start := 1 + i * step0
     let stepN := Nat.min step0 (fuel - i * step0)
     let (b, h, nh, nt) := SieveEmit.segLoopHits sVal lo wm1 rounds full start stepN
@@ -7870,21 +7871,21 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     hits := hits ||| h
     nHit := nHit + nh
     nTot := nTot + nt
-    -- Force all four, every batch. `let (b, h, nh, nt) := …` destructures lazily and `full := b`
-    -- stores a thunk, so without a use in control flow the 407 batches pile up as one nested
-    -- chain and the first thing to look at `full` forces the whole marking at once. That is
-    -- exactly what happened: the per-batch lines sat flat at 938 MiB while nothing was being
-    -- computed, and the 40 GB arrived at the `final != full` comparison further down.
-    --
-    -- The sum has to be built first and tested as a whole: `&&` short-circuits, so a chain of
-    -- conjunctions would force only as far as the first false.
-    let force := full.land 1 + hits.land 1 + nHit.land 1 + nTot.land 1
-    if force == 99 then
+    -- A modulus has to read every word of its argument, so unlike `land 1` it cannot be answered
+    -- from a low word and cannot be deferred. `ea1e9fe` used `land` and did not bite.
+    let fp := full % 1000000007 + hits % 1000000007 + nHit + nTot
+    -- Tested every batch, not only on the batches that log, so the forcing is unconditional, and
+    -- before the clock is read, so the time covers the work rather than stopping short of it.
+    if fp == 0 then
       nTot := nTot + 1
+    let tb1 ← IO.monoMsNow
     -- Logged inside the loop, because every run so far has died before reaching any line after
-    -- it, which tells us only that it got no further than here.
+    -- it. The per-batch milliseconds and the fingerprint are the test of whether the work is
+    -- happening here or being deferred: real marking shows nonzero time and a fingerprint that
+    -- moves, a thunk chain shows neither.
     if i % 32 == 0 || i + 1 == nBatch then
-      rssLog s!"marking batch {i} of {nBatch}, {← rssMB} MiB"
+      rssLog s!"marking batch {i} of {nBatch}, {← rssMB} MiB, {tb1 - tb0} ms, \
+        fp {fp % 1000000007}, struck {nHit} of {nTot}"
   let t1 ← IO.monoMsNow
   -- `thr` keeps the divisors up to it marked whether or not they strike. Taking live in the order
   -- the loop runs makes that unnecessary, so `thr = 0` is the setting to use and anything larger
