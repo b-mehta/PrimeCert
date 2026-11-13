@@ -7799,7 +7799,7 @@ rather than failing a build. -/
 meta def rssMB : IO Nat := do
   try
     let s ← IO.FS.readFile "/proc/self/statm"
-    match (s.split (· == ' '))[1]? with
+    match (s.splitOn " ")[1]? with
     | some p => return ((p.trim.toNat?.getD 0) * 4) / 1024
     | none => return 0
   catch _ => return 0
