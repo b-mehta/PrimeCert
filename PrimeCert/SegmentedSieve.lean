@@ -7804,11 +7804,27 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let mut tIdx := 1
   while value (tIdx + 1) ≤ thr do
     tIdx := tIdx + 1
+  let step0 := Nat.max 1 len
   let t0 ← IO.monoMsNow
-  -- One marking pass, recording which divisors cleared a bit. This replaces a separate probe that
-  -- asked each divisor against a fixed prefix state and built a window-wide mask per divisor to do
-  -- it; `segMarkC` forms that comparison anyway, so the striking set costs the pass itself.
-  let (full, hits, nHit, nTot) := SieveEmit.segLoopHits sVal lo wm1 rounds (initSeg W) 1 fuel
+  -- One marking pass, recording which divisors cleared a bit. `segMarkC` forms that comparison
+  -- anyway, so the striking set costs the pass itself and no separate probe.
+  --
+  -- Taken in batches of `len`, the way mode 19 takes it and the banded route takes its own, rather
+  -- than over every divisor in one call. `ZZP_SkipRouteOnly` reached 40 GB and was killed before
+  -- printing a line, with the gcds not emitted at all, which puts it here rather than in the
+  -- certificate.
+  let mut full := initSeg W
+  let mut hits := 0
+  let mut nHit := 0
+  let mut nTot := 0
+  for i in [0:(fuel + step0 - 1) / step0] do
+    let start := 1 + i * step0
+    let stepN := Nat.min step0 (fuel - i * step0)
+    let (b, h, nh, nt) := SieveEmit.segLoopHits sVal lo wm1 rounds full start stepN
+    full := b
+    hits := hits ||| h
+    nHit := nHit + nh
+    nTot := nTot + nt
   let t1 ← IO.monoMsNow
   -- `thr` keeps the divisors up to it marked whether or not they strike. Taking live in the order
   -- the loop runs makes that unnecessary, so `thr = 0` is the setting to use and anything larger
@@ -7823,7 +7839,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let t2 ← IO.monoMsNow
   -- The emitter's own check that the skip set is right: the marked subset alone must build the
   -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
-  let final := segLoopC sMark lo wm1 rounds (initSeg W) 1 fuel
+  let mut final := initSeg W
+  for i in [0:(fuel + step0 - 1) / step0] do
+    let start := 1 + i * step0
+    final := segLoopC sMark lo wm1 rounds final start (Nat.min step0 (fuel - i * step0))
   if final != full then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
