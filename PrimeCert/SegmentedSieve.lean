@@ -6093,6 +6093,26 @@ past anything worth stating — so the emitter takes one product per 65536-bit s
   n.rec 1 fun i acc =>
     (testBitK seg (off.add i)).rec acc (acc.mul (valueK (lo.add (off.add i))))
 
+/-- The same product as `prodLiveFromK`, taken as a balanced tree over `2 ^ d` bits from `off`.
+
+`prodLiveFromK` is `n.rec`, a chain of `n` multiplications. Over a 65536-bit slice that is 65536
+of them, and over the skipped divisors it is `fuel`, which is 3333333. `ZZW_SweepGcdOnly` was
+killed past 40 GB with the kernel showing 0.4 s, so the gcd statement was never added: the cost is
+in building or reducing the product, not in the `Nat.gcd`. This states the same number with a
+recursion of depth `d` instead of `2 ^ d`.
+
+Bits past the end contribute `1`, so `d` may be rounded up to cover the range: `sSkip` carries no
+bit above `fuel`, and `valueK 0 = 1`, so starting at `off = 0` is harmless too.
+
+**Whether this costs less than the fold is for a measurement**; it is the same number either way.
+It is not yet tied to `prodLiveFromK`, so the chain lemmas still speak of the fold and a bridging
+lemma is owed if this is the shape that survives. -/
+@[expose] public noncomputable def prodLiveTreeK (seg lo d off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => (testBitK seg o).rec 1 (valueK (lo.add o)))
+    (fun k ih o => (ih o).mul (ih (o.add (Nat.pow 2 k))))
+    d off
+
 /-- A live value in a block divides that block's product. -/
 public theorem dvd_prodLiveFromK {seg lo off n i : Nat} (hi : i < n)
     (h : testBitK seg (off + i) = true) :
@@ -8018,15 +8038,23 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         value := mkRawNatLit v, hints := .regular 0, safety := .safe }
   -- One gcd a slice, against the product of the skipped divisors, in the shape
   -- `segLoopK_eq_self_of_blocks` takes its hypotheses.
-  let pE := mkAppN (mkConst ``prodLiveFromK)
-    #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
+  -- Balanced products rather than folds, for the reason in `prodLiveTreeK`'s docstring. `dSkip`
+  -- covers the divisor range and `dLive` one slice; bits past the end contribute 1.
+  let mut dSkip := 0
+  while Nat.pow 2 dSkip < fuel + 1 do
+    dSkip := dSkip + 1
+  let mut dLive := 0
+  while Nat.pow 2 dLive < bs do
+    dLive := dLive + 1
+  let pE := mkAppN (mkConst ``prodLiveTreeK)
+    #[mkConst skipName, mkRawNatLit 0, mkRawNatLit dSkip, mkRawNatLit 0]
   let segE := mkRawNatLit final
   let nGcd := if emitGcd then W / bs else 0
   rssLog s!"{nGcd} gcds over slices of {bs} bits, parts {parts}, \
     route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}"
   for k in [0:nGcd] do
-    let liveE := mkAppN (mkConst ``prodLiveFromK)
-      #[segE, mkRawNatLit lo, mkRawNatLit (k * bs), mkRawNatLit bs]
+    let liveE := mkAppN (mkConst ``prodLiveTreeK)
+      #[segE, mkRawNatLit lo, mkRawNatLit dLive, mkRawNatLit (k * bs)]
     addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipGcd_{k}"))
       (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
       Lean.reflBoolTrue
