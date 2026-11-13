@@ -834,4 +834,60 @@ public def segLoopHits (s lo Wm1 n seg start fuel : Nat) : Nat × Nat × Nat × 
     hits := hits ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * blk))
   return (b, hits, nHit, nTot)
 
+/-- Which divisors of the widest band strike a bit that is still live in `base`.
+
+Returns the bitmask of those divisors, how many there were, and how many were tested. `first` and
+`last` bound the band in divisor indices, and `base` is the window after the other three bands have
+been marked.
+
+**The band's divisors have at most two strikes each**, since `Wm1 < 2p` puts the second term of
+each progression past the end of the window, so a divisor is tested by looking at two positions
+rather than by building a mask. That is the whole point: `segLoopC` over every divisor costs 124 s
+a window, where the band holding 87.5% of the skippable divisors is 1017936 positions.
+
+**Liveness is read out of a flat array, not by `testBit` on `base`.** `base.testBit k` shifts a
+4.19 Mbit number to reach one bit, so a million of them repeats the mistake that `setBitsLow` makes
+with a large `len`. Instead each 65536-bit slice is taken down once and `setBitsLow` enumerates its
+live bits, 1024 iterations a slice, and the positions go into an array that answers in one step.
+
+**No ordering.** A divisor here is tested against a fixed `base` rather than against the window as
+this band marks it. Counted on the production window, that marks exactly the same 73742 divisors as
+testing in order, and it can only ever mark extra ones, never miss a striker, so the window it
+builds is unchanged either way. -/
+public def wideHits (s lo Wm1 base first last : Nat) : Nat × Nat × Nat := Id.run do
+  let mut live : Array Bool := Array.replicate (Wm1 + 1) false
+  let np := (Wm1 + 1) / 65536
+  for k in [0:np] do
+    let slice := (base >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+    for b in setBitsLow slice 65536 do
+      live := live.set! (k * 65536 + b) true
+  let blk := 4096
+  let nblk := last / blk + 2
+  let mut acc : Array Nat := Array.replicate nblk 0
+  let mut nHit := 0
+  let mut nTot := 0
+  -- Taken in batches of 8192, and the set divisors of each batch enumerated once. Asking
+  -- `(s >>> i) &&& 1` per divisor would shift a 3.3 Mbit number half a million times, and a single
+  -- `setBitsLow` over the whole band would walk a 500 kbit number word by word; both are the trap
+  -- this function exists to avoid.
+  let count := last + 1 - first
+  for c in [0:(count + 8191) / 8192] do
+    let start := first + c * 8192
+    let stepN := Nat.min 8192 (count - c * 8192)
+    for off in setBitsLow (s >>> start) stepN do
+      let i := start + off
+      nTot := nTot + 1
+      let p := valueE i
+      let A := firstLoc (indexE (p * 5)) lo (p * 2)
+      let B := firstLoc (indexE (p * 7)) lo (p * 2)
+      let hitA := A ≤ Wm1 && live[A]!
+      let hitB := B ≤ Wm1 && live[B]!
+      if hitA || hitB then
+        nHit := nHit + 1
+        acc := acc.modify (i / blk) (· ||| (1 <<< (i % blk)))
+  let mut hits := 0
+  for j in [0:nblk] do
+    hits := hits ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * blk))
+  return (hits, nHit, nTot)
+
 end SieveEmit

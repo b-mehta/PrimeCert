@@ -7844,9 +7844,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- 0 both and check, 1 gcds and check, 2 route and check, 3 both, 4 gcds, 5 route, 6 neither,
   -- 7 neither but check. 6 computes the skip set and emits nothing, which is the sharp question
   -- after `ZZP` ran away with the gcds already switched off: it leaves only the marking pass.
-  let emitGcd := parts == 0 || parts == 1 || parts == 3 || parts == 4
-  let emitRoute := parts == 0 || parts == 2 || parts == 3 || parts == 5
-  let doCheck := parts ≤ 2 || parts == 7
+  -- Adding 8 keeps the same emission and takes the strike set from the wide band alone, marking
+  -- the three lower bands whether they strike or not.
+  let pbase := parts % 8
+  let wideBandOnly := parts ≥ 8
+  let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
+  let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
+  let doCheck := pbase ≤ 2 || pbase == 7
   let t0 ← IO.monoMsNow
   -- One marking pass, recording which divisors cleared a bit. `segMarkC` forms that comparison
   -- anyway, so the striking set costs the pass itself and no separate probe.
@@ -7855,14 +7859,54 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- than over every divisor in one call. `ZZP_SkipRouteOnly` reached 40 GB and was killed before
   -- printing a line, with the gcds not emitted at all, which puts it here rather than in the
   -- certificate.
+  -- The widest band starts where a divisor's double passes the end of the window, which is the
+  -- same boundary the emitter's banded route uses.
+  let mut wideFirst := 1
+  while 2 * value wideFirst ≤ wm1 && wideFirst < fuel do
+    wideFirst := wideFirst + 1
   let nBatch := (fuel + step0 - 1) / step0
   rssLogInit
-  rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}"
+  rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}, \
+    wide band from {wideFirst}"
   let mut full := initSeg W
   let mut hits := 0
   let mut nHit := 0
   let mut nTot := 0
-  for i in [0:nBatch] do
+  -- Mark the three lower bands, then sweep the wide band alone. The measured ceiling is 41% less
+  -- kernel and the whole of its +68% processor was this pass marking every divisor plainly, so the
+  -- bands that are barely skippable are marked and not tested: 8459746 of the 10030004 strike
+  -- records are the masked small band, of which 8.3% is skippable, while the wide band's 1017936
+  -- records hold 435226 of the 497131 skips.
+  if wideBandOnly then
+    let lowBatches := (wideFirst - 1 + step0 - 1) / step0
+    for i in [0:lowBatches] do
+      let start := 1 + i * step0
+      let stepN := Nat.min step0 (wideFirst - 1 - i * step0)
+      full := segLoopC sVal lo wm1 rounds full start stepN
+      if full.land 1 == 99 then
+        full := full + 1
+      if i % 32 == 0 || i + 1 == lowBatches then
+        rssLog s!"lower bands batch {i} of {lowBatches}, {← rssMB} MiB"
+    rssLog s!"lower bands done {← rssMB} MiB, sweeping the wide band"
+    let (h, nh, nt) := SieveEmit.wideHits sVal lo wm1 full wideFirst fuel
+    -- Everything below the wide band is marked whether it strikes or not.
+    hits := h ||| (sVal &&& ((1 <<< wideFirst) - 1))
+    nHit := nh
+    nTot := nt
+    rssLog s!"wide sweep done {← rssMB} MiB, struck {nh} of {nt} wide divisors"
+    -- `full` so far has only the lower bands; the wide band's strikers still have to be applied.
+    let wideBatches := (fuel + 1 - wideFirst + step0 - 1) / step0
+    for i in [0:wideBatches] do
+      let start := wideFirst + i * step0
+      let stepN := Nat.min step0 (fuel + 1 - wideFirst - i * step0)
+      full := segLoopC hits lo wm1 rounds full start stepN
+      if full.land 1 == 99 then
+        full := full + 1
+    rssLog s!"wide marking done {← rssMB} MiB"
+  -- The plain pass over every divisor, which the wide-band sweep above replaces. Guarded by an
+  -- empty range rather than an `else`, so that the loop below keeps its indentation and stays the
+  -- same code it was when it was measured.
+  for i in [0:if wideBandOnly then 0 else nBatch] do
     let tb0 ← IO.monoMsNow
     let start := 1 + i * step0
     let stepN := Nat.min step0 (fuel - i * step0)
