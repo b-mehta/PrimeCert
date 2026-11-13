@@ -7912,7 +7912,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- The plain pass over every divisor, which the wide-band sweep above replaces. Guarded by an
   -- empty range rather than an `else`, so that the loop below keeps its indentation and stays the
   -- same code it was when it was measured.
-  for i in [0:if wideBandOnly then 0 else nBatch] do
+  let plainBatches := if wideBandOnly then 0 else nBatch
+  for i in [0:plainBatches] do
     let tb0 ← IO.monoMsNow
     let start := 1 + i * step0
     let stepN := Nat.min step0 (fuel - i * step0)
