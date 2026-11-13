@@ -54,11 +54,15 @@ for j, p in enumerate(big):
 
 # A divisor's band. The window covers 3W integers, so p has about 3W/p multiples in it; the
 # emitter's bands are stated against Wm1 in bit terms, which is 3p against the span.
+# Band edges exactly as the emitter sets them: it advances `first` while `2 * value first <= wm1`,
+# comparing a multiple of the divisor against `wm1` itself. This script first compared against
+# `wm1 * 3`, from reasoning about integers covered rather than from reading the emitter, which put
+# every boundary a factor of three out. The totals were unaffected; the band columns were not.
 bands = [
-    ("masked small (8p <= Wm1)", big * 8 <= WM1 * 3),
-    ("eight-strike (4p <= Wm1 < 8p)", (big * 4 <= WM1 * 3) & (big * 8 > WM1 * 3)),
-    ("four-strike  (2p <= Wm1 < 4p)", (big * 2 <= WM1 * 3) & (big * 4 > WM1 * 3)),
-    ("wide         (Wm1 < 2p)", big * 2 > WM1 * 3),
+    ("masked small (8p <= Wm1)", big * 8 <= WM1),
+    ("eight-strike (4p <= Wm1 < 8p)", (big * 4 <= WM1) & (big * 8 > WM1)),
+    ("four-strike  (2p <= Wm1 < 4p)", (big * 2 <= WM1) & (big * 4 > WM1)),
+    ("wide         (Wm1 < 2p)", big * 2 > WM1),
 ]
 
 print(f"{'band':34} {'divisors':>9} {'skippable':>10} {'fraction':>9}")
