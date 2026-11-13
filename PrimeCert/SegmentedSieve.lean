@@ -7869,6 +7869,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}, \
     wide band from {wideFirst}"
   let mut full := initSeg W
+  let mut base := initSeg W
   let mut hits := 0
   let mut nHit := 0
   let mut nTot := 0
@@ -7879,31 +7880,47 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- records are the masked small band, of which 8.3% is skippable, while the wide band's 1017936
   -- records hold 435226 of the 497131 skips.
   if wideBandOnly then
-    let lowBatches := (wideFirst - 1 + step0 - 1) / step0
+    -- The base the sweep tests against needs **only the masked small band**, counted: marking the
+    -- 43388 divisors with `8p ≤ Wm1` gives the same 435226 wide skips as marking all 155609 up to
+    -- the wide boundary, and the eight- and four-strike bands add not one skip
+    -- (`scripts/wide_base_prefix.py`). Testing against a window with more live bits can only make
+    -- a wide divisor look like a striker, never the reverse, so a shallower base stays correct.
+    let mut smallLast := 1
+    while 8 * value smallLast ≤ wm1 && smallLast < fuel do
+      smallLast := smallLast + 1
+    let lowBatches := (smallLast + step0 - 1) / step0
     for i in [0:lowBatches] do
       let start := 1 + i * step0
-      let stepN := Nat.min step0 (wideFirst - 1 - i * step0)
-      full := segLoopC sVal lo wm1 rounds full start stepN
-      if full.land 1 == 99 then
-        full := full + 1
+      let stepN := Nat.min step0 (smallLast - i * step0)
+      base := segLoopC sVal lo wm1 rounds base start stepN
+      if base.land 1 == 99 then
+        base := base + 1
       if i % 32 == 0 || i + 1 == lowBatches then
-        rssLog s!"lower bands batch {i} of {lowBatches}, {← rssMB} MiB"
-    rssLog s!"lower bands done {← rssMB} MiB, sweeping the wide band"
-    let (h, nh, nt) := SieveEmit.wideHits sVal lo wm1 full wideFirst fuel
+        rssLog s!"small band batch {i} of {lowBatches}, {← rssMB} MiB"
+    rssLog s!"small band done to index {smallLast}, {← rssMB} MiB, sweeping the wide band"
+    let (h, nh, nt) := SieveEmit.wideHits sVal lo wm1 base wideFirst fuel
     -- Everything below the wide band is marked whether it strikes or not.
     hits := h ||| (sVal &&& ((1 <<< wideFirst) - 1))
     nHit := nh
     nTot := nt
     rssLog s!"wide sweep done {← rssMB} MiB, struck {nh} of {nt} wide divisors"
-    -- `full` so far has only the lower bands; the wide band's strikers still have to be applied.
-    let wideBatches := (fuel + 1 - wideFirst + step0 - 1) / step0
-    for i in [0:wideBatches] do
-      let start := wideFirst + i * step0
-      let stepN := Nat.min step0 (fuel + 1 - wideFirst - i * step0)
-      full := segLoopC hits lo wm1 rounds full start stepN
-      if full.land 1 == 99 then
-        full := full + 1
-    rssLog s!"wide marking done {← rssMB} MiB"
+    -- The finished window is only wanted by the self-check and by the gcd statements. With neither
+    -- asked for, building it is pure cost, and `ZZU` spent 80 s of its 80 s marking pass on bands
+    -- the sweep does not need. So it is built from the marked subset here, and only when something
+    -- is going to read it.
+    if doCheck || emitGcd then
+      full := initSeg W
+      let allBatches := (fuel + step0 - 1) / step0
+      for i in [0:allBatches] do
+        let start := 1 + i * step0
+        let stepN := Nat.min step0 (fuel - i * step0)
+        full := segLoopC hits lo wm1 rounds full start stepN
+        if full.land 1 == 99 then
+          full := full + 1
+      rssLog s!"window built from the marked subset {← rssMB} MiB"
+    else
+      full := base
+      rssLog s!"window not built: nothing reads it at these parts"
     -- The lower bands are marked whether they strike or not, so they belong in the marked count.
     -- Without this the sweep would report only its 73742 wide strikers and the cross-check would
     -- look wrong for the wrong reason. One call over `wideFirst` bits, not over `fuel`.
