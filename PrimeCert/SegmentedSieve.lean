@@ -7797,31 +7797,31 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs : Nat) :
   while value (tIdx + 1) ≤ thr do
     tIdx := tIdx + 1
   let t0 ← IO.monoMsNow
-  let base := segLoopC sVal lo wm1 rounds (initSeg W) 1 tIdx
+  -- One marking pass, recording which divisors cleared a bit. This replaces a separate probe that
+  -- asked each divisor against a fixed prefix state and built a window-wide mask per divisor to do
+  -- it; `segMarkC` forms that comparison anyway, so the striking set costs the pass itself.
+  let (full, hits, nHit, nTot) := SieveEmit.segLoopHits sVal lo wm1 rounds (initSeg W) 1 fuel
   let t1 ← IO.monoMsNow
-  -- A divisor is skipped when its mask clears nothing of that state.
-  let mut sMark := sVal &&& ((1 <<< (tIdx + 1)) - 1)
-  let mut sSkip := 0
-  let mut nSkip := 0
-  let mut nMark := 0
-  for i in [tIdx + 1 : fuel + 1] do
-    if sVal.testBit i then
-      if segMark base (value i) lo wm1 == base then
-        sSkip := sSkip ||| (1 <<< i)
-        nSkip := nSkip + 1
-      else
-        sMark := sMark ||| (1 <<< i)
-        nMark := nMark + 1
+  -- `thr` keeps the divisors up to it marked whether or not they strike. Taking live in the order
+  -- the loop runs makes that unnecessary, so `thr = 0` is the setting to use and anything larger
+  -- only grows the marked set.
+  let keep := sVal &&& ((1 <<< (tIdx + 1)) - 1)
+  let sMark := if thr == 0 then hits else hits ||| keep
+  let sSkip := Nat.ldiff (sVal &&& ((1 <<< (fuel + 1)) - 1)) sMark
+  -- Counted off the masks themselves rather than from `nHit`, which would double count whatever
+  -- `thr` keeps that also struck.
+  let nMark := (SieveEmit.setBitsLow (sMark >>> 1) fuel).size
+  let nSkip := (SieveEmit.setBitsLow (sSkip >>> 1) fuel).size
   let t2 ← IO.monoMsNow
   -- The emitter's own check that the skip set is right: the marked subset alone must build the
   -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
   let final := segLoopC sMark lo wm1 rounds (initSeg W) 1 fuel
-  if final != segLoopC sVal lo wm1 rounds (initSeg W) 1 fuel then
+  if final != full then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
   let t3 ← IO.monoMsNow
-  logInfo m!"skip set: prefix {t1 - t0} ms | test {t2 - t1} ms | check {t3 - t2} ms"
-  logInfo m!"skip set: marked {nMark} | skipped {nSkip} of {nMark + nSkip} above index {tIdx}"
+  logInfo m!"skip set: marking pass {t1 - t0} ms | split {t2 - t1} ms | check {t3 - t2} ms"
+  logInfo m!"skip set: marked {nMark} | skipped {nSkip} of {nTot} | struck {nHit} | thr {thr}"
   let markName := ns ++ Name.mkSimple s!"skipMark_{a}_{W}_{fuel}"
   let skipName := ns ++ Name.mkSimple s!"skipSet_{a}_{W}_{fuel}"
   for (nm, v) in [(markName, sMark), (skipName, sSkip)] do

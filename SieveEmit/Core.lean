@@ -788,4 +788,43 @@ public def segLoopC (s lo Wm1 n seg start fuel : Nat) : Nat := Id.run do
     b := segMarkC b (valueE (start + i)) lo Wm1 n
   return b
 
+/-- `segLoopC` that also returns which divisors cleared a bit.
+
+A divisor whose mask meets nothing live leaves the window exactly as it found it, so dropping it
+changes neither the result nor the state any later divisor sees, and by induction the window built
+from the divisors returned here is the one every divisor builds. That is what lets the sieve mark a
+subset and certify the rest.
+
+Which divisors those are needs no separate pass: `segMarkC` already forms `hit` and compares it to
+zero to decide whether to subtract, so this records the comparison it was making anyway. The
+alternative, asking each divisor in turn against a fixed earlier state, builds one window-wide mask
+per divisor on top of the marking the emitter does regardless.
+
+Live is taken here in the order the loop runs, rather than against a fixed prefix, which needs no
+threshold: a divisor that meets nothing live when its turn comes meets nothing in the finished
+window either, since marking only ever clears bits.
+
+The bitmask is accumulated a block at a time and joined once at the end. Setting each bit straight
+into one number would shift and or a number as wide as the divisor range on every hit, and there
+are as many hits as divisors that strike. -/
+public def segLoopHits (s lo Wm1 n seg start fuel : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let blk := 4096
+  let nblk := (start + fuel) / blk + 1
+  let mut acc : Array Nat := Array.replicate nblk 0
+  let mut b := seg
+  let mut nHit := 0
+  let mut nTot := 0
+  for i in setBitsLow (s >>> start) fuel do
+    nTot := nTot + 1
+    let nxt := segMarkC b (valueE (start + i)) lo Wm1 n
+    if nxt != b then
+      nHit := nHit + 1
+      let j := start + i
+      acc := acc.modify (j / blk) (· ||| (1 <<< (j % blk)))
+      b := nxt
+  let mut hits := 0
+  for j in [0:nblk] do
+    hits := hits ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * blk))
+  return (b, hits, nHit, nTot)
+
 end SieveEmit
