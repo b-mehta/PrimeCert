@@ -7758,6 +7758,90 @@ elab "run_segment" aStx:num wStx:num fStx:num lStx:num bStx:(num)? : command =>
     else
       runSegment (← getCurrNamespace) base aStx.getNat W fStx.getNat lStx.getNat
 
+/-! ## Marking only the divisors that strike something
+
+Counted on the window at `100000000000001`, W = 4194304 (`scripts/gcd_skippable_by_band.py`):
+**497131 of 661067 base divisors above 32768 strike nothing still live, and build a mask that
+clears not one bit.** By band the fraction climbs with the number of strikes a divisor has, from
+0.329 over the masked small band to **0.905 over the wide band**, which is the largest single
+kernel cost in a window.
+
+`segLoopK_eq_self_of_blocks` is what would let those be skipped soundly. It takes the divisor set
+as a bitmask rather than a range, which matters: the skippable divisors are **scattered**, mean run
+5.51 and longest 237, so the range form `segLoopK_eq_self_of_range` reaches only 4072 of them and
+is no use here. Against a bitmask the whole skipped set is covered by one gcd per slice, 64 in all.
+
+`live` here means the window after marking by the divisors up to `thr`, a prefix of the loop. That
+choice is what makes the test well founded rather than circular, and marking only ever clears bits,
+so a divisor that strikes nothing live at that point still strikes nothing once the rest of the
+marking has happened.
+
+**This emits no chain and proves no soundness**, so it measures rather than certifies: the gcd
+equations and every batch literal are kernel-checked, and what is missing is the step from them to
+`segLoopK s … = segLoopK sMark …`. The emitter does check its own skip set, by rebuilding the
+window from the marked subset alone and refusing to emit if it differs from the full one. -/
+public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr : Nat) : MetaM Unit := do
+  let env ← getEnv
+  let some info := env.find? baseLit
+    | throwError "run_segment_skip: no base sieve {baseLit}"
+  let some sVal := info.value?.bind Expr.rawNatLit?
+    | throwError "run_segment_skip: the base sieve {baseLit} is not a numeral"
+  if W % 65536 ≠ 0 then
+    throwError "run_segment_skip: the certificate states one gcd per 65536-bit slice, so the \
+      window must be a multiple of 65536, not {W}"
+  let lo := index a
+  let wm1 := W - 1
+  let rounds := Nat.log2 wm1 + 1
+  -- The divisors up to `thr` are marked unconditionally; they define what `live` means.
+  let mut tIdx := 1
+  while value (tIdx + 1) ≤ thr do
+    tIdx := tIdx + 1
+  let t0 ← IO.monoMsNow
+  let base := segLoopC sVal lo wm1 rounds (initSeg W) 1 tIdx
+  let t1 ← IO.monoMsNow
+  -- A divisor is skipped when its mask clears nothing of that state.
+  let mut sMark := sVal &&& ((1 <<< (tIdx + 1)) - 1)
+  let mut sSkip := 0
+  let mut nSkip := 0
+  let mut nMark := 0
+  for i in [tIdx + 1 : fuel + 1] do
+    if sVal.testBit i then
+      if segMark base (value i) lo wm1 == base then
+        sSkip := sSkip ||| (1 <<< i)
+        nSkip := nSkip + 1
+      else
+        sMark := sMark ||| (1 <<< i)
+        nMark := nMark + 1
+  let t2 ← IO.monoMsNow
+  -- The emitter's own check that the skip set is right: the marked subset alone must build the
+  -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
+  let final := segLoopC sMark lo wm1 rounds (initSeg W) 1 fuel
+  if final != segLoopC sVal lo wm1 rounds (initSeg W) 1 fuel then
+    throwError "run_segment_skip: the marked subset builds a different window from the full \
+      divisor set, so the skip test is wrong"
+  let t3 ← IO.monoMsNow
+  logInfo m!"skip set: prefix {t1 - t0} ms | test {t2 - t1} ms | check {t3 - t2} ms"
+  logInfo m!"skip set: marked {nMark} | skipped {nSkip} of {nMark + nSkip} above index {tIdx}"
+  let markName := ns ++ Name.mkSimple s!"skipMark_{a}_{W}_{fuel}"
+  let skipName := ns ++ Name.mkSimple s!"skipSet_{a}_{W}_{fuel}"
+  for (nm, v) in [(markName, sMark), (skipName, sSkip)] do
+    addDecl <| Declaration.defnDecl
+      { name := nm, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit v, hints := .regular 0, safety := .safe }
+  -- One gcd a slice, against the product of the skipped divisors, in the shape
+  -- `segLoopK_eq_self_of_blocks` takes its hypotheses.
+  let pE := mkAppN (mkConst ``prodLiveFromK)
+    #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
+  let segE := mkRawNatLit final
+  for k in [0:W / 65536] do
+    let liveE := mkAppN (mkConst ``prodLiveFromK)
+      #[segE, mkRawNatLit lo, mkRawNatLit (k * 65536), mkRawNatLit 65536]
+    addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipGcd_{k}"))
+      (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
+      Lean.reflBoolTrue
+  -- The marking route itself, unchanged, over the marked subset in place of the base sieve.
+  runSegmentV ns markName 28 a W fuel len
+
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
 the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
 bound. -/
@@ -7768,6 +7852,18 @@ elab "run_segment_variant" mStx:num aStx:num wStx:num fStx:num lStx:num bStx:(nu
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegmentV (← getCurrNamespace) base mStx.getNat aStx.getNat wStx.getNat fStx.getNat
       lStx.getNat
+
+/-- `run_segment_skip a W fuel len thr` emits the window the way `run_segment` does, but marks only
+the divisors that strike something still live, and states one `Nat.gcd` a slice over the ones it
+skipped. `thr` sets what live means: the divisors up to it are marked unconditionally. Measurement
+only, no chain. -/
+elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num bStx:(num)? : command =>
+  liftTermElabM <| do
+    let base := match bStx with
+      | none => ``sieveBits_1000000
+      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
+    runSegmentSkip (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
+      tStx.getNat
 
 /-- Emit the batch equations of one window on a chosen wheel, and nothing else: no chain, no
 `segRun`, no soundness. `wheel` is 6 or 30. The two differ only in how many integers a bit stands
