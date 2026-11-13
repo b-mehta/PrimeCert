@@ -890,4 +890,32 @@ public def wideHits (s lo Wm1 base first last : Nat) : Nat × Nat × Nat := Id.r
     hits := hits ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * blk))
   return (hits, nHit, nTot)
 
+/-- The live positions of one 65536-bit slice of `seg`, packed sixteen bits apiece, with how many.
+
+Groundwork for a certificate whose cost follows the number of records rather than the width of the
+window. `prodLiveFromK` and `prodLiveTreeK` both do one `testBitK` on the window per position,
+about 8 million of them against a multi-megabit literal, and both ran away past 40 GB. The route is
+affordable because `stripeUpToK` never inspects the window: it walks the records it is given and
+assembles. A product over records has the same property.
+
+A position inside a slice is at most 65535, so it fits a record exactly with no lane bits to spare.
+At roughly 10645 live values a slice that is about 170 KB of record, against the slice's own 8 KB —
+records are bigger than the thing they describe, and whether that trade is worth making is for a
+measurement, not for this docstring.
+
+The packing is per block and joined once, for the reason `segLoopHits` is: setting each record
+into one growing number would copy it every time. -/
+public def liveRecords (seg k : Nat) : Nat × Nat := Id.run do
+  let slice := (seg >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+  let hits := setBitsLow slice 65536
+  let per := 256
+  let nblk := hits.size / per + 1
+  let mut acc : Array Nat := Array.replicate nblk 0
+  for j in [0:hits.size] do
+    acc := acc.modify (j / per) (· ||| ((hits[j]!) <<< (16 * (j % per))))
+  let mut packed := 0
+  for j in [0:nblk] do
+    packed := packed ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * 16 * per))
+  return (packed, hits.size)
+
 end SieveEmit
