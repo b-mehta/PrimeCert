@@ -31,7 +31,14 @@ public def firstLoc (A lo m : Nat) : Nat := (A + m - lo % m) % m
 
 /-- Which of the low `len` bits of `c` are set, read a word at a time. Shifting a `len`-bit number
 down by one copies the whole number, so a scan that steps one bit at a time rebuilds `c` once per
-position; peeling 64 bits at a time leaves the bit tests inside a single word. -/
+position; peeling 64 bits at a time leaves the bit tests inside a single word.
+
+**Still quadratic in `len`, so pass a batch length and never the whole divisor range.** Each
+`rest >>> 64` copies what is left of `rest`, so the cost grows with `len / 64` shifts of a
+`len`-bit number. At `len = 8192`, a batch, that is 128 shifts of a kilobyte and does not signify.
+At `len = 3333333`, the whole range, it is some 52000 shifts of a 416 KB number, tens of GB of
+allocation; two such calls in the skip emitter's counting lines are what killed it at 40 GB.
+Callers in this file all pass a batch length; keep it that way. -/
 public def setBitsLow (c len : Nat) : Array Nat := Id.run do
   let mut out : Array Nat := #[]
   let mut rest := c &&& ((1 <<< len) - 1)
