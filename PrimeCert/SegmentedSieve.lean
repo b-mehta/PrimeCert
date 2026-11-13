@@ -7893,15 +7893,25 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let keep := sVal &&& ((1 <<< (tIdx + 1)) - 1)
   let sMark := if thr == 0 then hits else hits ||| keep
   let sSkip := Nat.ldiff (sVal &&& ((1 <<< (fuel + 1)) - 1)) sMark
-  -- Counted off the masks themselves rather than from `nHit`, which would double count whatever
-  -- `thr` keeps that also struck.
-  let nMark := (SieveEmit.setBitsLow (sMark >>> 1) fuel).size
-  let nSkip := (SieveEmit.setBitsLow (sSkip >>> 1) fuel).size
+  -- Counted from what the marking pass already returned. These were counted off the masks with
+  -- `setBitsLow … fuel`, which walks its argument a word at a time by `rest := rest >>> 64`: at
+  -- `fuel = 3333333` that is some 52000 successive shifts of a 3.3 Mbit number, each allocating a
+  -- fresh copy, and the split did it twice. Inside the marking loop the same function is called
+  -- with `len = 8192`, 128 iterations, which is why only the split was affected.
+  --
+  -- `nHit` and `nTot` are exact when `thr = 0`, which is the setting that matters. A larger `thr`
+  -- also marks divisors that struck nothing, and those are counted over the prefix alone, whose
+  -- length is `tIdx` rather than `fuel`.
+  let extra := if thr == 0 then 0
+    else (SieveEmit.setBitsLow ((Nat.ldiff keep hits) >>> 1) tIdx).size
+  let nMark := nHit + extra
+  let nSkip := nTot - nHit
   let t2 ← IO.monoMsNow
   rssLog s!"after split {← rssMB} MiB"
   -- The emitter's own check that the skip set is right: the marked subset alone must build the
   -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
   let mut final := full
+  rssLog s!"after assigning final {← rssMB} MiB, doCheck {doCheck}"
   if doCheck then
     final := initSeg W
     for i in [0:(fuel + step0 - 1) / step0] do
@@ -7910,7 +7920,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       -- Forced per batch, for the reason the marking loop above is.
       if final.land 1 == 99 then
         final := final + 1
-  if final != full then
+  rssLog s!"before the comparison {← rssMB} MiB"
+  let agree := final == full
+  rssLog s!"after the comparison {← rssMB} MiB, agree {agree}"
+  if !agree then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
   let t3 ← IO.monoMsNow
