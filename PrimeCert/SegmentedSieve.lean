@@ -7994,9 +7994,14 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       -- Forced per batch, for the reason the marking loop above is.
       if final.land 1 == 99 then
         final := final + 1
-  rssLog s!"before the comparison {← rssMB} MiB"
   let agree := final == full
-  rssLog s!"after the comparison {← rssMB} MiB, agree {agree}"
+  -- Only reported when the check actually ran. With `doCheck` false, `final` is `full` by
+  -- construction and the comparison is true for no reason, so printing "agree true" there states
+  -- a check that did not happen and invites it to be read as evidence later.
+  if doCheck then
+    rssLog s!"after the comparison {← rssMB} MiB, agree {agree}"
+  else
+    rssLog s!"no self-check at these parts, nothing compared"
   if !agree then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
