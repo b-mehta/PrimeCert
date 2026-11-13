@@ -7796,6 +7796,17 @@ certificate is worth looking for. Neither 1 nor 2 is sound on its own. -/
 /-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
 counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
 rather than failing a build. -/
+/-- Write a line to stderr and flush it.
+
+`logInfo` holds its messages until the command finishes, so a command the watchdog kills mid-run
+prints none of them — which is why `ZZR_SkipEmitterOnly` died at 40 GB having logged nothing at
+all. Anything meant to survive a kill has to go out unbuffered. Under `run.sh` these land in the
+`time-` file, not the `out-` file, since it sends stderr there. -/
+meta def rssLog (msg : String) : IO Unit := do
+  let h ← IO.getStderr
+  h.putStrLn s!"skip rss: {msg}"
+  h.flush
+
 meta def rssMB : IO Nat := do
   try
     let s ← IO.FS.readFile "/proc/self/statm"
@@ -7837,7 +7848,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- printing a line, with the gcds not emitted at all, which puts it here rather than in the
   -- certificate.
   let nBatch := (fuel + step0 - 1) / step0
-  logInfo m!"skip rss: entry {← rssMB} MiB, {nBatch} batches of {step0}"
+  rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}"
   let mut full := initSeg W
   let mut hits := 0
   let mut nHit := 0
@@ -7853,7 +7864,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- Logged inside the loop, because every run so far has died before reaching any line after
     -- it, which tells us only that it got no further than here.
     if i % 32 == 0 || i + 1 == nBatch then
-      logInfo m!"skip rss: marking batch {i} of {nBatch}, {← rssMB} MiB"
+      rssLog s!"marking batch {i} of {nBatch}, {← rssMB} MiB"
   let t1 ← IO.monoMsNow
   -- `thr` keeps the divisors up to it marked whether or not they strike. Taking live in the order
   -- the loop runs makes that unnecessary, so `thr = 0` is the setting to use and anything larger
@@ -7866,7 +7877,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let nMark := (SieveEmit.setBitsLow (sMark >>> 1) fuel).size
   let nSkip := (SieveEmit.setBitsLow (sSkip >>> 1) fuel).size
   let t2 ← IO.monoMsNow
-  logInfo m!"skip rss: after split {← rssMB} MiB"
+  rssLog s!"after split {← rssMB} MiB"
   -- The emitter's own check that the skip set is right: the marked subset alone must build the
   -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
   let mut final := full
@@ -7879,12 +7890,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
   let t3 ← IO.monoMsNow
-  logInfo m!"skip rss: after check {← rssMB} MiB"
-  logInfo m!"skip set: marking pass {t1 - t0} ms | split {t2 - t1} ms | check {t3 - t2} ms"
-  logInfo m!"skip set: marked {nMark} | skipped {nSkip} of {nTot} | struck {nHit} | thr {thr}"
+  rssLog s!"after check {← rssMB} MiB"
+  rssLog s!"marking pass {t1 - t0} ms | split {t2 - t1} ms | check {t3 - t2} ms"
+  rssLog s!"marked {nMark} | skipped {nSkip} of {nTot} | struck {nHit} | thr {thr}"
   let markName := ns ++ Name.mkSimple s!"skipMark_{a}_{W}_{fuel}"
   let skipName := ns ++ Name.mkSimple s!"skipSet_{a}_{W}_{fuel}"
-  logInfo m!"skip rss: before the two subset literals {← rssMB} MiB"
+  rssLog s!"before the two subset literals {← rssMB} MiB"
   for (nm, v) in [(markName, sMark), (skipName, sSkip)] do
     addDecl <| Declaration.defnDecl
       { name := nm, levelParams := [], type := Nat.mkType,
@@ -7895,7 +7906,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
   let segE := mkRawNatLit final
   let nGcd := if emitGcd then W / bs else 0
-  logInfo m!"skip set: {nGcd} gcds over slices of {bs} bits, parts {parts}, \
+  rssLog s!"{nGcd} gcds over slices of {bs} bits, parts {parts}, \
     route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}"
   for k in [0:nGcd] do
     let liveE := mkAppN (mkConst ``prodLiveFromK)
@@ -7904,10 +7915,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
       Lean.reflBoolTrue
   -- The marking route itself, unchanged, over the marked subset in place of the base sieve.
-  logInfo m!"skip rss: after the gcds, before the route {← rssMB} MiB"
+  rssLog s!"after the gcds, before the route {← rssMB} MiB"
   if emitRoute then
     runSegmentV ns markName 28 a W fuel len
-  logInfo m!"skip rss: done {← rssMB} MiB"
+  rssLog s!"done {← rssMB} MiB"
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
 the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
