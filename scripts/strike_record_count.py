@@ -65,6 +65,34 @@ print()
 print(f"records per slice, if spread evenly over {SLICES}: {total // SLICES}")
 print(f"window bits: {W}; records as a fraction of bits: {total / W:.2f}")
 
+# What the marking route would carry afterwards. Skipping a divisor removes its records from the
+# route, so this is the count the route is left with, which is a count and not a cost: what those
+# records are worth in kernel seconds is for a measurement.
+spf = np.zeros(SPAN, dtype=np.int64)
+for p in ps[::-1]:
+    p = int(p)
+    start = ((LO + p - 1) // p) * p
+    if start < LO + SPAN:
+        spf[start - LO :: p] = p
+nwin = LO + np.arange(SPAN, dtype=np.int64)
+coprime6 = ((nwin % 2) != 0) & ((nwin % 3) != 0)
+smallest = spf[coprime6]
+struck = np.isin(big, np.unique(smallest[(smallest > 3) & (smallest <= BIG)]))
+
+print()
+print("Do not total the columns below across bands. Only the sorted bands carry one record per")
+print("strike; the masked small band builds a mask per divisor instead, and a mask costs what it")
+print("costs whether the divisor has 195 strikes or none. So its record column is the strike count")
+print("and not the work, and an 'all' row would be adding two different things and would make the")
+print("skip look like a tenth of the total when that figure means nothing.")
+print()
+print(f"{'band':16} {'divisors now':>13} {'if skipped':>12} {'removed':>9} {'records removed':>16}")
+for name, sel in bands:
+    dn = int(sel.sum())
+    da = int((sel & struck).sum())
+    rr = int(recs[sel].sum() - recs[sel & struck].sum())
+    print(f"{name:16} {dn:13} {da:12} {dn - da:9} {rr:16}")
+
 # The wide band alone, as a candidate for restricting the strike pass to.
 wide = big * 2 > WM1
 print()
