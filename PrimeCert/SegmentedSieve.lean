@@ -6407,7 +6407,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
-  if mode > 85 then throwError "run_segment_variant: mode {mode} is not 0 to 85"
+  if mode > 86 then throwError "run_segment_variant: mode {mode} is not 0 to 86"
   if mode == 72 && len > 4096 then
     throwError "run_segment_variant: mode 72 spends a record bit on the flag, so a batch holds \
       4096 positions, not {len}"
@@ -6763,6 +6763,52 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       let batchE := mkAppN (mkConst ``stripeBatchK)
         #[mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN, mkRawNatLit W, wE,
           mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs, mkRawNatLit (W / 65536)]
+      addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
+      let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
+      let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)
+      let mut wantV := 0
+      for w in [0:2] do
+        wantV := wantV ||| (cVal <<< (w * stepN))
+      addSegThm tallyName (mkSegBeqTrue tallyE (mkRawNatLit wantV)) Lean.reflBoolTrue
+      let next := bitsL - (expect &&& bitsL)
+      let clearName := mkPrivateName env (parent ++ Name.mkSimple s!"clear_{i}")
+      let clearE := mkApp2 (mkConst ``Nat.sub) (mkRawNatLit bitsL)
+        (mkApp2 (mkConst ``Nat.land) (mkRawNatLit expect) (mkRawNatLit bitsL))
+      addSegThm clearName (mkSegBeqTrue clearE (mkRawNatLit next)) Lean.reflBoolTrue
+      bitsL := next
+    return
+  if mode == 86 then
+    -- Mode 31's band and emitted shape at a **one-bit lane**, which is the whole of the experiment.
+    --
+    -- A record is sixteen bits. The three-bit format spends three naming which of eight strikes a
+    -- record is and leaves thirteen for the position, so a batch holds 8192 divisors and no more.
+    -- The wide band gives a divisor two strikes, so one bit names them, leaving fifteen: 32768.
+    -- Mode 31 is the control and must be run at 8192 against this at 32768, one job, both peaks.
+    --
+    -- Timing only, no chain: the kernel still checks every literal emitted here, so the numbers are
+    -- real, but nothing ties the batches back to the segment. That soundness argument is the band-2
+    -- analogue of `stripeStep` and is only worth writing if this measures better.
+    --
+    -- This exists because the saving was costed by extrapolating two measured points past the range
+    -- they were measured over, which decides nothing.
+    if step0 > 32768 then
+      throwError "run_segment_variant: mode 86 names one of two strikes in one bit and leaves \
+        fifteen for the position, so a batch takes at most 32768 divisors, not {step0}"
+    let mut first := 1
+    while 2 * value first ≤ wm1 do
+      first := first + 1
+    let count := fuel + 1 - first
+    let mut bitsL := initSeg W
+    for i in [0:(count + step0 - 1) / step0] do
+      let start := first + i * step0
+      let stepN := Nat.min step0 (count - i * step0)
+      let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
+      let stepName := mkPrivateName env (parent ++ Name.mkSimple s!"step_{i}")
+      let (ls, cs, slotW, expect) := SieveEmit.stripeSortOne sVal lo wm1 start stepN W
+      let batchE := mkAppN (mkConst ``stripeBatchLK)
+        #[mkRawNatLit 1, mkRawNatLit cVal, loE, mkRawNatLit start, mkRawNatLit stepN,
+          mkRawNatLit W, wE, mkRawNatLit slotW, mkRawNatLit ls, mkRawNatLit cs,
+          mkRawNatLit (W / 65536)]
       addSegThm stepName (mkSegBeqTrue batchE (mkRawNatLit expect)) Lean.reflBoolTrue
       let tallyName := mkPrivateName env (parent ++ Name.mkSimple s!"tally_{i}")
       let tallyE := mkApp2 (mkConst ``Nat.shiftRight) (mkRawNatLit expect) (mkRawNatLit W)

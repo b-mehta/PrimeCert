@@ -209,6 +209,47 @@ public def stripeSortH (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat :
     cs := cs ||| ((slots[k]!).size <<< (16 * k))
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
+/-- `stripeSort` over two lanes a divisor, the twin of `stripeBatchLK` at `lw = 1`.
+
+The widest band gives a divisor two strikes and so needs one lane bit, where the three-bit format
+spends three and leaves thirteen for the position — a batch of 8192. At one bit the position gets
+fifteen and a batch holds 32768. This exists to time that, nothing more. -/
+public def stripeSortOne (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in setBitsLow c len do
+    let p := valueE (start + i)
+    let d := p * 2
+    let b5 := firstLoc (indexE (p * 5)) lo d
+    let b7 := firstLoc (indexE (p * 7)) lo d
+    for w in [0:2] do
+      let X := if w == 0 then b5 else b7
+      if X ≤ Wm1 then
+        slots := slots.modify (X >>> 16) (·.push (2 * i + w))
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+      else
+        slots := slots.modify np (·.push (2 * i + w))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let mut seen := 0
+  for w in [0:2] do
+    seen := seen ||| (c <<< (w * len))
+  let mut slotW := 16
+  for k in [0:np + 1] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np + 1] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
 /-- `stripeSort` over thirty-two lanes a divisor, the twin of `stripeBatchXK`. The lane takes five
 bits of the record and the position eleven, so a batch holds at most 2048 divisors. -/
 public def stripeSortX (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
