@@ -7781,6 +7781,12 @@ equations and every batch literal are kernel-checked, and what is missing is the
 `segLoopK s … = segLoopK sMark …`. The emitter does check its own skip set, by rebuilding the
 window from the marked subset alone and refusing to emit if it differs from the full one.
 
+`parts` also switches off the self-check, which is a **second full marking pass** that production
+would never run, and which otherwise counts toward the time and the peak of every timing arm.
+Adding 3 keeps the same emission and drops the check: 3 both, 4 gcds alone, 5 route alone. The
+small cases are where the skip set is shown to be right, and the kernel still checks every literal
+emitted, so an arm run without the check is a timing rather than a claim.
+
 `parts` splits the two halves so a measurement can say which of them costs what, the full window at
 a 65536-bit slice having reached 40 GB against the control's 2.61 with the kernel barely started.
 0 emits both, 1 the gcd equations alone, 2 the marking route over the marked subset alone. **2 is
@@ -7805,6 +7811,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   while value (tIdx + 1) ≤ thr do
     tIdx := tIdx + 1
   let step0 := Nat.max 1 len
+  -- 0 both and check, 1 gcds and check, 2 route and check, 3 both, 4 gcds, 5 route, 6 neither,
+  -- 7 neither but check. 6 computes the skip set and emits nothing, which is the sharp question
+  -- after `ZZP` ran away with the gcds already switched off: it leaves only the marking pass.
+  let emitGcd := parts == 0 || parts == 1 || parts == 3 || parts == 4
+  let emitRoute := parts == 0 || parts == 2 || parts == 3 || parts == 5
+  let doCheck := parts ≤ 2 || parts == 7
   let t0 ← IO.monoMsNow
   -- One marking pass, recording which divisors cleared a bit. `segMarkC` forms that comparison
   -- anyway, so the striking set costs the pass itself and no separate probe.
@@ -7839,10 +7851,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let t2 ← IO.monoMsNow
   -- The emitter's own check that the skip set is right: the marked subset alone must build the
   -- same window as every divisor does. A wrong skip test fails here rather than in a timing.
-  let mut final := initSeg W
-  for i in [0:(fuel + step0 - 1) / step0] do
-    let start := 1 + i * step0
-    final := segLoopC sMark lo wm1 rounds final start (Nat.min step0 (fuel - i * step0))
+  let mut final := full
+  if doCheck then
+    final := initSeg W
+    for i in [0:(fuel + step0 - 1) / step0] do
+      let start := 1 + i * step0
+      final := segLoopC sMark lo wm1 rounds final start (Nat.min step0 (fuel - i * step0))
   if final != full then
     throwError "run_segment_skip: the marked subset builds a different window from the full \
       divisor set, so the skip test is wrong"
@@ -7860,16 +7874,17 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let pE := mkAppN (mkConst ``prodLiveFromK)
     #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
   let segE := mkRawNatLit final
-  logInfo m!"skip set: {if parts == 2 then 0 else W / bs} gcds over slices of {bs} bits, \
-    parts {parts}"
-  for k in [0:if parts == 2 then 0 else W / bs] do
+  let nGcd := if emitGcd then W / bs else 0
+  logInfo m!"skip set: {nGcd} gcds over slices of {bs} bits, parts {parts}, \
+    route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}"
+  for k in [0:nGcd] do
     let liveE := mkAppN (mkConst ``prodLiveFromK)
       #[segE, mkRawNatLit lo, mkRawNatLit (k * bs), mkRawNatLit bs]
     addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipGcd_{k}"))
       (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
       Lean.reflBoolTrue
   -- The marking route itself, unchanged, over the marked subset in place of the base sieve.
-  if parts != 1 then
+  if emitRoute then
     runSegmentV ns markName 28 a W fuel len
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
