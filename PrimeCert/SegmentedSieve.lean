@@ -7779,8 +7779,16 @@ marking has happened.
 **This emits no chain and proves no soundness**, so it measures rather than certifies: the gcd
 equations and every batch literal are kernel-checked, and what is missing is the step from them to
 `segLoopK s … = segLoopK sMark …`. The emitter does check its own skip set, by rebuilding the
-window from the marked subset alone and refusing to emit if it differs from the full one. -/
-public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs : Nat) : MetaM Unit := do
+window from the marked subset alone and refusing to emit if it differs from the full one.
+
+`parts` splits the two halves so a measurement can say which of them costs what, the full window at
+a 65536-bit slice having reached 40 GB against the control's 2.61 with the kernel barely started.
+0 emits both, 1 the gcd equations alone, 2 the marking route over the marked subset alone. **2 is
+the upper bound on what the idea can buy**: it marks only the divisors that strike and certifies
+nothing, so no certificate can do better than it, and if it saves nothing against mode 28 then no
+certificate is worth looking for. Neither 1 nor 2 is sound on its own. -/
+public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : Nat) :
+    MetaM Unit := do
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_skip: no base sieve {baseLit}"
@@ -7833,15 +7841,17 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs : Nat) :
   let pE := mkAppN (mkConst ``prodLiveFromK)
     #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
   let segE := mkRawNatLit final
-  logInfo m!"skip set: {W / bs} gcds over slices of {bs} bits"
-  for k in [0:W / bs] do
+  logInfo m!"skip set: {if parts == 2 then 0 else W / bs} gcds over slices of {bs} bits, \
+    parts {parts}"
+  for k in [0:if parts == 2 then 0 else W / bs] do
     let liveE := mkAppN (mkConst ``prodLiveFromK)
       #[segE, mkRawNatLit lo, mkRawNatLit (k * bs), mkRawNatLit bs]
     addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipGcd_{k}"))
       (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
       Lean.reflBoolTrue
   -- The marking route itself, unchanged, over the marked subset in place of the base sieve.
-  runSegmentV ns markName 28 a W fuel len
+  if parts != 1 then
+    runSegmentV ns markName 28 a W fuel len
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
 the twin chosen by `mode`, 0 to 15 (see `runSegmentV`), with the same optional trailing base-sieve
@@ -7869,7 +7879,20 @@ elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
       | none => ``sieveBits_1000000
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegmentSkip (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
-      tStx.getNat sStx.getNat
+      tStx.getNat sStx.getNat 0
+
+/-- `run_segment_skip_part parts a W fuel len thr bs` is `run_segment_skip` emitting one half of
+what it emits: `parts` 1 for the gcd equations alone, 2 for the marking route alone, 0 for both.
+Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
+be read as the trailing base-sieve bound in a case that predates it. -/
+elab "run_segment_skip_part" pStx:num aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
+    bStx:(num)? : command =>
+  liftTermElabM <| do
+    let base := match bStx with
+      | none => ``sieveBits_1000000
+      | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
+    runSegmentSkip (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
+      tStx.getNat sStx.getNat pStx.getNat
 
 /-- Emit the batch equations of one window on a chosen wheel, and nothing else: no chain, no
 `segRun`, no soundness. `wheel` is 6 or 30. The two differ only in how many integers a bit stands
