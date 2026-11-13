@@ -7892,7 +7892,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- only grows the marked set.
   let keep := sVal &&& ((1 <<< (tIdx + 1)) - 1)
   let sMark := if thr == 0 then hits else hits ||| keep
-  let sSkip := Nat.ldiff (sVal &&& ((1 <<< (fuel + 1)) - 1)) sMark
+  -- `m ^^^ (m &&& sMark)` rather than `Nat.ldiff m sMark`: for each bit that is `1` exactly when
+  -- `m` is `1` and `sMark` is `0`, which is the set difference. Mathlib defines
+  -- `ldiff := bitwise fun a b => a && not b` (`Mathlib/Data/Nat/Bits.lean:147`), with no
+  -- `@[extern]`, so on numbers this size it is not the same proposition as `land` and `xor` are.
+  -- This line, over a 3.3 Mbit `m`, is what the 40 GB was.
+  let m := sVal &&& ((1 <<< (fuel + 1)) - 1)
+  let sSkip := m ^^^ (m &&& sMark)
   -- Counted from what the marking pass already returned. These were counted off the masks with
   -- `setBitsLow … fuel`, which walks its argument a word at a time by `rest := rest >>> 64`: at
   -- `fuel = 3333333` that is some 52000 successive shifts of a 3.3 Mbit number, each allocating a
@@ -7903,7 +7909,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- also marks divisors that struck nothing, and those are counted over the prefix alone, whose
   -- length is `tIdx` rather than `fuel`.
   let extra := if thr == 0 then 0
-    else (SieveEmit.setBitsLow ((Nat.ldiff keep hits) >>> 1) tIdx).size
+    else (SieveEmit.setBitsLow ((keep ^^^ (keep &&& hits)) >>> 1) tIdx).size
   let nMark := nHit + extra
   let nSkip := nTot - nHit
   let t2 ← IO.monoMsNow
