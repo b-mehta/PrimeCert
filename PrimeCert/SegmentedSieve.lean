@@ -7793,9 +7793,6 @@ a 65536-bit slice having reached 40 GB against the control's 2.61 with the kerne
 the upper bound on what the idea can buy**: it marks only the divisors that strike and certifies
 nothing, so no certificate can do better than it, and if it saves nothing against mode 28 then no
 certificate is worth looking for. Neither 1 nor 2 is sound on its own. -/
-/-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
-counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
-rather than failing a build. -/
 /-- Write a line to stderr and flush it.
 
 `logInfo` holds its messages until the command finishes, so a command the watchdog kills mid-run
@@ -7807,11 +7804,14 @@ meta def rssLog (msg : String) : IO Unit := do
   h.putStrLn s!"skip rss: {msg}"
   h.flush
 
+/-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
+counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
+rather than failing a build. -/
 meta def rssMB : IO Nat := do
   try
     let s ← IO.FS.readFile "/proc/self/statm"
     match (s.splitOn " ")[1]? with
-    | some p => return ((p.trim.toNat?.getD 0) * 4) / 1024
+    | some p => return ((p.trimAscii.toNat?.getD 0) * 4) / 1024
     | none => return 0
   catch _ => return 0
 
