@@ -7872,6 +7872,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let mut hits := 0
   let mut nHit := 0
   let mut nTot := 0
+  let mut nLow := 0
   -- Mark the three lower bands, then sweep the wide band alone. The measured ceiling is 41% less
   -- kernel and the whole of its +68% processor was this pass marking every divisor plainly, so the
   -- bands that are barely skippable are marked and not tested: 8459746 of the 10030004 strike
@@ -7903,6 +7904,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       if full.land 1 == 99 then
         full := full + 1
     rssLog s!"wide marking done {← rssMB} MiB"
+    -- The lower bands are marked whether they strike or not, so they belong in the marked count.
+    -- Without this the sweep would report only its 73742 wide strikers and the cross-check would
+    -- look wrong for the wrong reason. One call over `wideFirst` bits, not over `fuel`.
+    nLow := (SieveEmit.setBitsLow (sVal >>> 1) (wideFirst - 1)).size
+    rssLog s!"lower bands marked unconditionally: {nLow}"
   -- The plain pass over every divisor, which the wide-band sweep above replaces. Guarded by an
   -- empty range rather than an `else`, so that the loop below keeps its indentation and stays the
   -- same code it was when it was measured.
@@ -7954,7 +7960,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- length is `tIdx` rather than `fuel`.
   let extra := if thr == 0 then 0
     else (SieveEmit.setBitsLow ((keep ^^^ (keep &&& hits)) >>> 1) tIdx).size
-  let nMark := nHit + extra
+  let nMark := nHit + extra + nLow
   let nSkip := nTot - nHit
   let t2 ← IO.monoMsNow
   rssLog s!"after split {← rssMB} MiB"
