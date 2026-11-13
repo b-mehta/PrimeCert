@@ -7780,15 +7780,15 @@ marking has happened.
 equations and every batch literal are kernel-checked, and what is missing is the step from them to
 `segLoopK s … = segLoopK sMark …`. The emitter does check its own skip set, by rebuilding the
 window from the marked subset alone and refusing to emit if it differs from the full one. -/
-public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr : Nat) : MetaM Unit := do
+public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs : Nat) : MetaM Unit := do
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_skip: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_skip: the base sieve {baseLit} is not a numeral"
-  if W % 65536 ≠ 0 then
-    throwError "run_segment_skip: the certificate states one gcd per 65536-bit slice, so the \
-      window must be a multiple of 65536, not {W}"
+  if bs == 0 || W % bs ≠ 0 then
+    throwError "run_segment_skip: the certificate states one gcd per slice of {bs} bits, so the \
+      slice must divide the window {W}"
   let lo := index a
   let wm1 := W - 1
   let rounds := Nat.log2 wm1 + 1
@@ -7833,9 +7833,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr : Nat) : Me
   let pE := mkAppN (mkConst ``prodLiveFromK)
     #[mkConst skipName, mkRawNatLit 0, mkRawNatLit 1, mkRawNatLit fuel]
   let segE := mkRawNatLit final
-  for k in [0:W / 65536] do
+  logInfo m!"skip set: {W / bs} gcds over slices of {bs} bits"
+  for k in [0:W / bs] do
     let liveE := mkAppN (mkConst ``prodLiveFromK)
-      #[segE, mkRawNatLit lo, mkRawNatLit (k * 65536), mkRawNatLit 65536]
+      #[segE, mkRawNatLit lo, mkRawNatLit (k * bs), mkRawNatLit bs]
     addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipGcd_{k}"))
       (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE pE) (mkRawNatLit 1))
       Lean.reflBoolTrue
@@ -7853,17 +7854,22 @@ elab "run_segment_variant" mStx:num aStx:num wStx:num fStx:num lStx:num bStx:(nu
     runSegmentV (← getCurrNamespace) base mStx.getNat aStx.getNat wStx.getNat fStx.getNat
       lStx.getNat
 
-/-- `run_segment_skip a W fuel len thr` emits the window the way `run_segment` does, but marks only
-the divisors that strike something still live, and states one `Nat.gcd` a slice over the ones it
-skipped. `thr` sets what live means: the divisors up to it are marked unconditionally. Measurement
-only, no chain. -/
-elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num bStx:(num)? : command =>
+/-- `run_segment_skip a W fuel len thr bs` emits the window the way `run_segment` does, but marks
+only the divisors that strike something still live, and states one `Nat.gcd` per slice of `bs` bits
+over the ones it skipped. `thr` sets what live means: the divisors up to it are marked
+unconditionally, and is flat anywhere from 16384 to 262144. Measurement only, no chain.
+
+`bs` is open because the kernel refused the statement at 65536 with "deep recursion detected", on a
+four-slice window, having taken the same slice size on a one-slice window. `prodLiveFromK` is a
+`Nat.rec` over the slice, so the slice size is what sets how deep that term goes. -/
+elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
+    bStx:(num)? : command =>
   liftTermElabM <| do
     let base := match bStx with
       | none => ``sieveBits_1000000
       | some b => `PrimeCert.Sieve ++ Name.mkSimple s!"sieveBits_{b.getNat}"
     runSegmentSkip (← getCurrNamespace) base aStx.getNat wStx.getNat fStx.getNat lStx.getNat
-      tStx.getNat
+      tStx.getNat sStx.getNat
 
 /-- Emit the batch equations of one window on a chosen wheel, and nothing else: no chain, no
 `segRun`, no soundness. `wheel` is 6 or 30. The two differ only in how many integers a bit stands

@@ -34,6 +34,6 @@ namespace PrimeCert.SegTune.ZZI_SkipFull
 
 run_sieve 10000000
 
-run_segment_skip 100000000000001 4194304 3333333 8192 32768 10000000
+run_segment_skip 100000000000001 4194304 3333333 8192 32768 65536 10000000
 
 end PrimeCert.SegTune.ZZI_SkipFull

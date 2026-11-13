@@ -22,6 +22,6 @@ Throwaway. -/
 
 namespace PrimeCert.SegTune.ZZF_SkipSmoke
 
-run_segment_skip 100000000000001 65536 50000 1024 1024 1000000
+run_segment_skip 100000000000001 65536 50000 1024 1024 65536 1000000
 
 end PrimeCert.SegTune.ZZF_SkipSmoke
