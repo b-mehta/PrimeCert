@@ -7793,15 +7793,23 @@ a 65536-bit slice having reached 40 GB against the control's 2.61 with the kerne
 the upper bound on what the idea can buy**: it marks only the divisors that strike and certifies
 nothing, so no certificate can do better than it, and if it saves nothing against mode 28 then no
 certificate is worth looking for. Neither 1 nor 2 is sound on its own. -/
-/-- Write a line to stderr and flush it.
+/-- Append a line to `/tmp/skip-rss.log` and flush it.
 
-`logInfo` holds its messages until the command finishes, so a command the watchdog kills mid-run
-prints none of them — which is why `ZZR_SkipEmitterOnly` died at 40 GB having logged nothing at
-all. Anything meant to survive a kill has to go out unbuffered. Under `run.sh` these land in the
-`time-` file, not the `out-` file, since it sends stderr there. -/
+Twice now this has had to move further out. `logInfo` holds its messages until the command
+finishes, so a command the watchdog kills prints none of them. Writing to `IO.getStderr` does not
+help either: the command elaborator runs inside `IO.FS.withIsolatedStreams`, so that handle is the
+captured stream rather than the real file descriptor, and the capture is turned into messages at
+the same point `logInfo` would have been. **A file opened by name is outside both**, which is the
+whole reason for the path here. Read it after the kill; it is not in the `out-` or `time-` file. -/
 meta def rssLog (msg : String) : IO Unit := do
-  let h ← IO.getStderr
+  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.append
   h.putStrLn s!"skip rss: {msg}"
+  h.flush
+
+/-- Empty `/tmp/skip-rss.log`, so a run's lines are its own rather than the previous run's with
+this one appended. Called once at the start of the emitter. -/
+meta def rssLogInit : IO Unit := do
+  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.write
   h.flush
 
 /-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
@@ -7848,7 +7856,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- printing a line, with the gcds not emitted at all, which puts it here rather than in the
   -- certificate.
   let nBatch := (fuel + step0 - 1) / step0
-  rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}"
+  rssLogInit
+  rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}"
   let mut full := initSeg W
   let mut hits := 0
   let mut nHit := 0
