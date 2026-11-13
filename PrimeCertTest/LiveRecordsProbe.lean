@@ -33,6 +33,13 @@ open SieveEmit
 #guard (liveRecords (1 <<< 65536) 1) = (0, 1)
 #guard (liveRecords (1 <<< 65540) 1) = (4, 1)
 
+-- It reads the set bits of the k-th 65536-bit block of whatever it is given, so the same function
+-- serves the skipped-divisor bitmask as well as a window slice: block j there covers divisor
+-- indices j * 65536 upwards, and 3333333 of them is 51 blocks. Checked on divisor indices rather
+-- than bit positions so the dual use is not just asserted in a docstring.
+#guard (liveRecords ((1 <<< 70000) ||| (1 <<< 70003)) 1) = (4464 ||| (4467 <<< 16), 2)
+#guard (liveRecords ((1 <<< 70000) ||| (1 <<< 70003)) 0) = (0, 0)
+
 -- Across a block boundary: 257 live positions, the 257th landing in the second block of 256.
 #guard (liveRecords ((1 <<< 257) - 1) 0).2 = 257
 #guard ((liveRecords ((1 <<< 257) - 1) 0).1 >>> (16 * 256)) &&& 65535 = 256

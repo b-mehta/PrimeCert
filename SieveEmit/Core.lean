@@ -898,6 +898,11 @@ about 8 million of them against a multi-megabit literal, and both ran away past 
 affordable because `stripeUpToK` never inspects the window: it walks the records it is given and
 assembles. A product over records has the same property.
 
+It reads the set bits of the `k`-th 65536-bit block of whatever it is given, so **the same function
+serves the skipped-divisor bitmask as well as a window slice**: block `j` there covers divisor
+indices from `j * 65536`, and 3333333 of them is 51 blocks. The certificate needs records on both
+sides, and this is both.
+
 A position inside a slice is at most 65535, so it fits a record exactly with no lane bits to spare.
 At roughly 10645 live values a slice that is about 170 KB of record, against the slice's own 8 KB —
 records are bigger than the thing they describe, and whether that trade is worth making is for a
