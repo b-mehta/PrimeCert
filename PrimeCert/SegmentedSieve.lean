@@ -2653,7 +2653,13 @@ public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
 /-- Removing a mask the window does not meet removes nothing. -/
 public theorem ldiff_eq_self_of_disjoint {x m : Nat} (h : Nat.land x m = 0) :
     Nat.ldiff x m = x := by
-  rw [ldiff_eq_sub, Nat.land_comm m x, h, Nat.sub_zero]
+  -- `ldiff_eq_sub` leaves `Nat.land m x`, the other way round from the hypothesis, so the flip is
+  -- done as its own step rather than as a rewrite inside the chain.
+  have h' : Nat.land m x = 0 := by
+    rw [Nat.land_comm]
+    exact h
+  rw [ldiff_eq_sub, h']
+  exact Nat.sub_zero x
 
 /-- Enlarging the mask by a part the result does not meet changes nothing. This is the drop step:
 `U₁` is the union over the divisors that are marked, `U₂` over those skipped. -/
