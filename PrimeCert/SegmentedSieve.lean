@@ -2606,7 +2606,7 @@ skips. -/
 /-- Removing nothing removes nothing. Stated here because core has no `Nat.ldiff_zero`. -/
 public theorem ldiff_zero {seg : Nat} : Nat.ldiff seg 0 = seg := by
   refine Nat.eq_of_testBit_eq fun i => ?_
-  simp [Nat.testBit_ldiff]
+  simp
 
 /-- Marking is a set difference against that mask. -/
 public theorem segMarkK_ldiff {seg p lo Wm1 : Nat} :
