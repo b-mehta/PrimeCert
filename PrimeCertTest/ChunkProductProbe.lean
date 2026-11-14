@@ -107,6 +107,27 @@ example : asmChunkK 20 1 0 0 = 1048576 := rfl
 example : asmChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 3 2 0 = 7 := rfl
 example : prodChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 0 3 2 0 = 35 := rfl
 
+/-! ## The step the certificate rests on
+
+Everything above is arithmetic the kernel can check. This is the part that makes checking it mean
+something: a gcd of 1 rules out a shared divisor. Written here because it needs nothing but core,
+which was worth finding out before assuming the soundness work needs the main module too. -/
+
+/-- If two numbers are coprime, nothing above 1 divides both. -/
+public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
+    (h : Nat.gcd a b = 1) (hpa : p ∣ a) (hpb : p ∣ b) : p = 1 := by
+  have hp : p ∣ Nat.gcd a b := Nat.dvd_gcd hpa hpb
+  rw [h] at hp
+  exact Nat.dvd_one.mp hp
+
+/-- The form the certificate uses it in: a skipped divisor cannot divide a live value, given the
+chunk's product is coprime to the product of the skipped divisors. `hv` is that the live value
+divides its chunk's product, which the tree gives, and `hd` that the divisor divides theirs. -/
+public theorem not_dvd_of_coprime_products {live skip v d : Nat}
+    (h : Nat.gcd live skip = 1) (hv : v ∣ live) (hd : d ∣ skip) (hd1 : d ≠ 1) : ¬ (d ∣ v) := by
+  intro hdv
+  exact hd1 (eq_one_of_dvd_gcd_one h (Nat.dvd_trans hdv hv) hd)
+
 /-! ## At the size the design actually calls for
 
 The checks above use four-record chunks, which say the definitions are right and nothing about
