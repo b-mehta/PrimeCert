@@ -128,6 +128,41 @@ public theorem not_dvd_of_coprime_products {live skip v d : Nat}
   intro hdv
   exact hd1 (eq_one_of_dvd_gcd_one h (Nat.dvd_trans hdv hv) hd)
 
+/-! ## A record's value divides its chunk's product
+
+The last link the certificate needs. The gcd gives that a chunk's product shares no factor with the
+skipped divisors; to conclude anything about one live value, that value has to divide the product.
+The same shape as `dvd_prodLiveFromK` in the main module, but over the tree. -/
+
+/-- Any slot in range contributes a factor, so its value divides the chunk's product. Slots at or
+past `cnt` contribute 1 and are excluded by `hlt`. -/
+public theorem dvd_prodChunkK (recs lo cnt : Nat) :
+    ∀ d off o, off ≤ o → o < off + 2 ^ d → o < cnt →
+      valK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul o 16)) 65535))
+        ∣ prodChunkK recs lo cnt d off := by
+  intro d
+  induction d with
+  | zero =>
+    intro off o h1 h2 h3
+    have hp : (2 : Nat) ^ 0 = 1 := rfl
+    rw [hp] at h2
+    have ho : o = off := by omega
+    subst ho
+    have hb : Nat.blt o cnt = true := by
+      simp only [Nat.blt_eq]
+      exact h3
+    show valK _ ∣ (Nat.blt o cnt).rec 1 (valK _)
+    rw [hb]
+    exact Nat.dvd_refl _
+  | succ k ih =>
+    intro off o h1 h2 h3
+    have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
+      rw [Nat.pow_succ, Nat.mul_two]
+    show valK _ ∣ Nat.mul (prodChunkK recs lo cnt k off) (prodChunkK recs lo cnt k (off + 2 ^ k))
+    by_cases hc : o < off + 2 ^ k
+    · exact Nat.dvd_mul_right_of_dvd (ih off o h1 hc h3) _
+    · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) o (by omega) (by omega) h3) _
+
 /-! ## Marking is a set difference, and set differences collapse
 
 The other half of the chain: the sieve's marking loop is a fold, and what it folds is the set
