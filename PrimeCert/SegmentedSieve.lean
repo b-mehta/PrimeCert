@@ -2647,6 +2647,8 @@ public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
     | true =>
       dsimp only
       rw [ih, segMarkK_ldiff, ldiff_ldiff]
+      -- What is left differs only in `|||` against `.lor`, which `rw` will not close itself.
+      rfl
 
 /-- The clamped marking clears exactly the bits the marking clears, for a window inside the
 range. -/
