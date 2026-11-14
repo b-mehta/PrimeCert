@@ -2612,8 +2612,9 @@ public theorem ldiff_zero {seg : Nat} : Nat.ldiff seg 0 = seg := by
 public theorem segMarkK_ldiff {seg p lo Wm1 : Nat} :
     segMarkK seg p lo Wm1 = Nat.ldiff seg (maskOfK p lo Wm1) := by
   rw [ldiff_eq_sub, maskOfK, segMarkK]
-  congr 1
-  exact Nat.land_comm _ _
+  -- `congr 1` here times out: it unfolds the mask's body looking for a congruence. Naming the
+  -- function the two sides share keeps it to the one argument that differs.
+  exact congrArg (Nat.sub seg) (Nat.land_comm _ _)
 
 /-- The union of the masks of every divisor the loop would apply, in the loop's own shape. -/
 @[expose] public noncomputable def maskUnionK (s lo Wm1 start fuel : Nat) : Nat :=
@@ -2637,9 +2638,15 @@ public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
   | zero => exact ldiff_zero.symm
   | succ k ih =>
     rw [segLoopK_succ, maskUnionK_succ]
+    -- `cases` substitutes the literal but leaves both `Bool.rec`s standing; `dsimp only` is what
+    -- iota-reduces them, and without it `rw` has nothing to act on.
     cases testBitK s (start + k) with
-    | false => exact ih
-    | true => rw [ih, segMarkK_ldiff, ldiff_ldiff]
+    | false =>
+      dsimp only
+      exact ih
+    | true =>
+      dsimp only
+      rw [ih, segMarkK_ldiff, ldiff_ldiff]
 
 /-- The clamped marking clears exactly the bits the marking clears, for a window inside the
 range. -/
