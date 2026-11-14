@@ -91,6 +91,19 @@ FULL_B = 10**7                   # divisors the top window needs
 # the proportions carry even though the seconds do not.
 _SPLIT = {"small": 45.35, "eight": 47.85 / 2, "four": 47.85 / 2, "wide": 61.75}
 _PAIRED = 174.0                  # processor seconds for one window alone; 161-185 across hosts
+# NOT CHANGED BY THE 2026-11-13 SWEEP, DELIBERATELY. The wide-band sweep (`ZZV_WideSweepNoCheck`)
+# beat this route same-box on all three figures: kernel 112.1-113.4 s against 164.9-166.6, processor
+# 150.4-152.2 against 181.3-183.3, peak 2.46 GB against 2.61. On processor that is 0.83 of the
+# anchor, which would carry straight into the job counts below.
+#
+# The anchor stays at the production route because **the sweep proves nothing about the 435226
+# divisors it skips**, and the certificate that would make it sound has no affordable shape yet.
+# Projecting a run off an unsound route would state a reachable N that is not reachable. When the
+# certificate lands, re-anchor by measuring the sound arm rather than by scaling this by 0.83: the
+# certificate's own cost belongs in the number and is not yet known.
+#
+# Tonight's control runs also bracket this anchor across three boxes — 163.8-165.7, 170.1-170.9 and
+# 179.5-183.3 s of processor for the same file — so the 161-185 range above still holds.
 _SCALE = _PAIRED / sum(_SPLIT.values())
 COST = {k: v * _SCALE for k, v in _SPLIT.items()}
 OTHER = 0.0
