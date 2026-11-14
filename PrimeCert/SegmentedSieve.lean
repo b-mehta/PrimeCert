@@ -2603,15 +2603,30 @@ skips. -/
   buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
     (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32
 
+/-- Removing nothing removes nothing. Stated here because core has no `Nat.ldiff_zero`. -/
+public theorem ldiff_zero {seg : Nat} : Nat.ldiff seg 0 = seg := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  simp [Nat.testBit_ldiff]
+
 /-- Marking is a set difference against that mask. -/
 public theorem segMarkK_ldiff {seg p lo Wm1 : Nat} :
     segMarkK seg p lo Wm1 = Nat.ldiff seg (maskOfK p lo Wm1) := by
-  rw [ldiff_eq_sub, maskOfK, segMarkK, Nat.land_comm]
+  rw [ldiff_eq_sub, maskOfK, segMarkK]
+  congr 1
+  exact Nat.land_comm _ _
 
 /-- The union of the masks of every divisor the loop would apply, in the loop's own shape. -/
 @[expose] public noncomputable def maskUnionK (s lo Wm1 start fuel : Nat) : Nat :=
   fuel.rec 0 fun i u =>
     (testBitK s (start.add i)).rec u (u.lor (maskOfK (valueK (start.add i)) lo Wm1))
+
+/-- Union recurrence, in the same `Bool.rec` shape `segLoopK_succ` uses, so the two peel together
+and nothing has to be unfolded by hand. -/
+public theorem maskUnionK_succ {s lo Wm1 start fuel : Nat} :
+    maskUnionK s lo Wm1 start (fuel + 1)
+      = Bool.rec (maskUnionK s lo Wm1 start fuel)
+          ((maskUnionK s lo Wm1 start fuel).lor (maskOfK (valueK (start + fuel)) lo Wm1))
+          (testBitK s (start + fuel)) := rfl
 
 /-- The loop is one difference against the union. Everything the skip design needs follows from
 this: the union splits over any partition of the divisors, and a part whose masks meet the result
@@ -2619,13 +2634,10 @@ nowhere contributes nothing. -/
 public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
     segLoopK s lo Wm1 seg start fuel = Nat.ldiff seg (maskUnionK s lo Wm1 start fuel) := by
   induction fuel with
-  | zero => simp [segLoopK, maskUnionK, Nat.ldiff_zero]
+  | zero => exact ldiff_zero.symm
   | succ k ih =>
-    show (testBitK s (start.add k)).rec (segLoopK s lo Wm1 seg start k)
-      (segMarkK (segLoopK s lo Wm1 seg start k) (valueK (start.add k)) lo Wm1)
-      = Nat.ldiff seg ((testBitK s (start.add k)).rec (maskUnionK s lo Wm1 start k)
-        ((maskUnionK s lo Wm1 start k).lor (maskOfK (valueK (start.add k)) lo Wm1)))
-    cases testBitK s (start.add k) with
+    rw [segLoopK_succ, maskUnionK_succ]
+    cases testBitK s (start + k) with
     | false => exact ih
     | true => rw [ih, segMarkK_ldiff, ldiff_ldiff]
 
