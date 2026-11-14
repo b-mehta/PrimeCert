@@ -2585,6 +2585,50 @@ public theorem ldiff_ldiff {seg m1 m2 : Nat} :
   refine Nat.eq_of_testBit_eq fun i => ?_
   simp [Nat.testBit_ldiff, Nat.testBit_or, Bool.and_assoc]
 
+/-! ## The marking loop as one set difference
+
+The skip design needs to drop a set of divisors from the loop. The argument is short if the loop
+is first rewritten: marking is `Nat.ldiff`, `ldiff_ldiff` collapses two of them into one against
+the union, so the whole loop is a single difference against the union of every divisor's mask. The
+order of the divisors then does not matter, and a divisor whose mask meets the finished window
+nowhere can be dropped without touching anything else. No induction over the loop is needed after
+this, which is why it is worth stating.
+
+Measured context: the wide-band sweep that this would make sound beats the production route by 32%
+of kernel, 17% of processor and 5% of peak, while proving nothing about the 435226 divisors it
+skips. -/
+
+/-- The mask one divisor clears, as its own name so the union can be taken over it. -/
+@[expose] public noncomputable def maskOfK (p lo Wm1 : Nat) : Nat :=
+  buildMaskK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
+    (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 32
+
+/-- Marking is a set difference against that mask. -/
+public theorem segMarkK_ldiff {seg p lo Wm1 : Nat} :
+    segMarkK seg p lo Wm1 = Nat.ldiff seg (maskOfK p lo Wm1) := by
+  rw [ldiff_eq_sub, maskOfK, segMarkK, Nat.land_comm]
+
+/-- The union of the masks of every divisor the loop would apply, in the loop's own shape. -/
+@[expose] public noncomputable def maskUnionK (s lo Wm1 start fuel : Nat) : Nat :=
+  fuel.rec 0 fun i u =>
+    (testBitK s (start.add i)).rec u (u.lor (maskOfK (valueK (start.add i)) lo Wm1))
+
+/-- The loop is one difference against the union. Everything the skip design needs follows from
+this: the union splits over any partition of the divisors, and a part whose masks meet the result
+nowhere contributes nothing. -/
+public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
+    segLoopK s lo Wm1 seg start fuel = Nat.ldiff seg (maskUnionK s lo Wm1 start fuel) := by
+  induction fuel with
+  | zero => simp [segLoopK, maskUnionK, Nat.ldiff_zero]
+  | succ k ih =>
+    show (testBitK s (start.add k)).rec (segLoopK s lo Wm1 seg start k)
+      (segMarkK (segLoopK s lo Wm1 seg start k) (valueK (start.add k)) lo Wm1)
+      = Nat.ldiff seg ((testBitK s (start.add k)).rec (maskUnionK s lo Wm1 start k)
+        ((maskUnionK s lo Wm1 start k).lor (maskOfK (valueK (start.add k)) lo Wm1)))
+    cases testBitK s (start.add k) with
+    | false => exact ih
+    | true => rw [ih, segMarkK_ldiff, ldiff_ldiff]
+
 /-- The clamped marking clears exactly the bits the marking clears, for a window inside the
 range. -/
 public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) (hp : 1 ≤ p)
