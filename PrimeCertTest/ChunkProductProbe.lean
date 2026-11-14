@@ -128,6 +128,39 @@ public theorem not_dvd_of_coprime_products {live skip v d : Nat}
   intro hdv
   exact hd1 (eq_one_of_dvd_gcd_one h (Nat.dvd_trans hdv hv) hd)
 
+/-! ## Marking is a set difference, and set differences collapse
+
+The other half of the chain: the sieve's marking loop is a fold, and what it folds is the set
+difference `x ^^^ (x &&& m)`, which clears the bits of `m` and sets none. Two of those collapse
+into one against the union of the masks, so the whole loop is a single difference against the
+union of every mask — order-independent, and the finished window is `seg` minus that union.
+Dropping a set of divisors is then valid exactly when their masks meet the finished window in
+nothing, with no induction over the loop at all.
+
+Stated with `^^^` and `&&&` rather than `Nat.ldiff`, which is Mathlib's, so this needs core only —
+and that is also the form the emitter was changed to use after `ldiff` turned out to be a bitwise
+recursion that held the emitter above 40 GB. -/
+
+/-- A set difference keeps a bit exactly when the left has it and the right does not. -/
+public theorem testBit_sdiff (x m i : Nat) :
+    Nat.testBit (x ^^^ (x &&& m)) i = (Nat.testBit x i && !Nat.testBit m i) := by
+  rw [Nat.testBit_xor, Nat.testBit_and]
+  cases Nat.testBit x i <;> cases Nat.testBit m i <;> rfl
+
+/-- Two set differences are one against the union, so a fold of them collapses. -/
+public theorem sdiff_sdiff (x m₁ m₂ : Nat) :
+    (x ^^^ (x &&& m₁)) ^^^ ((x ^^^ (x &&& m₁)) &&& m₂) = x ^^^ (x &&& (m₁ ||| m₂)) := by
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [testBit_sdiff, testBit_sdiff, testBit_sdiff, Nat.testBit_or]
+  cases Nat.testBit x i <;> cases Nat.testBit m₁ i <;> cases Nat.testBit m₂ i <;> rfl
+
+/-- A mask that meets the window in nothing may be dropped. This is the step that lets the swept
+divisors go: their masks and the finished window share no bit. -/
+public theorem sdiff_eq_self_of_disjoint {x m : Nat} (h : x &&& m = 0) : x ^^^ (x &&& m) = x := by
+  rw [h]
+  exact Nat.xor_zero x
+
 /-! ## At the size the design actually calls for
 
 The checks above use four-record chunks, which say the definitions are right and nothing about
