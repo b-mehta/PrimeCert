@@ -2650,6 +2650,40 @@ public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
       -- What is left differs only in `|||` against `.lor`, which `rw` will not close itself.
       rfl
 
+/-- Removing a mask the window does not meet removes nothing. -/
+public theorem ldiff_eq_self_of_disjoint {x m : Nat} (h : Nat.land x m = 0) :
+    Nat.ldiff x m = x := by
+  rw [ldiff_eq_sub, Nat.land_comm m x, h, Nat.sub_zero]
+
+/-- Enlarging the mask by a part the result does not meet changes nothing. This is the drop step:
+`U₁` is the union over the divisors that are marked, `U₂` over those skipped. -/
+public theorem ldiff_or_eq_of_disjoint {seg U₁ U₂ : Nat}
+    (h : Nat.land (Nat.ldiff seg U₁) U₂ = 0) :
+    Nat.ldiff seg (U₁ ||| U₂) = Nat.ldiff seg U₁ := by
+  rw [← ldiff_ldiff]
+  exact ldiff_eq_self_of_disjoint h
+
+/-- Sieving by a divisor set equals sieving by a subset of it, when the masks of the divisors left
+out meet the resulting window nowhere.
+
+**The split is a hypothesis rather than a lemma deliberately.** Proving
+`maskUnionK (sM ||| sS) = maskUnionK sM ||| maskUnionK sS` means reasoning about `testBitK` on a
+union, whereas the emitter knows both subsets and can emit the equation as one more literal for
+the kernel to check, which is how every other fact in this file reaches the chain. -/
+public theorem segLoopK_eq_of_skip {s sM sS lo Wm1 seg start fuel : Nat}
+    (hsplit : maskUnionK s lo Wm1 start fuel
+      = maskUnionK sM lo Wm1 start fuel ||| maskUnionK sS lo Wm1 start fuel)
+    (hdisj : Nat.land (segLoopK sM lo Wm1 seg start fuel)
+      (maskUnionK sS lo Wm1 start fuel) = 0) :
+    segLoopK s lo Wm1 seg start fuel = segLoopK sM lo Wm1 seg start fuel := by
+  have h1 : segLoopK s lo Wm1 seg start fuel = Nat.ldiff seg (maskUnionK s lo Wm1 start fuel) :=
+    segLoopK_eq_ldiff_union
+  have h2 : segLoopK sM lo Wm1 seg start fuel = Nat.ldiff seg (maskUnionK sM lo Wm1 start fuel) :=
+    segLoopK_eq_ldiff_union
+  rw [h2] at hdisj
+  rw [h1, h2, hsplit]
+  exact ldiff_or_eq_of_disjoint hdisj
+
 /-- The clamped marking clears exactly the bits the marking clears, for a window inside the
 range. -/
 public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) (hp : 1 ≤ p)
