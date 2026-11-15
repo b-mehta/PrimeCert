@@ -2653,11 +2653,10 @@ public theorem segLoopK_eq_ldiff_union {s lo Wm1 seg start fuel : Nat} :
 /-- Removing a mask the window does not meet removes nothing. -/
 public theorem ldiff_eq_self_of_disjoint {x m : Nat} (h : Nat.land x m = 0) :
     Nat.ldiff x m = x := by
-  -- `ldiff_eq_sub` leaves `Nat.land m x`, the other way round from the hypothesis, so the flip is
-  -- done as its own step rather than as a rewrite inside the chain.
-  have h' : Nat.land m x = 0 := by
-    rw [Nat.land_comm]
-    exact h
+  -- `Nat.land_comm` is stated with `&&&`, which `rw` does not match against `Nat.land`, so the
+  -- flip is a term. The same applies to core's other `land`/`lor`/`sub` lemmas throughout this
+  -- file: reach for `exact`, `.trans` or `congrArg`, not `rw`.
+  have h' : Nat.land m x = 0 := (Nat.land_comm m x).trans h
   rw [ldiff_eq_sub, h']
   exact Nat.sub_zero x
 
