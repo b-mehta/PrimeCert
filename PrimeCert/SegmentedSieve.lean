@@ -8104,6 +8104,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- some 256 records and nothing says those records exhaust the window's live bits, so a chunk
   -- left out would never be noticed. Implies `skipCert`, being past 64.
   let coverCert := parts ≥ 128
+  -- Adding 256 states the cover on the skipped side too. The live side's cover says the records
+  -- exhaust the window; this says the skip records exhaust the skipped set, without which a
+  -- divisor could be dropped from the marking and left out of the product, and nothing would
+  -- divide anything. Implies `coverCert`, being past 128.
+  let skipCoverCert := parts ≥ 256
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8326,7 +8331,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     records {if recordCert then "on" else "off"}, \
     assembly {if assemble then "on" else "off"}, \
     skip product {if skipCert then "said" else "asserted"}, \
-    cover {if coverCert then "on" else "off"}"
+    cover {if coverCert then "on" else "off"}, \
+    skip cover {if skipCoverCert then "on" else "off"}"
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8376,9 +8382,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut leaves : Array Nat := #[]
       let mut nChunk := 0
       let mut nSkipRec := 0
+      let mut nSkipCover := 0
       for k in [0:(fuel + 65536) / 65536] do
         let (recs, cnt) := SieveEmit.liveRecords sSkip k
         nSkipRec := nSkipRec + cnt
+        let mut acc := 0
         for c in [0:(cnt + chunk - 1) / chunk] do
           let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
           let thisCnt := Nat.min chunk (cnt - c * chunk)
@@ -8399,8 +8407,32 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
           leaves := leaves.push pv
           nChunk := nChunk + 1
+          if skipCoverCert then
+            let next := acc ||| asm
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipCover_{k}_{c}"))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
+                (mkRawNatLit next)) Lean.reflBoolTrue
+            acc := next
+            nSkipCover := nSkipCover + 1
+        if skipCoverCert then
+          -- Against the skipped-set literal the emitter already names, so the records are tied to
+          -- the set the marking route was allowed to leave out rather than to a set of the
+          -- emitter's choosing.
+          let blk := (sSkip >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+          if blk != acc then
+            throwError "run_segment_skip: block {k}'s skip chunks cover something other than the \
+              skipped set, so the records do not exhaust it"
+          let blkE := mkApp2 (mkConst ``Nat.land)
+            (mkApp2 (mkConst ``Nat.shiftRight) (mkConst skipName) (mkRawNatLit (k * 65536)))
+            (mkApp2 (mkConst ``Nat.sub)
+              (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536))
+              (mkRawNatLit 1))
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipBlock_{k}"))
+            (mkSegBeqTrue blkE (mkRawNatLit blk)) Lean.reflBoolTrue
+          nSkipCover := nSkipCover + 1
       let t7 ← IO.monoMsNow
-      rssLog s!"skip records: {nSkipRec} over {nChunk} chunks, {t7 - t6} ms, {← rssMB} MiB"
+      rssLog s!"skip records: {nSkipRec} over {nChunk} chunks, {nSkipCover} cover statements, \
+        {t7 - t6} ms, {← rssMB} MiB"
       let mut level := leaves
       let mut lvl := 0
       let mut nMul := 0
@@ -8544,7 +8576,8 @@ Adding 8 takes the strike set from the wide band alone, 16 states the certificat
 rather than over the window's bits, 32 also states that each chunk's records assemble to the bits
 the emitter says they do, 64 establishes the skipped product from its own records instead of
 asserting it, and 128 states the cover: a slice's chunk assemblies `lor` to the slice, and the
-slice is the window shifted down and masked. Each implies the ones below it.
+slice is the window shifted down and masked, and 256 states the same cover on the skipped side.
+Each implies the ones below it.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
