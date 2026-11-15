@@ -6349,6 +6349,82 @@ public theorem segLoopK_eq_self_of_range {s lo Wm1 seg start fuel bs nb : Nat}
   have hd := dvd_prodLiveFromK (seg := s) (lo := 0) (off := start) (n := fuel) hi hbit
   rwa [Nat.zero_add] at hd
 
+/-! ## The certificate over records
+
+`prodLiveFromK` walks the window one bit at a time: `fuel` of them for the divisors and 65536 a
+slice for the values, about 8 million `testBitK` calls against a multi-megabit literal. Measured,
+that holds the emitter above 40 GB whether the product is a fold or a balanced tree, because the
+shape of the multiplication was never what cost. **The route is affordable because `stripeUpToK`
+never inspects the window — it walks the records it is given.** So does this.
+
+A record is sixteen bits of position, `cnt` of them packed into `recs`, and **`recs` is one chunk
+of a few hundred, never a slice's worth**: a leaf reaches its field by shifting `recs`, so the
+chunk size is what that shift costs. The sizing settled on 256 a chunk, where the live side is 1527
+statements and the skipped side 1701.
+
+Everything here was written and checked standalone in `PrimeCertTest/ChunkProductProbe.lean`, which
+imports nothing, against a local copy of `valueK`; this is that work with the real one. -/
+
+/-- The product of the values named by one chunk of records, as a balanced tree: `2 ^ d` slots from
+`off`, with slots at or past `cnt` contributing 1 so a chunk may be rounded up to a power of two. -/
+@[expose] public noncomputable def prodChunkK (recs lo cnt d off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => (Nat.blt o cnt).rec 1
+      (valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul o 16)) 65535))))
+    (fun k ih o => Nat.mul (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    d off
+
+/-- The bits named by one chunk of records. A product over records means nothing without this
+beside it: the emitter supplies the slice, and the kernel checks the records assemble to it. -/
+@[expose] public noncomputable def asmChunkK (recs cnt d off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => (Nat.blt o cnt).rec 0
+      (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul o 16)) 65535)))
+    (fun k ih o => Nat.lor (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    d off
+
+/-- Any slot in range contributes a factor, so its value divides the chunk's product. -/
+public theorem dvd_prodChunkK (recs lo cnt : Nat) :
+    ∀ d off o, off ≤ o → o < off + 2 ^ d → o < cnt →
+      valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul o 16)) 65535))
+        ∣ prodChunkK recs lo cnt d off := by
+  intro d
+  induction d with
+  | zero =>
+    intro off o h1 h2 h3
+    have hp : (2 : Nat) ^ 0 = 1 := rfl
+    rw [hp] at h2
+    have ho : o = off := by omega
+    subst ho
+    have hb : Nat.blt o cnt = true := by
+      simp only [Nat.blt_eq]
+      exact h3
+    show valueK _ ∣ (Nat.blt o cnt).rec 1 (valueK _)
+    rw [hb]
+    exact Nat.dvd_refl _
+  | succ k ih =>
+    intro off o h1 h2 h3
+    have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
+      rw [Nat.pow_succ, Nat.mul_two]
+    show valueK _ ∣ Nat.mul (prodChunkK recs lo cnt k off) (prodChunkK recs lo cnt k (off + 2 ^ k))
+    by_cases hc : o < off + 2 ^ k
+    · exact Nat.dvd_mul_right_of_dvd (ih off o h1 hc h3) _
+    · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) o (by omega) (by omega) h3) _
+
+/-- If two numbers are coprime, nothing above 1 divides both. -/
+public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
+    (h : Nat.gcd a b = 1) (hpa : p ∣ a) (hpb : p ∣ b) : p = 1 := by
+  have hp : p ∣ Nat.gcd a b := Nat.dvd_gcd hpa hpb
+  rw [h] at hp
+  exact Nat.dvd_one.mp hp
+
+/-- The form the certificate uses: a skipped divisor cannot divide a live value, given the chunk's
+product is coprime to the product of the skipped divisors. -/
+public theorem not_dvd_of_coprime_products {live skip v d : Nat}
+    (h : Nat.gcd live skip = 1) (hv : v ∣ live) (hd : d ∣ skip) (hd1 : d ≠ 1) : ¬ (d ∣ v) := by
+  intro hdv
+  exact hd1 (eq_one_of_dvd_gcd_one h (Nat.dvd_trans hdv hv) hd)
+
 /-! ## Compiled twins
 
 Executable copies of the definitions above, used by `run_segment` to compute the batch literals.
