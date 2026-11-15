@@ -276,4 +276,47 @@ public theorem dvd_valueK_of_testBit_segMask {p M lo n i : Nat} (hp : p % 6 = 1 
     rw [hr]
     exact hstep _ (dvd_valueK_seed_seven hp)
 
+/-! ## A divisor whose mask misses the window
+
+The skip step asks for `seg &&& mask = 0`, and what the certificate delivers is a statement about
+values: no live value is a multiple of the skipped divisor. The two meet here. A shared bit would
+be a live value that is a multiple, the mask lemma above supplies the "is a multiple" half, and the
+certificate rules it out, so there is no shared bit.
+
+The union over several divisors then needs nothing new: `land` distributes over `lor`, so a fold of
+masks that are each disjoint from the window is disjoint from it too. -/
+
+/-- Two numbers share no bit exactly when no bit of the first is a bit of the second. -/
+public theorem land_eq_zero_of_disjoint {a b : Nat}
+    (h : ∀ i, Nat.testBit a i = true → Nat.testBit b i = false) : a &&& b = 0 := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  rw [Nat.testBit_and, Nat.zero_testBit]
+  cases ha : Nat.testBit a i with
+  | false => rfl
+  | true => rw [h i ha, Bool.and_false]
+
+/-- Disjointness survives the fold: a union of masks that each miss the window misses it too. This
+is why the skipped divisors can be dropped together rather than one at a time. -/
+public theorem land_lor_eq_zero {a u m : Nat} (hu : a &&& u = 0) (hm : a &&& m = 0) :
+    a &&& (u ||| m) = 0 := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  have hu' : (Nat.testBit a i && Nat.testBit u i) = false := by
+    rw [← Nat.testBit_and, hu, Nat.zero_testBit]
+  have hm' : (Nat.testBit a i && Nat.testBit m i) = false := by
+    rw [← Nat.testBit_and, hm, Nat.zero_testBit]
+  rw [Nat.testBit_and, Nat.testBit_or, Nat.zero_testBit, Bool.and_or_distrib_left, hu', hm']
+  rfl
+
+/-- The per-divisor step the skip argument rests on, with the certificate's side as a hypothesis:
+given that no live value is a multiple of `p`, the window and `p`'s mask share no bit. -/
+public theorem land_segMask_eq_zero {p M lo n seg : Nat} (hp : p % 6 = 1 ∨ p % 6 = 5)
+    (hpos : 0 < p) (h : ∀ i, Nat.testBit seg i = true → ¬ (p ∣ valueK (lo + i))) :
+    seg &&& buildMaskK p M (firstLocK (indexK (p * 5)) lo (p * 2))
+      (firstLocK (indexK (p * 7)) lo (p * 2)) n = 0 := by
+  refine land_eq_zero_of_disjoint fun i hi => ?_
+  cases hb : Nat.testBit (buildMaskK p M (firstLocK (indexK (p * 5)) lo (p * 2))
+      (firstLocK (indexK (p * 7)) lo (p * 2)) n) i with
+  | false => rfl
+  | true => exact absurd (dvd_valueK_of_testBit_segMask hp hpos hb) (h i hi)
+
 end PrimeCert.SegTune.MaskBitProbe
