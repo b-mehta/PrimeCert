@@ -8198,10 +8198,17 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- the wide boundary, and the eight- and four-strike bands add not one skip
     -- (`scripts/wide_base_prefix.py`). Testing against a window with more live bits can only make
     -- a wide divisor look like a striker, never the reverse, so a shallower base stays correct.
+    --
+    -- It could be shallower still. The same script, run down to `Wm1/128`, gives the identical
+    -- strike set from 3510 divisors rather than 43388, at both 10^14 and 10^15. But the divisor
+    -- count is the wrong unit: the smallest primes carry most of the marking, so the record count
+    -- only falls from 8414750 to 7424292, a ninth. Whether a ninth of this loop is worth having
+    -- is why it is timed below rather than changed.
     let mut smallLast := 1
     while 8 * value smallLast ≤ wm1 && smallLast < fuel do
       smallLast := smallLast + 1
     let lowBatches := (smallLast + step0 - 1) / step0
+    let tb0 ← IO.monoMsNow
     for i in [0:lowBatches] do
       let start := 1 + i * step0
       let stepN := Nat.min step0 (smallLast - i * step0)
@@ -8210,8 +8217,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         base := base + 1
       if i % 32 == 0 || i + 1 == lowBatches then
         rssLog s!"small band batch {i} of {lowBatches}, {← rssMB} MiB"
-    rssLog s!"small band done to index {smallLast}, {← rssMB} MiB, sweeping the wide band"
+    let tb1 ← IO.monoMsNow
+    rssLog s!"base built to index {smallLast} in {tb1 - tb0} ms, {← rssMB} MiB, now the sweep"
     let (h, nh, nt) := SieveEmit.wideHits sVal lo wm1 base wideFirst fuel
+    let tb2 ← IO.monoMsNow
+    rssLog s!"sweep tested {fuel - wideFirst + 1} divisors in {tb2 - tb1} ms"
     -- Everything below the wide band is marked whether it strikes or not.
     hits := h ||| (sVal &&& ((1 <<< wideFirst) - 1))
     nHit := nh
