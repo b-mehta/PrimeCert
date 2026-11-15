@@ -8151,6 +8151,16 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- goes is one statement and one 8 KB literal a chunk, on both sides. Implies the covers, since
   -- without them there is nothing to merge into.
   let mergedCover := (parts / 4096) % 2 == 1 && coverCert && skipCoverCert
+  -- Which band the sweep starts at. 2 is the wide band alone, which every measurement so far
+  -- used; 4 takes in the four-strike band and 8 the eight-strike one as well, leaving the base
+  -- as the masked small band either way.
+  --
+  -- Counted at both depths (`scripts/band_skippable.py`): the four-strike band is 60% skippable
+  -- at 10^14 and 64% at 10^15, the eight-strike band 37% and 41%. Those bands hold the same
+  -- primes at every depth, since the edges are set by `Wm1` rather than by the divisor bound, so
+  -- the counts move only with where the window sits. Skipping them costs the certificate the
+  -- divisors it has to carry; what that trades for is a measurement, not a calculation.
+  let sweepK := if (parts / 8192) % 4 == 2 then 8 else if (parts / 8192) % 4 == 1 then 4 else 2
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8165,12 +8175,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- The widest band starts where a divisor's double passes the end of the window, which is the
   -- same boundary the emitter's banded route uses.
   let mut wideFirst := 1
-  while 2 * value wideFirst ≤ wm1 && wideFirst < fuel do
+  while sweepK * value wideFirst ≤ wm1 && wideFirst < fuel do
     wideFirst := wideFirst + 1
   let nBatch := (fuel + step0 - 1) / step0
   rssLogInit
   rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}, \
-    wide band from {wideFirst}"
+    swept band from {wideFirst}, sweep starts where {sweepK}p exceeds Wm1"
   let mut full := initSeg W
   let mut base := initSeg W
   let mut hits := 0
@@ -8720,7 +8730,9 @@ Above 256 the digits are fields rather than thresholds, since the choices there 
 against the size of the literals a statement carries. `(parts / 2048) % 2` takes one gcd for the
 window instead of one a chunk, stating the chunk products as literals and combining them pairwise
 first. `(parts / 4096) % 2` merges each chunk's assembly statement into its cover step, which
-drops a statement and an 8 KB literal a chunk on both sides.
+drops a statement and an 8 KB literal a chunk on both sides. `(parts / 8192) % 4` moves the band
+the sweep starts at: 0 is the wide band alone, 1 takes in the four-strike band and 2 the
+eight-strike one too.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
