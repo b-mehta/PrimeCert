@@ -2668,6 +2668,31 @@ public theorem ldiff_or_eq_of_disjoint {seg U₁ U₂ : Nat}
   rw [← ldiff_ldiff]
   exact ldiff_eq_self_of_disjoint h
 
+/-- The union over a divisor set splits over a union of divisor sets.
+
+**Needed as a lemma, not as an emitted hypothesis.** The emitter could state the split as one more
+equation for the kernel to check, as it does for everything else — but the kernel would then have
+to evaluate `maskUnionK` over all 664577 divisors, which is the whole mask-building the skip design
+exists to avoid. Proving it costs nothing at run time.
+
+No disjointness is needed: a union of masks does not care that a divisor appears in both sets. -/
+public theorem maskUnionK_or {s₁ s₂ lo Wm1 start fuel : Nat} :
+    maskUnionK (s₁ ||| s₂) lo Wm1 start fuel
+      = maskUnionK s₁ lo Wm1 start fuel ||| maskUnionK s₂ lo Wm1 start fuel := by
+  induction fuel with
+  | zero => rfl
+  | succ k ih =>
+    rw [maskUnionK_succ, maskUnionK_succ, maskUnionK_succ]
+    have hbit : testBitK (s₁ ||| s₂) (start + k)
+        = (testBitK s₁ (start + k) || testBitK s₂ (start + k)) := by
+      rw [Sieve.testBitK_eq_testBit, Sieve.testBitK_eq_testBit, Sieve.testBitK_eq_testBit]
+      exact Nat.testBit_or _ _ _
+    rw [hbit]
+    cases testBitK s₁ (start + k) <;> cases testBitK s₂ (start + k) <;>
+      dsimp only <;> rw [ih] <;>
+      refine Nat.eq_of_testBit_eq fun i => ?_ <;>
+      simp [Nat.testBit_or, Bool.or_assoc, Bool.or_comm, Bool.or_left_comm]
+
 /-- Sieving by a divisor set equals sieving by a subset of it, when the masks of the divisors left
 out meet the resulting window nowhere.
 
