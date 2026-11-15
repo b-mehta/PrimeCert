@@ -8267,7 +8267,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     routeDone := true
     match ← ref.get with
     | some v =>
+      -- `final` as well as `full`. The marking pass leaves `full` as `base`, the masked small band
+      -- alone, when the route is the one that will build the finished window; `final` is assigned
+      -- from `full` further up, so without this line the record certificate is stated over the
+      -- small-band window. That is what made it emit 2117 chunks where the window holds 390802
+      -- live values: `base` keeps every value the three unmarked bands would have cleared.
       full := v
+      final := v
       rssLog s!"window taken from the route rather than rebuilt, {← rssMB} MiB"
     | none =>
       throwError "run_segment_skip: the route emitted no window, so there is nothing for the \
