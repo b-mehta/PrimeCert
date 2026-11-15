@@ -29,26 +29,39 @@ public def initSeg (W : Nat) : Nat := (1 <<< W) - 1
 
 public def firstLoc (A lo m : Nat) : Nat := (A + m - lo % m) % m
 
-/-- Which of the low `len` bits of `c` are set, read a word at a time. Shifting a `len`-bit number
-down by one copies the whole number, so a scan that steps one bit at a time rebuilds `c` once per
-position; peeling 64 bits at a time leaves the bit tests inside a single word.
+/-- Which of the low `len` bits of `c` are set, in increasing order.
 
-**Still quadratic in `len`, so pass a batch length and never the whole divisor range.** Each
-`rest >>> 64` copies what is left of `rest`, so the cost grows with `len / 64` shifts of a
-`len`-bit number. At `len = 8192`, a batch, that is 128 shifts of a kilobyte and does not signify.
-At `len = 3333333`, the whole range, it is some 52000 shifts of a 416 KB number, tens of GB of
-allocation; two such calls in the skip emitter's counting lines are what killed it at 40 GB.
-Callers in this file all pass a batch length; keep it that way. -/
+The obvious shape peels one word at a time off the front: `word := rest &&& 0xFFFF…`, then
+`rest := rest >>> 64`. Every one of those shifts copies what is left of `rest`, so the number is
+rebuilt once per word and the copying grows with `len / 64` shifts of a `len`-bit number. At a
+batch length of 8192 that is 128 shifts of a kilobyte and does not signify; at the whole divisor
+range of 3333333 it is some 52000 shifts of a 416 KB number, and two such calls in the skip
+emitter's counting lines were what killed it at 40 GB.
+
+This halves instead. A range wider than a word is split in two at a word boundary, each half
+shifted out once, and each half handled the same way. A `len`-bit number is then copied about once
+per level of the split rather than once per word, and a half that is zero is dropped whole without
+being looked at, which the sparse upper reaches of a divisor mask mostly are.
+
+The stack holds `(value, offset, width)` with the low half pushed last, so it comes off first and
+the positions come out in increasing order, which `liveRecords` and the callers that count rely
+on. -/
 public def setBitsLow (c len : Nat) : Array Nat := Id.run do
   let mut out : Array Nat := #[]
-  let mut rest := c &&& ((1 <<< len) - 1)
-  for w in [0:(len + 63) / 64] do
-    let word := rest &&& 0xFFFFFFFFFFFFFFFF
-    if word ≠ 0 then
-      for b in [0:64] do
-        if (word >>> b) &&& 1 = 1 then
-          out := out.push (64 * w + b)
-    rest := rest >>> 64
+  let mut stack : Array (Nat × Nat × Nat) := #[(c &&& ((1 <<< len) - 1), 0, len)]
+  while stack.size > 0 do
+    let (v, off, w) := stack.back!
+    stack := stack.pop
+    if v ≠ 0 then
+      if w ≤ 64 then
+        for b in [0:w] do
+          if (v >>> b) &&& 1 = 1 then
+            out := out.push (off + b)
+      else
+        let h := ((w + 1) / 2 + 63) / 64 * 64
+        let half := if h ≥ w then w - 64 else h
+        stack := stack.push (v >>> half, off + half, w - half)
+        stack := stack.push (v &&& ((1 <<< half) - 1), off, half)
   return out
 
 /-- Twin of `seedK`. -/
