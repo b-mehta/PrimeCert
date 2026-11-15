@@ -6632,7 +6632,7 @@ command's own computation alone. Mode 16 joins each batch's masks into a running
 the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
 and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
-    (prodNames : Bool := false) (out : Option (IO.Ref (Option Nat)) := none) :
+    (prodNames : Bool := false) (out : Option (IO.Ref (Option (Nat × Name))) := none) :
     MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
@@ -7541,7 +7541,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
-    if let some r := out then r.set (some bits)
+    if let some r := out then r.set (some (bits, litName))
     let accName := ns ++ Name.mkSimple s!"segAccV_{tag}"
     addSegThm accName
       (mkNatEq (mkAppN (mkConst ``segAccLoopK)
@@ -7797,7 +7797,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
-    if let some r := out then r.set (some bits)
+    if let some r := out then r.set (some (bits, litName))
     addSegThm parent (mkNatEq lhsK (mkConst litName)) proof
     let bValS := value fuel
     addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
@@ -7944,7 +7944,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   addDecl <| Declaration.defnDecl
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
-  if let some r := out then r.set (some bits)
+  if let some r := out then r.set (some (bits, litName))
   let finalProof := if clamped then
       mkAppN (mkConst ``segEq_of_clamped)
         #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkRawNatLit bits,
@@ -8099,6 +8099,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- and its assembly, combined pairwise by kernel-checked multiplications up to the literal the
   -- gcds are stated against. Implies `assemble`, being past 32.
   let skipCert := parts ≥ 64
+  -- Adding 128 also states the cover: that a slice's chunk assemblies `lor` to the slice, and that
+  -- the slice is the window shifted down and masked. Without it every chunk statement is about
+  -- some 256 records and nothing says those records exhaust the window's live bits, so a chunk
+  -- left out would never be noticed. Implies `skipCert`, being past 64.
+  let coverCert := parts ≥ 128
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8277,15 +8282,20 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- 82 s by which the whole design trails on processor. So when both are wanted the route goes
   -- first and its window is read back, rather than built again here.
   let mut routeDone := false
+  -- The name the route gave its window, carried out alongside the value. The cover statements
+  -- below are about the window the rest of the chain names, so they have to be stated against that
+  -- definition and not against a second literal with the same digits.
+  let mut windowName : Option Name := none
   if recordCert && emitRoute then
     -- `runSegmentV` writes its finished window here rather than this reading it back by a
     -- constructed name, which would have duplicated that function's naming convention and broken
     -- quietly if it ever changed.
-    let ref ← IO.mkRef (none : Option Nat)
+    let ref ← IO.mkRef (none : Option (Nat × Name))
     runSegmentV ns markName 28 a W fuel len (out := some ref)
     routeDone := true
     match ← ref.get with
-    | some v =>
+    | some (v, nm) =>
+      windowName := some nm
       -- `final` as well as `full`. The marking pass leaves `full` as `base`, the masked small band
       -- alone, when the route is the one that will build the finished window; `final` is assigned
       -- from `full` further up, so without this line the record certificate is stated over the
@@ -8315,7 +8325,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}, \
     records {if recordCert then "on" else "off"}, \
     assembly {if assemble then "on" else "off"}, \
-    skip product {if skipCert then "said" else "asserted"}"
+    skip product {if skipCert then "said" else "asserted"}, \
+    cover {if coverCert then "on" else "off"}"
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8426,9 +8437,16 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- nobody has a reference for.
     let mut nLive := 0
     let mut nAsm := 0
+    let mut nCover := 0
+    if coverCert && windowName.isNone then
+      throwError "run_segment_skip: the cover is stated against the window the route names, so \
+        the route has to run; use a parts value with the route on"
     for k in [0:W / 65536] do
       let (recs, cnt) := SieveEmit.liveRecords final k
       nLive := nLive + cnt
+      -- The running union of this slice's chunk assemblies. Each step is a statement, so the
+      -- chain ends at a literal the kernel has agreed is everything the chunks name together.
+      let mut acc := 0
       for c in [0:(cnt + chunk - 1) / chunk] do
         let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
         let thisCnt := Nat.min chunk (cnt - c * chunk)
@@ -8452,8 +8470,32 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recAsm_{k}_{c}"))
             (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
           nAsm := nAsm + 1
+          if coverCert then
+            let next := acc ||| asm
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recCover_{k}_{c}"))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
+                (mkRawNatLit next)) Lean.reflBoolTrue
+            acc := next
+            nCover := nCover + 1
+      if coverCert then
+        -- And the slice itself: the window shifted down and masked is what the chunks covered.
+        -- Stated against the name the route gave the window, so this is about the same definition
+        -- the rest of the chain is about rather than a second literal that happens to agree.
+        let slice := (final >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+        if slice != acc then
+          throwError "run_segment_skip: slice {k}'s chunks cover something other than the slice, \
+            so the records do not exhaust its live bits"
+        let sliceE := mkApp2 (mkConst ``Nat.land)
+          (mkApp2 (mkConst ``Nat.shiftRight) (mkConst windowName.get!)
+            (mkRawNatLit (k * 65536)))
+          (mkApp2 (mkConst ``Nat.sub)
+            (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536))
+            (mkRawNatLit 1))
+        addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recSlice_{k}"))
+          (mkSegBeqTrue sliceE (mkRawNatLit slice)) Lean.reflBoolTrue
+        nCover := nCover + 1
     rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records over {nLive} live \
-      values, {nAsm} assembly statements, {← rssMB} MiB"
+      values, {nAsm} assembly statements, {nCover} cover statements, {← rssMB} MiB"
   -- The window-walking form, which `recordCert` replaces. Guarded by an empty range rather than
   -- an `else`, so the loop below keeps its indentation and stays the code that was measured.
   for k in [0:nGcd] do
@@ -8500,8 +8542,9 @@ elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
 what it emits: `parts` 1 for the gcd equations alone, 2 for the marking route alone, 0 for both.
 Adding 8 takes the strike set from the wide band alone, 16 states the certificate over records
 rather than over the window's bits, 32 also states that each chunk's records assemble to the bits
-the emitter says they do, and 64 establishes the skipped product from its own records instead of
-asserting it. Each implies the ones below it.
+the emitter says they do, 64 establishes the skipped product from its own records instead of
+asserting it, and 128 states the cover: a slice's chunk assemblies `lor` to the slice, and the
+slice is the window shifted down and masked. Each implies the ones below it.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
