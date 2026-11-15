@@ -448,6 +448,14 @@ public theorem not_dvd_of_cover {seg lo P p : Nat} (hp : p ∣ P) (hp1 : p ≠ 1
   rw [hsplit]
   exact not_dvd_of_chunk hgcd hp hp1 hasm
 
+-- Two things the composed theorem leans on that are cheaper to check here than on a box.
+-- `Nat.add lo j` and `lo + j` are the same term after instances unfold, so `exact` bridges the
+-- two spellings even where `rw` would not; and `≠ 1` follows from `5 ≤` by `omega`, which is how
+-- the divisor's non-triviality is discharged from the bound the range already carries.
+example (lo j : Nat) (h : ¬ (3 ∣ valK (Nat.add lo j))) : ¬ (3 ∣ valK (lo + j)) := h
+
+example (n : Nat) (h : 5 ≤ n) : n ≠ 1 := by omega
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
