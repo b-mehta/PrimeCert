@@ -49,9 +49,15 @@ big = ps[ps > 3]
 n = LO + np.arange(SPAN, dtype=np.int64)
 coprime6 = ((n % 2) != 0) & ((n % 3) != 0)
 
-# Band edges as the emitter sets them, against wm1 itself.
+# Band edges as the emitter sets them, against wm1 itself, plus the depths between nothing and
+# the small band. That gap is where the question now is: the small band costs by far the most
+# records of anything the marking does, and `none` against `small` only says the two ends.
 depths = [
     ("none", 3),
+    ("Wm1/128", WM1 // 128),
+    ("Wm1/64", WM1 // 64),
+    ("Wm1/32", WM1 // 32),
+    ("Wm1/16", WM1 // 16),
     ("small", WM1 // 8),
     ("+eight", WM1 // 4),
     ("+four", WM1 // 2),
@@ -62,15 +68,22 @@ wp = big[wide]
 print(f"window start {LO}, divisors to {BIG}")
 print(f"wide divisors: {len(wp)}")
 print()
-print(f"{'base depth':12} {'divisors marked':>16} {'wide struck':>12} {'wide skipped':>13}")
+print(
+    f"{'base depth':12} {'divisors marked':>16} {'wide struck':>12} {'wide skipped':>13}"
+    f" {'base records':>14}"
+)
 
 for name, bound in depths:
     alive = coprime6.copy()
     lower = big[big <= bound]
+    records = 0
     for p in lower:
         p = int(p)
         start = ((LO + p - 1) // p) * p
         if start < LO + SPAN:
+            # What building this base costs the marking, in the same unit the sweep's saving is
+            # measured in: one record per position a divisor's mask covers.
+            records += int(np.count_nonzero(coprime6[start - LO :: p]))
             alive[start - LO :: p] = False
     struck = 0
     for p in wp:
@@ -78,7 +91,7 @@ for name, bound in depths:
         start = ((LO + p - 1) // p) * p
         if start < LO + SPAN and alive[start - LO :: p].any():
             struck += 1
-    print(f"{name:12} {len(lower):16} {struck:12} {len(wp) - struck:13}")
+    print(f"{name:12} {len(lower):16} {struck:12} {len(wp) - struck:13} {records:14}")
 
 print()
 print("Read the last row against the sweep as built: it marks every divisor up to WM1//2 plainly.")
