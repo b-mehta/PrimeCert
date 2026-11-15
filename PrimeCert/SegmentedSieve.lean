@@ -8331,8 +8331,14 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- past the count contributing the identity.
     let chunk := 256
     let mut nStmt := 0
+    -- Counted while the records are taken, so the number of live values the certificate covers is
+    -- always in the log beside the statement count. A window that was never finished shows up here
+    -- as a live count far above the primes in the range, rather than only as a statement count
+    -- nobody has a reference for.
+    let mut nLive := 0
     for k in [0:W / 65536] do
       let (recs, cnt) := SieveEmit.liveRecords final k
+      nLive := nLive + cnt
       for c in [0:(cnt + chunk - 1) / chunk] do
         let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
         let thisCnt := Nat.min chunk (cnt - c * chunk)
@@ -8343,7 +8349,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
           Lean.reflBoolTrue
         nStmt := nStmt + 1
-    rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records, {← rssMB} MiB"
+    rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records over {nLive} live \
+      values, {← rssMB} MiB"
   -- The window-walking form, which `recordCert` replaces. Guarded by an empty range rather than
   -- an `else`, so the loop below keeps its indentation and stays the code that was measured.
   for k in [0:nGcd] do
