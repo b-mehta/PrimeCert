@@ -245,4 +245,56 @@ meta def refStripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat ×
 #guard stripeSortW (ofPositions [1, 2, 3]) 0 65535 1 64 65536 3
   == refStripeSortW (ofPositions [1, 2, 3]) 0 65535 1 64 65536 3
 
+/-! ## `wideHits` finds every striker, not only the seeded ones
+
+The sweep drops a divisor when `wideHits` says it strikes nothing live. If that test misses a
+strike, the divisor is dropped while it genuinely strikes and the window keeps a composite, so
+this is the one function here where a false negative is unsound rather than merely slow.
+
+An earlier version tested only the seeds `A` and `B`. That is complete when `Wm1 < 2p`, which is
+the wide band, and wrong as soon as the sweep is allowed to start a band lower. The reference
+below marks every multiple by brute force and asks which divisors struck, and the checks run at
+`first` values corresponding to all three sweep settings — the wide band, the four-strike band and
+the eight-strike band — so the seeds-only version fails them. -/
+
+/-- Which divisors in `[first, last]` strike a live position, by marking every multiple. -/
+meta def refHits (s lo Wm1 base first last : Nat) : Nat × Nat := Id.run do
+  let mut nHit := 0
+  let mut nTot := 0
+  for off in setBitsLow (s >>> first) (last + 1 - first) do
+    let i := first + off
+    nTot := nTot + 1
+    let p := valueE i
+    let d := p * 2
+    let mut hit := false
+    for X in [firstLoc (indexE (p * 5)) lo d, firstLoc (indexE (p * 7)) lo d] do
+      let mut Z := X
+      while Z ≤ Wm1 do
+        if (base >>> Z) &&& 1 == 1 then hit := true
+        Z := Z + d
+    if hit then nHit := nHit + 1
+  return (nHit, nTot)
+
+/-- A small window and a base with scattered live bits, so strikes land both on and off them. -/
+def smallBase : Nat := ofPositions [0, 5, 7, 11, 40, 64, 100, 257, 1000, 4095, 20000, 65000]
+
+/-- Divisor indices spread across the bands a small window induces. -/
+def divSet : Nat := ofPositions [3, 4, 5, 8, 11, 17, 29, 40, 64, 100, 177, 250, 333, 500, 999]
+
+-- `wideHits` returns (acc, nHit, nTot); only the counts are compared here, and the reference
+-- settles whether a divisor struck at all.
+#guard (wideHits divSet 0 65535 smallBase 3 999).2 == refHits divSet 0 65535 smallBase 3 999
+#guard (wideHits divSet 0 65535 smallBase 100 999).2
+  == refHits divSet 0 65535 smallBase 100 999
+#guard (wideHits divSet 0 65535 smallBase 500 999).2
+  == refHits divSet 0 65535 smallBase 500 999
+-- A window start other than zero, which moves every seed.
+#guard (wideHits divSet 1000 65535 smallBase 3 999).2
+  == refHits divSet 1000 65535 smallBase 3 999
+-- A base that is entirely live, where every divisor in range strikes.
+#guard (wideHits divSet 0 65535 ((1 <<< 65536) - 1) 3 999).2
+  == refHits divSet 0 65535 ((1 <<< 65536) - 1) 3 999
+-- A dead base, where none does.
+#guard (wideHits divSet 0 65535 0 3 999).2 == refHits divSet 0 65535 0 3 999
+
 end PrimeCert.SegTune.SetBitsProbe
