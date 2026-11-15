@@ -257,26 +257,61 @@ what the emitted statements add up to: a bit the chunk assembles to names a valu
 divisor divides. The gcd is the emitted one, the assembly is the emitted one, and nothing else is
 needed. -/
 
-/-- A bit of the chunk's assembly names a value that no divisor of the skipped product divides. -/
-public theorem not_dvd_of_chunk {recs lo cnt skipProd p j : Nat}
-    (hgcd : Nat.gcd (prodChunkK recs lo cnt 8 0) skipProd = 1)
+/-- A bit of the chunk's assembly names a value that no divisor of the skipped product divides.
+`d` is the chunk's depth, which the emitter varies with the chunk size. -/
+public theorem not_dvd_of_chunk {recs lo cnt skipProd p j d : Nat}
+    (hgcd : Nat.gcd (prodChunkK recs lo cnt d 0) skipProd = 1)
     (hp : p ∣ skipProd) (hp1 : p ≠ 1)
-    (hj : Nat.testBit (asmChunkK recs cnt 8 0) j = true) : ¬ (p ∣ valK (Nat.add lo j)) :=
-  not_dvd_of_coprime_products hgcd (dvd_prodChunkK_of_testBit recs lo cnt 8 0 j hj) hp hp1
+    (hj : Nat.testBit (asmChunkK recs cnt d 0) j = true) : ¬ (p ∣ valK (Nat.add lo j)) :=
+  not_dvd_of_coprime_products hgcd (dvd_prodChunkK_of_testBit recs lo cnt d 0 j hj) hp hp1
+
+/-! ## One gcd for the window instead of one a chunk
+
+The arm that won takes a single gcd against the whole window's product, reached from the chunk
+products by a chain of multiplications the kernel checks. So the step `value ∣ chunk product` is
+now followed by `chunk product ∣ window product`, and that second step is what the chain supplies,
+one statement at a time.
+
+Nothing new is needed for it: an equation `a * b = c` says both factors divide `c`, and the chain
+composes by transitivity. It is written down because the shape it justifies is the leading one,
+and because a chain step is easy to read as saying less than it does. -/
+
+/-- Each factor of a checked product divides it, which is every chain step's content. -/
+public theorem dvd_of_mul_eq {a b c : Nat} (h : Nat.mul a b = c) : a ∣ c ∧ b ∣ c := by
+  constructor
+  · exact ⟨b, h.symm⟩
+  · exact ⟨a, by rw [← h]; exact Nat.mul_comm a b⟩
+
+/-- Two chain steps compose, which is the whole of how a leaf reaches the root. -/
+public theorem dvd_of_mul_chain {a b c d e : Nat} (h₁ : Nat.mul a b = c) (h₂ : Nat.mul c d = e) :
+    a ∣ e :=
+  Nat.dvd_trans (dvd_of_mul_eq h₁).1 (dvd_of_mul_eq h₂).1
+
+/-- The conclusion in the shape the winning arm emits: the chunk's product is tied to a literal,
+that literal divides the window's product, one gcd covers the window, and a bit of the chunk's
+assembly names a value no skipped divisor divides. -/
+public theorem not_dvd_of_one_gcd {recs lo cnt chunkProd live skipProd p j d : Nat}
+    (hchunk : prodChunkK recs lo cnt d 0 = chunkProd) (hdvd : chunkProd ∣ live)
+    (hgcd : Nat.gcd live skipProd = 1) (hp : p ∣ skipProd) (hp1 : p ≠ 1)
+    (hj : Nat.testBit (asmChunkK recs cnt d 0) j = true) : ¬ (p ∣ valK (Nat.add lo j)) := by
+  refine not_dvd_of_coprime_products hgcd ?_ hp hp1
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← hchunk]
+  exact dvd_prodChunkK_of_testBit recs lo cnt d 0 j hj
 
 /-- And over a slice covered by two chunks, to show the cover composes without new machinery: the
 emitted `lor` chain says which chunk a bit came from, and either branch gives the same conclusion.
 A slice of twenty-four chunks is this with a longer chain. -/
-public theorem not_dvd_of_cover_two {r₁ r₂ lo c₁ c₂ slice skipProd p j : Nat}
-    (hcov : Nat.lor (asmChunkK r₁ c₁ 8 0) (asmChunkK r₂ c₂ 8 0) = slice)
-    (hg₁ : Nat.gcd (prodChunkK r₁ lo c₁ 8 0) skipProd = 1)
-    (hg₂ : Nat.gcd (prodChunkK r₂ lo c₂ 8 0) skipProd = 1)
+public theorem not_dvd_of_cover_two {r₁ r₂ lo c₁ c₂ slice skipProd p j d : Nat}
+    (hcov : Nat.lor (asmChunkK r₁ c₁ d 0) (asmChunkK r₂ c₂ d 0) = slice)
+    (hg₁ : Nat.gcd (prodChunkK r₁ lo c₁ d 0) skipProd = 1)
+    (hg₂ : Nat.gcd (prodChunkK r₂ lo c₂ d 0) skipProd = 1)
     (hp : p ∣ skipProd) (hp1 : p ≠ 1)
     (hj : Nat.testBit slice j = true) : ¬ (p ∣ valK (Nat.add lo j)) := by
   rw [← hcov] at hj
-  change Nat.testBit (asmChunkK r₁ c₁ 8 0 ||| asmChunkK r₂ c₂ 8 0) j = true at hj
+  change Nat.testBit (asmChunkK r₁ c₁ d 0 ||| asmChunkK r₂ c₂ d 0) j = true at hj
   rw [Nat.testBit_or] at hj
-  cases h1 : Nat.testBit (asmChunkK r₁ c₁ 8 0) j with
+  cases h1 : Nat.testBit (asmChunkK r₁ c₁ d 0) j with
   | true => exact not_dvd_of_chunk hg₁ hp hp1 h1
   | false =>
     rw [h1, Bool.false_or] at hj
