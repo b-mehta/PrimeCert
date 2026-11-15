@@ -250,6 +250,38 @@ example : valK (Nat.add 0 2) ∣ prodChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 0 
 -- position 2 is a record, but at `cnt = 2` the slot holding it contributes nothing.
 example : asmChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 2 2 0 = 3 := rfl
 
+/-! ## One chunk's conclusion
+
+The pieces above fit into a single statement per chunk, and it is worth writing down because it is
+what the emitted statements add up to: a bit the chunk assembles to names a value no skipped
+divisor divides. The gcd is the emitted one, the assembly is the emitted one, and nothing else is
+needed. -/
+
+/-- A bit of the chunk's assembly names a value that no divisor of the skipped product divides. -/
+public theorem not_dvd_of_chunk {recs lo cnt skipProd p j : Nat}
+    (hgcd : Nat.gcd (prodChunkK recs lo cnt 8 0) skipProd = 1)
+    (hp : p ∣ skipProd) (hp1 : p ≠ 1)
+    (hj : Nat.testBit (asmChunkK recs cnt 8 0) j = true) : ¬ (p ∣ valK (Nat.add lo j)) :=
+  not_dvd_of_coprime_products hgcd (dvd_prodChunkK_of_testBit recs lo cnt 8 0 j hj) hp hp1
+
+/-- And over a slice covered by two chunks, to show the cover composes without new machinery: the
+emitted `lor` chain says which chunk a bit came from, and either branch gives the same conclusion.
+A slice of twenty-four chunks is this with a longer chain. -/
+public theorem not_dvd_of_cover_two {r₁ r₂ lo c₁ c₂ slice skipProd p j : Nat}
+    (hcov : Nat.lor (asmChunkK r₁ c₁ 8 0) (asmChunkK r₂ c₂ 8 0) = slice)
+    (hg₁ : Nat.gcd (prodChunkK r₁ lo c₁ 8 0) skipProd = 1)
+    (hg₂ : Nat.gcd (prodChunkK r₂ lo c₂ 8 0) skipProd = 1)
+    (hp : p ∣ skipProd) (hp1 : p ≠ 1)
+    (hj : Nat.testBit slice j = true) : ¬ (p ∣ valK (Nat.add lo j)) := by
+  rw [← hcov] at hj
+  change Nat.testBit (asmChunkK r₁ c₁ 8 0 ||| asmChunkK r₂ c₂ 8 0) j = true at hj
+  rw [Nat.testBit_or] at hj
+  cases h1 : Nat.testBit (asmChunkK r₁ c₁ 8 0) j with
+  | true => exact not_dvd_of_chunk hg₁ hp hp1 h1
+  | false =>
+    rw [h1, Bool.false_or] at hj
+    exact not_dvd_of_chunk hg₂ hp hp1 hj
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
