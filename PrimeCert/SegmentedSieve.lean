@@ -8109,6 +8109,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- divisor could be dropped from the marking and left out of the product, and nothing would
   -- divide anything. Implies `coverCert`, being past 128.
   let skipCoverCert := parts ≥ 256
+  -- How many records a chunk holds, and so how deep the tree over it is. 256 is what every
+  -- measurement up to here used; adding 512 or 1024 doubles or quadruples it, which halves or
+  -- quarters the statement count and grows each statement's literals by the same factor. Which
+  -- way that trade goes is a measurement, and this is the knob it needs.
+  let chunkLog := if parts ≥ 1024 then 10 else if parts ≥ 512 then 9 else 8
+  let chunk := Nat.pow 2 chunkLog
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8365,9 +8371,6 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     addDecl <| Declaration.defnDecl
       { name := pName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit pVal, hints := .regular 0, safety := .safe }
-    -- 256 records a chunk, where the route's own slots sit. Depth 8 covers them with the slots
-    -- past the count contributing the identity.
-    let chunk := 256
     if skipCert then
       -- The skipped product, said rather than asserted. The same record machinery the live side
       -- uses, over the skipped divisors instead: a chunk at a time, each chunk with its product
@@ -8384,7 +8387,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut nSkipRec := 0
       let mut nSkipCover := 0
       for k in [0:(fuel + 65536) / 65536] do
-        let (recs, cnt) := SieveEmit.liveRecords sSkip k
+        let (recs, cnt) := SieveEmit.liveRecords sSkip k chunk
         nSkipRec := nSkipRec + cnt
         let mut acc := 0
         for c in [0:(cnt + chunk - 1) / chunk] do
@@ -8398,11 +8401,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             asm := asm ||| (1 <<< pos)
           let prodE := mkAppN (mkConst ``prodChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit thisCnt,
-              mkRawNatLit 8, mkRawNatLit 0]
+              mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipRec_{k}_{c}"))
             (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
           let asmE := mkAppN (mkConst ``asmChunkK)
-            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit 8, mkRawNatLit 0]
+            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipAsm_{k}_{c}"))
             (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
           leaves := leaves.push pv
@@ -8474,7 +8477,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       throwError "run_segment_skip: the cover is stated against the window the route names, so \
         the route has to run; use a parts value with the route on"
     for k in [0:W / 65536] do
-      let (recs, cnt) := SieveEmit.liveRecords final k
+      let (recs, cnt) := SieveEmit.liveRecords final k chunk
       nLive := nLive + cnt
       -- The running union of this slice's chunk assemblies. Each step is a statement, so the
       -- chain ends at a literal the kernel has agreed is everything the chunks name together.
@@ -8484,7 +8487,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         let thisCnt := Nat.min chunk (cnt - c * chunk)
         let liveE := mkAppN (mkConst ``prodChunkK)
           #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
-            mkRawNatLit 8, mkRawNatLit 0]
+            mkRawNatLit chunkLog, mkRawNatLit 0]
         addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recGcd_{k}_{c}"))
           (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
           Lean.reflBoolTrue
@@ -8492,13 +8495,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         if assemble then
           -- The same records, read the same way `asmChunkK` reads them, so the literal below is
           -- what the slots actually name and the kernel is being asked to agree rather than to
-          -- take it on trust. 256 shifts into an accumulator of at most 65536 bits; this is not
-          -- the shape that walks the whole window a bit at a time.
+          -- take it on trust. One shift a record into an accumulator of at most 65536 bits; this
+          -- is not the shape that walks the whole window a bit at a time.
           let mut asm := 0
           for o in [0:thisCnt] do
             asm := asm ||| (1 <<< ((lowRecs >>> (o * 16)) &&& 65535))
           let asmE := mkAppN (mkConst ``asmChunkK)
-            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit 8, mkRawNatLit 0]
+            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recAsm_{k}_{c}"))
             (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
           nAsm := nAsm + 1
@@ -8577,7 +8580,8 @@ rather than over the window's bits, 32 also states that each chunk's records ass
 the emitter says they do, 64 establishes the skipped product from its own records instead of
 asserting it, and 128 states the cover: a slice's chunk assemblies `lor` to the slice, and the
 slice is the window shifted down and masked, and 256 states the same cover on the skipped side.
-Each implies the ones below it.
+Each implies the ones below it. Adding 512 or 1024 on top sets the chunk to 512 or 1024 records
+rather than 256, which is the one knob here that trades statement count against literal size.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
