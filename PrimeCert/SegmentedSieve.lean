@@ -8145,7 +8145,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- the sweep does not need. So it is built from the marked subset here, and only when something
     -- is going to read it.
     -- Not when the route is going to supply the window: see the lookup further down.
-    if (doCheck || emitGcd) && !(recordCert && emitRoute) then
+    -- `doCheck` is deliberately outside the suppression: the self-check compares this window
+    -- against one rebuilt from the marked subset, and the route's window arrives far too late for
+    -- it. Suppressed there, the check would compare `base` against the rebuild, differ, and report
+    -- that the skip test is wrong when nothing about the skip test is.
+    if (doCheck || emitGcd) && !(recordCert && emitRoute && !doCheck) then
       full := initSeg W
       let allBatches := (fuel + step0 - 1) / step0
       for i in [0:allBatches] do
