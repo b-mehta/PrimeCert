@@ -138,6 +138,24 @@ public theorem skip_not_dvd_live {lrecs llo lcnt lchunk live : Nat}
   rw [← hlchunk]
   exact dvd_prodChunkK_of_testBit lrecs llo lcnt d 0 j hj
 
+/-- A bit of a checked union is a bit of one of its sides.
+
+This is what lets a chunk's assembly be stated inside its cover step rather than beside it. From
+`lor acc (asmChunkK …) = next`, a bit of `next` is a bit of `acc` or a bit of `asmChunkK …`, and
+the second is already what `skip_not_dvd_live` asks for; the separate literal was a step on the
+way to the same place. -/
+public theorem testBit_of_lor_eq {a b c j : Nat} (h : Nat.lor a b = c)
+    (hj : Nat.testBit c j = true) :
+    Nat.testBit a j = true ∨ Nat.testBit b j = true := by
+  rw [← h] at hj
+  change Nat.testBit (a ||| b) j = true at hj
+  rw [Nat.testBit_or] at hj
+  cases h1 : Nat.testBit a j with
+  | true => exact Or.inl rfl
+  | false =>
+    rw [h1, Bool.false_or] at hj
+    exact Or.inr hj
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a record is sixteen bits wide and a slice is

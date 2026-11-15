@@ -356,6 +356,43 @@ public theorem skip_not_dvd_live {lrecs llo lcnt lchunk live : Nat}
     ¬ (valK (Nat.add slo i) ∣ valK (Nat.add llo j)) :=
   not_dvd_of_one_gcd hlchunk hlive hgcd (dvd_skipProd_of_testBit hschunk hskip hi) hne hj
 
+/-! ## The cover step with the assembly folded in
+
+A chunk's assembly and its cover step can be one statement, `lor acc (asmChunkK …) = next`, rather
+than two with a literal in between. The consumer loses nothing, and these are the lemmas that say
+so: a bit of the union is a bit of one side or the other, and on the `asmChunkK` side that is
+already the hypothesis the conclusion wants — where the separate form had to go through the
+literal to reach the same place. -/
+
+/-- A bit of a checked union is a bit of one of its sides. -/
+public theorem testBit_of_lor_eq {a b c j : Nat} (h : Nat.lor a b = c)
+    (hj : Nat.testBit c j = true) :
+    Nat.testBit a j = true ∨ Nat.testBit b j = true := by
+  rw [← h] at hj
+  change Nat.testBit (a ||| b) j = true at hj
+  rw [Nat.testBit_or] at hj
+  cases h1 : Nat.testBit a j with
+  | true => exact Or.inl rfl
+  | false =>
+    rw [h1, Bool.false_or] at hj
+    exact Or.inr hj
+
+/-- The merged form over two chunks, to show it composes exactly as the separate form did. The
+`asmChunkK` term stands where the literal stood, and the branch that reaches it needs no step. -/
+public theorem not_dvd_of_merged_two {r₁ r₂ lo c₁ c₂ mid slice skipProd p j d : Nat}
+    (h₁ : Nat.lor 0 (asmChunkK r₁ c₁ d 0) = mid)
+    (h₂ : Nat.lor mid (asmChunkK r₂ c₂ d 0) = slice)
+    (hg₁ : Nat.gcd (prodChunkK r₁ lo c₁ d 0) skipProd = 1)
+    (hg₂ : Nat.gcd (prodChunkK r₂ lo c₂ d 0) skipProd = 1)
+    (hp : p ∣ skipProd) (hp1 : p ≠ 1)
+    (hj : Nat.testBit slice j = true) : ¬ (p ∣ valK (Nat.add lo j)) := by
+  rcases testBit_of_lor_eq h₂ hj with hmid | h2
+  · rcases testBit_of_lor_eq h₁ hmid with hz | h1
+    · rw [Nat.zero_testBit] at hz
+      exact absurd hz (by simp)
+    · exact not_dvd_of_chunk hg₁ hp hp1 h1
+  · exact not_dvd_of_chunk hg₂ hp hp1 h2
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
