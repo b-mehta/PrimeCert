@@ -8140,7 +8140,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- asked for, building it is pure cost, and `ZZU` spent 80 s of its 80 s marking pass on bands
     -- the sweep does not need. So it is built from the marked subset here, and only when something
     -- is going to read it.
-    if doCheck || emitGcd then
+    -- Not when the route is going to supply the window: see the lookup further down.
+    if (doCheck || emitGcd) && !(recordCert && emitRoute) then
       full := initSeg W
       let allBatches := (fuel + step0 - 1) / step0
       for i in [0:allBatches] do
@@ -8248,6 +8249,22 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     addDecl <| Declaration.defnDecl
       { name := nm, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit v, hints := .regular 0, safety := .safe }
+  -- The route builds the finished window to emit its own literals, and the certificate needs the
+  -- same window to say which values are live. Measured, building it twice is about 78 s of the
+  -- 82 s by which the whole design trails on processor. So when both are wanted the route goes
+  -- first and its window is read back, rather than built again here.
+  let mut routeDone := false
+  if recordCert && emitRoute then
+    runSegmentV ns markName 28 a W fuel len
+    routeDone := true
+    let routeLit := ns ++ Name.mkSimple s!"segBitsV_{a}_{W}_{fuel}_{Nat.max 1 len}_m28"
+    match (← getEnv).find? routeLit >>= (fun i => i.value?) >>= Expr.rawNatLit? with
+    | some v =>
+      full := v
+      rssLog s!"window taken from the route rather than rebuilt, {← rssMB} MiB"
+    | none =>
+      throwError "run_segment_skip: expected the route to have emitted {routeLit}; if \
+        `runSegmentV`'s naming has changed, this lookup has to change with it"
   -- One gcd a slice, against the product of the skipped divisors, in the shape
   -- `segLoopK_eq_self_of_blocks` takes its hypotheses.
   -- Balanced products rather than folds, for the reason in `prodLiveTreeK`'s docstring. `dSkip`
@@ -8324,7 +8341,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       Lean.reflBoolTrue
   -- The marking route itself, unchanged, over the marked subset in place of the base sieve.
   rssLog s!"after the gcds, before the route {← rssMB} MiB"
-  if emitRoute then
+  if emitRoute && !routeDone then
     runSegmentV ns markName 28 a W fuel len
   rssLog s!"done {← rssMB} MiB"
 
