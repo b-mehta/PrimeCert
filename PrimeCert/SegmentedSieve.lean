@@ -8056,6 +8056,24 @@ meta def rssMB : IO Nat := do
     | none => return 0
   catch _ => return 0
 
+/-- The product of an array, combined pairwise.
+
+Multiplying a thousand values into one accumulator in turn copies the accumulator once a value, so
+the work follows the size of the finished product times the number of factors. Halving the array
+multiplies operands of like size instead. The same change took the skipped product from 57.2 s to
+1.7 s, and a chunk's product is the same shape at a smaller size. -/
+meta def prodPairwise (vals : Array Nat) : Nat := Id.run do
+  let mut vs := vals
+  while vs.size > 1 do
+    let mut next : Array Nat := #[]
+    for j in [0:(vs.size + 1) / 2] do
+      if 2 * j + 1 < vs.size then
+        next := next.push ((vs[2 * j]!) * (vs[2 * j + 1]!))
+      else
+        next := next.push (vs[2 * j]!)
+    vs := next
+  return if vs.size == 0 then 1 else vs[0]!
+
 public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : Nat) :
     MetaM Unit := do
   let env ← getEnv
@@ -8399,19 +8417,32 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut nChunk := 0
       let mut nSkipRec := 0
       let mut nSkipCover := 0
+      -- Timed apart rather than guessed at. `setBitsLow` halving the range left this block at
+      -- 11689 ms against 11956, so the shape it was blamed on was not the one costing the time,
+      -- and the way to find the one that is, is to bracket each part separately.
+      let mut msRec := 0
+      let mut msProd := 0
+      let mut msStmt := 0
       for k in [0:(fuel + 65536) / 65536] do
+        let r0 ← IO.monoMsNow
         let (recs, cnt) := SieveEmit.liveRecords sSkip k
+        let r1 ← IO.monoMsNow
+        msRec := msRec + (r1 - r0)
         nSkipRec := nSkipRec + cnt
         let mut acc := 0
         for c in [0:(cnt + chunk - 1) / chunk] do
+          let p0 ← IO.monoMsNow
           let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
           let thisCnt := Nat.min chunk (cnt - c * chunk)
-          let mut pv := 1
+          let mut vs : Array Nat := #[]
           let mut asm := 0
           for o in [0:thisCnt] do
             let pos := (lowRecs >>> (o * 16)) &&& 65535
-            pv := pv * value (k * 65536 + pos)
+            vs := vs.push (value (k * 65536 + pos))
             asm := asm ||| (1 <<< pos)
+          let pv := prodPairwise vs
+          let p1 ← IO.monoMsNow
+          msProd := msProd + (p1 - p0)
           let prodE := mkAppN (mkConst ``prodChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit thisCnt,
               mkRawNatLit chunkLog, mkRawNatLit 0]
@@ -8421,6 +8452,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipAsm_{k}_{c}"))
             (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+          let s1 ← IO.monoMsNow
+          msStmt := msStmt + (s1 - p1)
           leaves := leaves.push pv
           nChunk := nChunk + 1
           if skipCoverCert then
@@ -8449,6 +8482,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let t7 ← IO.monoMsNow
       rssLog s!"skip records: {nSkipRec} over {nChunk} chunks, {nSkipCover} cover statements, \
         {t7 - t6} ms, {← rssMB} MiB"
+      rssLog s!"skip split: packing {msRec} ms | chunk products {msProd} ms | \
+        statements {msStmt} ms"
       let mut level := leaves
       let mut lvl := 0
       let mut nMul := 0
@@ -8490,8 +8525,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     if coverCert && windowName.isNone then
       throwError "run_segment_skip: the cover is stated against the window the route names, so \
         the route has to run; use a parts value with the route on"
+    -- The live side has never been timed apart from the statements it emits, and the skipped
+    -- side's 11.7 s showed that guessing which part costs what is not good enough here.
+    let mut msLiveRec := 0
+    let mut msLiveRest := 0
     for k in [0:W / 65536] do
+      let r0 ← IO.monoMsNow
       let (recs, cnt) := SieveEmit.liveRecords final k
+      let r1 ← IO.monoMsNow
+      msLiveRec := msLiveRec + (r1 - r0)
       nLive := nLive + cnt
       -- The running union of this slice's chunk assemblies. Each step is a statement, so the
       -- chain ends at a literal the kernel has agreed is everything the chunks name together.
@@ -8504,10 +8546,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             mkRawNatLit chunkLog, mkRawNatLit 0]
         if oneGcd then
           -- The chunk's product as a literal, to be combined with the others below. The gcd then
-          -- happens once for the window rather than once a chunk.
-          let mut pv := 1
+          -- happens once for the window rather than once a chunk. Pairwise, for the reason
+          -- `prodPairwise` gives.
+          let mut vs : Array Nat := #[]
           for o in [0:thisCnt] do
-            pv := pv * value (lo + k * 65536 + ((lowRecs >>> (o * 16)) &&& 65535))
+            vs := vs.push (value (lo + k * 65536 + ((lowRecs >>> (o * 16)) &&& 65535)))
+          let pv := prodPairwise vs
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recProd_{k}_{c}"))
             (mkSegBeqTrue liveE (mkRawNatLit pv)) Lean.reflBoolTrue
           liveLeaves := liveLeaves.push pv
@@ -8553,9 +8597,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recSlice_{k}"))
           (mkSegBeqTrue sliceE (mkRawNatLit slice)) Lean.reflBoolTrue
         nCover := nCover + 1
+      let r2 ← IO.monoMsNow
+      msLiveRest := msLiveRest + (r2 - r1)
     rssLog s!"record certificate: {nStmt} chunk statements of {chunk} records over {nLive} live \
       values, {nAsm} assembly statements, {nCover} cover statements, \
       {if oneGcd then "one gcd" else "a gcd a chunk"}, {← rssMB} MiB"
+    rssLog s!"live split: packing {msLiveRec} ms | everything else {msLiveRest} ms"
     if oneGcd then
       -- The chunk products combined into the window's, pairwise for the reason the skipped side
       -- is, and then one gcd. Each multiplication is a statement, so what the single gcd is taken
