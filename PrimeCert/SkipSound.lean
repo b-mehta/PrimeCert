@@ -213,6 +213,67 @@ public theorem land_maskUnionK_eq_zero {sS lo Wm1 seg start : Nat} : ∀ fuel : 
       refine land_lor_eq_zero (ih fun i hi hs => h i (Nat.lt_succ_of_lt hi) hs) ?_
       exact h k (Nat.lt_succ_self k) hb
 
+/-! ## The certificate, composed
+
+`segLoopK_eq_self_of_blocks` is this statement for the shape the record certificate replaced: a
+whole range of divisors leaves the window alone, given one gcd a block and that each divisor
+divides `P`. Its gcd hypothesis is over `prodLiveFromK`, which walks the window a bit at a time
+and is what ran to 40 GB. The two theorems below are its twin over records.
+
+The cover is stated existentially — every live position is held by *some* chunk — rather than by
+indexing the chunks. Indexing would put the emitter's layout into the statement, and the layout is
+a tuning knob; the existential is also exactly what the emitted statements discharge, a slice at a
+time. Only one offset is free, the slice's base `b`: a chunk's assembly is read at `j - b` and its
+product taken from `lo + b`, and `valueK (lo + j)` is then the same number as
+`valueK ((lo + b) + (j - b))`. -/
+
+/-- Every live position names a value no divisor of `P` divides, given each live position is held
+by some chunk whose product is coprime to `P`. This is the hypothesis
+`segMarkK_eq_self_of_not_dvd` takes, assembled from what the certificate states. -/
+public theorem not_dvd_of_cover {seg lo P p : Nat} (hp : p ∣ P) (hp1 : p ≠ 1)
+    (hcov : ∀ j, Nat.testBit seg j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1) :
+    ∀ j, Nat.testBit seg j = true → ¬ (p ∣ valueK (Nat.add lo j)) := by
+  intro j hj
+  obtain ⟨recs, cnt, d, b, hb, hasm, hgcd⟩ := hcov j hj
+  have hsplit : Nat.add lo j = Nat.add (Nat.add lo b) (j - b) := by
+    change lo + j = lo + b + (j - b)
+    omega
+  rw [hsplit]
+  refine not_dvd_of_coprime_products hgcd ?_ hp hp1
+  exact dvd_prodChunkK_of_testBit recs (Nat.add lo b) cnt d 0 (j - b) hasm
+
+/-- **The record certificate.** A whole range of divisors leaves the window alone, given that each
+divides `P` and that every live position of the window is held by a chunk whose product is coprime
+to `P`.
+
+The same induction as `segLoopK_eq_self_of_blocks`, with the middle hypothesis coming from the
+cover rather than from a product over the window's bits. -/
+public theorem segLoopK_eq_self_of_records {s lo Wm1 seg start fuel P : Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 2 ^ 32)
+    (hcov : ∀ j, Nat.testBit seg j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1)
+    (hdiv : ∀ i, i < fuel → testBitK s (start + i) = true →
+      (valueK (start + i) % 6 = 1 ∨ valueK (start + i) % 6 = 5) ∧ 5 ≤ valueK (start + i) ∧
+        index (valueK (start + i) * 7) ≤ lo ∧ valueK (start + i) ∣ P) :
+    segLoopK s lo Wm1 seg start fuel = seg := by
+  induction fuel with
+  | zero => rfl
+  | succ fuel ih =>
+    have hrec : segLoopK s lo Wm1 seg start fuel = seg :=
+      ih fun i hi => hdiv i (by omega)
+    rw [segLoopK_succ, hrec]
+    cases hb : testBitK s (start + fuel) with
+    | false => rfl
+    | true =>
+      obtain ⟨h6, h5, hlo, hP⟩ := hdiv fuel (by omega) hb
+      refine segMarkK_eq_self_of_not_dvd hseg hW h6 h5 hlo fun j _ hlive => ?_
+      -- `testBitK` is `Nat.testBit`, which is what the cover is stated with.
+      rw [Sieve.testBitK_eq_testBit] at hlive
+      exact not_dvd_of_cover hP (by omega) hcov j hlive
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a record is sixteen bits wide and a slice is
