@@ -43,7 +43,7 @@ public theorem eq_of_testBit_one_shiftLeft {p i : Nat}
   -- `rw` matches syntactically, so the notation has to be put on first.
   change Nat.testBit (1 <<< p) i = true at h
   rw [Nat.testBit_shiftLeft] at h
-  simp at h
+  simp only [ge_iff_le, Bool.and_eq_true, decide_eq_true_eq] at h
   -- `1` has its only bit at index 0, so the shifted index has to be the shift itself.
   have h2 : ∀ m, Nat.testBit 1 m = true → m = 0 := by
     intro m hm
