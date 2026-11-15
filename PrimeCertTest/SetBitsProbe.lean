@@ -70,4 +70,46 @@ def ofPositions (ps : List Nat) : Nat := ps.foldl (fun a p => a ||| (1 <<< p)) 0
 #guard setBitsLow ((1 <<< 7000) ||| (1 <<< 7001) ||| (1 <<< 8000)) 8192
   == #[7000, 7001, 8000]
 
+/-! ## `liveRecords` against the packing it replaces
+
+The pairwise packing has to produce the same number the block-at-a-time packing did, bit for bit,
+or every chunk statement after it reads the wrong slots. The reference below is that earlier
+shape, parameterised by the block size it used, and the checks run it at 256 and at a couple of
+others, since the new packing should not depend on the block size at all. -/
+
+/-- The earlier packing: records set into a block in turn, blocks joined at the end. `meta`
+because it calls `setBitsLow`, which this file imports for the elaboration phase alone. -/
+meta def refRecords (seg k per : Nat) : Nat × Nat := Id.run do
+  let slice := (seg >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
+  let hits := setBitsLow slice 65536
+  let nblk := hits.size / per + 1
+  let mut acc : Array Nat := Array.replicate nblk 0
+  for j in [0:hits.size] do
+    acc := acc.modify (j / per) (· ||| ((hits[j]!) <<< (16 * (j % per))))
+  let mut packed := 0
+  for j in [0:nblk] do
+    packed := packed ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * 16 * per))
+  return (packed, hits.size)
+
+/-- A slice with records at awkward counts: one short of a block, one over, and a long run. -/
+def seg1 : Nat := ofPositions [0, 1, 2, 5, 9, 17, 64, 65, 1000, 4095, 65534, 65535]
+
+#guard liveRecords 0 0 == refRecords 0 0 256
+#guard liveRecords seg1 0 == refRecords seg1 0 256
+#guard liveRecords seg1 0 == refRecords seg1 0 4
+#guard liveRecords seg1 0 == refRecords seg1 0 512
+#guard liveRecords (1 <<< 65535) 0 == refRecords (1 <<< 65535) 0 256
+#guard liveRecords ((1 <<< 65536) - 1) 0 == refRecords ((1 <<< 65536) - 1) 0 256
+#guard liveRecords ((1 <<< 65536) - 1) 0 == refRecords ((1 <<< 65536) - 1) 0 1024
+
+-- And on a block other than the first, since the caller reads blocks 0 to 50 of the skipped set.
+#guard liveRecords (seg1 <<< 65536) 1 == refRecords (seg1 <<< 65536) 1 256
+#guard liveRecords (seg1 <<< (3 * 65536)) 3 == refRecords (seg1 <<< (3 * 65536)) 3 256
+
+-- The layout the chunk slicing relies on: record `j` at bit `16 * j`.
+#guard ((liveRecords seg1 0).1 >>> 0) &&& 65535 == 0
+#guard ((liveRecords seg1 0).1 >>> 48) &&& 65535 == 5
+#guard ((liveRecords seg1 0).1 >>> (11 * 16)) &&& 65535 == 65535
+#guard (liveRecords seg1 0).2 == 12
+
 end PrimeCert.SegTune.SetBitsProbe
