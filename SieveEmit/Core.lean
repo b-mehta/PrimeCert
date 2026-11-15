@@ -125,12 +125,27 @@ public def packFixed (vals : Array Nat) (width : Nat) : Nat := Id.run do
     w := w * 2
   return if vs.size == 0 then 0 else vs[0]!
 
+/-- The mask with exactly the given positions set, all of them below `nbits`.
+
+Setting each bit straight into the mask ORs a single bit into a number as wide as the slice, once
+a position, so a slice's few hundred records copy its eight kilobytes a few hundred times. This
+sets each bit into its own 64-bit word, where the OR is on a machine-sized number, and joins the
+words once at the end.
+
+`packFixed` does the joining, so the words land back at `64 * w` and the result is the same number
+the straightforward loop builds. -/
+public def asmOfPositions (ps : Array Nat) (nbits : Nat) : Nat := Id.run do
+  let mut words : Array Nat := Array.replicate ((nbits + 63) / 64) 0
+  for p in ps do
+    words := words.modify (p / 64) (· ||| (1 <<< (p % 64)))
+  return packFixed words 64
+
 /-- `stripeSort` for 131072-bit slices: a seed's slice is its top bits above 17, its place within
 the slice the low 17, and a window of `W` positions holds `W / 131072` of them. -/
 public def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 131072
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := valueE (start + i)
@@ -141,10 +156,10 @@ public def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 17) (·.push (8 * i + w))
-        slotAsm := slotAsm.modify (X >>> 17) (· ||| (1 <<< (X &&& 131071)))
+        slotPos := slotPos.modify (X >>> 17) (·.push (X &&& 131071))
       else
         slots := slots.modify np (·.push (8 * i + w))
-  let asm := packFixed slotAsm 131072
+  let asm := packFixed (slotPos.map (asmOfPositions · 131072)) 131072
   let seen := packFixed (Array.replicate nrec c) len
   let mut slotW := 16
   for k in [0:np + 1] do
@@ -167,9 +182,11 @@ its quadruple does not. -/
 public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  -- The assembled mask is built one slice at a time rather than one bit at a time: joining a bit
-  -- into a slice touches 65536 bits where joining it into the whole mask touches `W`.
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  -- The assembled mask is built a slice at a time rather than a bit at a time, and each slice
+  -- from its positions rather than by setting bits into it: joining a bit into a slice touches
+  -- 65536 bits where joining it into the whole mask touches `W`, and `asmOfPositions` does the
+  -- slice a word at a time rather than a bit at a time.
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := valueE (start + i)
@@ -182,10 +199,10 @@ public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × N
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 16) (·.push (8 * i + w))
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
       else
         slots := slots.modify np (·.push (8 * i + w))
-  let asm := packFixed slotAsm 65536
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   -- A tally bit is set exactly when the slice names that position, once per strike, so the whole
   -- tally is the slice itself shifted `nrec` times rather than a bit set per record.
   let seen := packFixed (Array.replicate nrec c) len
@@ -210,7 +227,7 @@ is 4096 just as eight of 8192 do. -/
 public def stripeSortH (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := valueE (start + i)
@@ -221,12 +238,10 @@ public def stripeSortH (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat :
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 16) (·.push (16 * i + w))
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
       else
         slots := slots.modify np (·.push (16 * i + w))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   let seen := packFixed (Array.replicate 16 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
@@ -248,7 +263,7 @@ fifteen and a batch holds 32768. This exists to time that, nothing more. -/
 public def stripeSortOne (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := valueE (start + i)
@@ -259,12 +274,10 @@ public def stripeSortOne (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat
       let X := if w == 0 then b5 else b7
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 16) (·.push (2 * i + w))
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
       else
         slots := slots.modify np (·.push (2 * i + w))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   let seen := packFixed (Array.replicate 2 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
@@ -283,7 +296,7 @@ bits of the record and the position eleven, so a batch holds at most 2048 diviso
 public def stripeSortX (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
     let p := valueE (start + i)
@@ -294,12 +307,10 @@ public def stripeSortX (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat :
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 16) (·.push (32 * i + w))
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
       else
         slots := slots.modify np (·.push (32 * i + w))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   let seen := packFixed (Array.replicate 32 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
@@ -324,7 +335,7 @@ the length is tuned to 8192. -/
 public def stripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate np #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let mut seen := 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
@@ -336,12 +347,12 @@ public def stripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
         slots := slots.modify (X >>> 16) (·.push (8 * i + w))
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
         -- The tally bit of a record that is kept, so the two sides ask for the same set.
         seen := seen ||| (1 <<< (i + w * len))
   -- `seen` is accumulated above, a bit a kept record, rather than being the slice repeated, so
   -- unlike the other variants it is left as it is.
-  let asm := packFixed slotAsm 65536
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   let mut slotW := 16
   for k in [0:np] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
@@ -364,7 +375,7 @@ anyway, which the kernel accepts because that record's own strike is already pas
 public def stripeSortG (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate np #[]
-  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut slotPos : Array (Array Nat) := Array.replicate np #[]
   let mut seen := 0
   let c := (s >>> start) &&& ((1 <<< len) - 1)
   for i in setBitsLow c len do
@@ -394,7 +405,7 @@ public def stripeSortG (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
           let flag := if w = last then 1 else 0
           let e := (flag <<< 15) ||| (i <<< 3) ||| w
           slots := slots.modify (X >>> 16) (·.push e)
-          slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+          slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
           -- Each record speaks for its own lane, as the kernel's unflagged branch does.
           seen := seen ||| (1 <<< (i + w * len))
           if w = last then
@@ -404,7 +415,7 @@ public def stripeSortG (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
               if w2 ≥ w then
                 seen := seen ||| (1 <<< (i + w2 * len))
   -- `seen` is accumulated above, a bit a kept record, so it is left as it is.
-  let asm := packFixed slotAsm 65536
+  let asm := packFixed (slotPos.map (asmOfPositions · 65536)) 65536
   let mut slotW := 16
   for k in [0:np] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
@@ -432,22 +443,19 @@ time and joined at the end, for the reason `stripeSort` is, since joining a bit 
 segment-wide accumulator rebuilds the whole number per record. -/
 public def treeAsm2 (s lo Wm1 start len W : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  let mut slotPos : Array (Array Nat) := Array.replicate nsl #[]
   for j in setBitsLow (s >>> start) len do
     let p := valueE (start + j)
     for X in [firstLoc (indexE (p * 5)) lo (p * 2), firstLoc (indexE (p * 7)) lo (p * 2)] do
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-  let mut asm := 0
-  for k in [0:nsl] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  return asm
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
+  return packFixed (slotPos.map (asmOfPositions · 65536)) 65536
 
 /-- Twin of `treeBatch4K` and `treeBatchK`: the mask a batch assembles when each divisor places
 `nrec` strikes. Built one 65536-bit slice at a time and joined at the end. -/
 public def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
   let nsl := W / 65536
-  let mut slotAsm : Array Nat := Array.replicate nsl 0
+  let mut slotPos : Array (Array Nat) := Array.replicate nsl #[]
   for j in setBitsLow (s >>> start) len do
     let p := valueE (start + j)
     let d := p * 2
@@ -456,11 +464,8 @@ public def treeAsmN (s lo Wm1 start len W nrec : Nat) : Nat := Id.run do
     for w in [0:nrec] do
       let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
       if X ≤ Wm1 then
-        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
-  let mut asm := 0
-  for k in [0:nsl] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  return asm
+        slotPos := slotPos.modify (X >>> 16) (·.push (X &&& 65535))
+  return packFixed (slotPos.map (asmOfPositions · 65536)) 65536
 
 /-- Twin of `segMarkRK`. -/
 public def segMarkR (seg p lo Wm1 : Nat) : Nat :=
