@@ -8077,6 +8077,9 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- the three lower bands whether they strike or not.
   let pbase := parts % 8
   let wideBandOnly := parts ≥ 8
+  -- Adding 16 states the certificate over records instead of over the window's bits. Implies the
+  -- wide sweep, since 16 and above are also at or past 8.
+  let recordCert := parts ≥ 16
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8258,9 +8261,48 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let pE := mkAppN (mkConst ``prodLiveTreeK)
     #[mkConst skipName, mkRawNatLit 0, mkRawNatLit dSkip, mkRawNatLit 0]
   let segE := mkRawNatLit final
-  let nGcd := if emitGcd then W / bs else 0
+  let nGcd := if emitGcd && !recordCert then W / bs else 0
   rssLog s!"{nGcd} gcds over slices of {bs} bits, parts {parts}, \
-    route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}"
+    route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}, \
+    records {if recordCert then "on" else "off"}"
+  if recordCert then
+    -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
+    -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
+    -- This states the same products over **records**, which is why the route is affordable: a
+    -- chunk's statement shifts a few hundred records, never the window.
+    --
+    -- Timing only so far: the skipped product is supplied as a literal rather than established
+    -- from its own records, so this measures whether the shape is affordable before the work of
+    -- proving it goes in. Every statement emitted is still kernel-checked.
+    let pName := ns ++ Name.mkSimple s!"skipProd_{a}_{W}_{fuel}"
+    let t4 ← IO.monoMsNow
+    let mut pVal := 1
+    for i in SieveEmit.setBitsLow (sSkip >>> 1) fuel do
+      pVal := pVal * value (1 + i)
+    let t5 ← IO.monoMsNow
+    rssLog s!"skipped product built in {t5 - t4} ms, {← rssMB} MiB"
+    addDecl <| Declaration.defnDecl
+      { name := pName, levelParams := [], type := Nat.mkType,
+        value := mkRawNatLit pVal, hints := .regular 0, safety := .safe }
+    -- 256 records a chunk, where the route's own slots sit. Depth 8 covers them with the slots
+    -- past the count contributing the identity.
+    let chunk := 256
+    let mut nStmt := 0
+    for k in [0:W / 65536] do
+      let (recs, cnt) := SieveEmit.liveRecords final k
+      for c in [0:(cnt + chunk - 1) / chunk] do
+        let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
+        let thisCnt := Nat.min chunk (cnt - c * chunk)
+        let liveE := mkAppN (mkConst ``prodChunkK)
+          #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
+            mkRawNatLit 8, mkRawNatLit 0]
+        addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recGcd_{k}_{c}"))
+          (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
+          Lean.reflBoolTrue
+        nStmt := nStmt + 1
+    rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records, {← rssMB} MiB"
+  -- The window-walking form, which `recordCert` replaces. Guarded by an empty range rather than
+  -- an `else`, so the loop below keeps its indentation and stays the code that was measured.
   for k in [0:nGcd] do
     let liveE := mkAppN (mkConst ``prodLiveTreeK)
       #[segE, mkRawNatLit lo, mkRawNatLit dLive, mkRawNatLit (k * bs)]
