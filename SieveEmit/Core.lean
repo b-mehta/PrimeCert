@@ -868,7 +868,13 @@ live bits, 1024 iterations a slice, and the positions go into an array that answ
 **No ordering.** A divisor here is tested against a fixed `base` rather than against the window as
 this band marks it. Counted on the production window, that marks exactly the same 73742 divisors as
 testing in order, and it can only ever mark extra ones, never miss a striker, so the window it
-builds is unchanged either way. -/
+builds is unchanged either way.
+
+**Every strike, not only the seeds.** This walks `A + 2jp` and `B + 2jp` while they stay under
+`Wm1`. For the wide band that is one step each, since `Wm1 < 2p` there, and an earlier version
+looked only at `A` and `B` for that reason. It was wrong the moment the sweep was allowed to start
+a band lower, where a divisor strikes four or eight times: the seeds alone called genuine strikers
+non-striking, they were dropped from the marking, and composites survived in the window. -/
 public def wideHits (s lo Wm1 base first last : Nat) : Nat × Nat × Nat := Id.run do
   let mut live : Array Bool := Array.replicate (Wm1 + 1) false
   let np := (Wm1 + 1) / 65536
@@ -893,11 +899,24 @@ public def wideHits (s lo Wm1 base first last : Nat) : Nat × Nat × Nat := Id.r
       let i := start + off
       nTot := nTot + 1
       let p := valueE i
-      let A := firstLoc (indexE (p * 5)) lo (p * 2)
-      let B := firstLoc (indexE (p * 7)) lo (p * 2)
-      let hitA := A ≤ Wm1 && live[A]!
-      let hitB := B ≤ Wm1 && live[B]!
-      if hitA || hitB then
+      let d := p * 2
+      let A := firstLoc (indexE (p * 5)) lo d
+      let B := firstLoc (indexE (p * 7)) lo d
+      -- Every strike in the window, not only the two seeds. A divisor strikes at `A + 2jp` and
+      -- `B + 2jp` for as long as those stay under `Wm1`, so for the wide band, where `Wm1 < 2p`,
+      -- the seeds are the whole story and this walks once each. A band lower they are not: a
+      -- four-strike divisor also strikes at `A + 2p` and `B + 2p`, and testing only the seeds
+      -- calls it a non-striker and drops it from the marking, which leaves composites live.
+      let mut hit := false
+      let mut X := A
+      while X ≤ Wm1 do
+        if live[X]! then hit := true
+        X := X + d
+      let mut Y := B
+      while Y ≤ Wm1 do
+        if live[Y]! then hit := true
+        Y := Y + d
+      if hit then
         nHit := nHit + 1
         acc := acc.modify (i / blk) (· ||| (1 <<< (i % blk)))
   let mut hits := 0
