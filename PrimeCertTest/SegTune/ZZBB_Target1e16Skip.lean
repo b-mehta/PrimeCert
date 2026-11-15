@@ -14,9 +14,13 @@ The settled shape moved to a window at `10^16 + 1` with divisors to `10^8`: chun
 and the sweep starting at the eight-strike band, at ten times the divisors.
 
 `parts 19907` rather than the 3523 this file first carried. Sweeping the four-strike band and then
-the eight-strike one each won on both kernel and processor at `10^14`, taking the design from −15%
-to about −23% against the production route, so the target run should ask about the shape that
-won rather than the one that was settled when the file was written.
+the eight-strike one each won on both kernel and processor at `10^14`, so the target run should
+ask about the shape that won rather than the one that was settled when the file was written.
+
+What that shape gives against the production route is not yet a measured number: `parts 19907` has
+only ever been run against `parts 3523`, which was itself run against the route in a different
+job. Chaining the two ratios is not a measurement, and this file should not be read as carrying
+one.
 
 What this asks is whether the −15% kernel survives the move. Two things pull against each other.
 The sweep's saving is in the marking, which is where the extra divisors go, so it has more to
