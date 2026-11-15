@@ -8161,6 +8161,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- the counts move only with where the window sits. Skipping them costs the certificate the
   -- divisors it has to carry; what that trades for is a measurement, not a calculation.
   let sweepK := if (parts / 8192) % 4 == 2 then 8 else if (parts / 8192) % 4 == 1 then 4 else 2
+  -- How deep the base is built. Measured, the base is 23.5 s of a 24 s marking pass and the sweep
+  -- it feeds is 0.3 s, so this is where the pass's time is. Counted, a base to `Wm1/128` gives the
+  -- identical strike set that `Wm1/8` does, at 10^14 and 10^15 both, from 3510 divisors rather
+  -- than 43388 — but in records, which is the unit the sweep's own saving tracked, only 7424292
+  -- against 8414750, a ninth. What a ninth of 23.5 s comes to is the measurement this enables.
+  --
+  -- Sound at either setting by the same argument the sweep rests on: a base with more live bits
+  -- than the finished window can only make a divisor look like a striker, never the reverse.
+  let baseK := if (parts / 32768) % 2 == 1 then 128 else 8
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8205,7 +8214,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- only falls from 8414750 to 7424292, a ninth. Whether a ninth of this loop is worth having
     -- is why it is timed below rather than changed.
     let mut smallLast := 1
-    while 8 * value smallLast ≤ wm1 && smallLast < fuel do
+    while baseK * value smallLast ≤ wm1 && smallLast < fuel do
       smallLast := smallLast + 1
     let lowBatches := (smallLast + step0 - 1) / step0
     let tb0 ← IO.monoMsNow
@@ -8218,7 +8227,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       if i % 32 == 0 || i + 1 == lowBatches then
         rssLog s!"small band batch {i} of {lowBatches}, {← rssMB} MiB"
     let tb1 ← IO.monoMsNow
-    rssLog s!"base built to index {smallLast} in {tb1 - tb0} ms, {← rssMB} MiB, now the sweep"
+    rssLog s!"base built to index {smallLast} (bound {baseK}p over Wm1) in {tb1 - tb0} ms, \
+      {← rssMB} MiB, now the sweep"
     let (h, nh, nt) := SieveEmit.wideHits sVal lo wm1 base wideFirst fuel
     let tb2 ← IO.monoMsNow
     rssLog s!"sweep tested {fuel - wideFirst + 1} divisors in {tb2 - tb1} ms"
@@ -8742,7 +8752,8 @@ window instead of one a chunk, stating the chunk products as literals and combin
 first. `(parts / 4096) % 2` merges each chunk's assembly statement into its cover step, which
 drops a statement and an 8 KB literal a chunk on both sides. `(parts / 8192) % 4` moves the band
 the sweep starts at: 0 is the wide band alone, 1 takes in the four-strike band and 2 the
-eight-strike one too.
+eight-strike one too. `(parts / 32768) % 2` builds the base the sweep tests against to `Wm1/128`
+rather than `Wm1/8`, which counts to the identical strike set for a ninth fewer records.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
