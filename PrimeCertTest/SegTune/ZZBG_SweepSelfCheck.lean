@@ -28,23 +28,20 @@ Worth running before either `ZZBE_SweepFour` or `ZZBF_SweepEight` is believed, w
 timings say. The check has not run at all since the base became the small band alone, so it is
 also the first time that change is tested rather than argued.
 
-Both settings in one file so it is one build. Timings here mean nothing: the check is a second
-full marking pass that production never does.
+One setting a file. Both were in this one to save a build, which cost more than it saved: the
+emitter's log is truncated at the start of each run, so the second command overwrote the first's
+`agree` line and the run had to be done again to read it. `ZZBH_SweepEightCheck` is the other
+setting.
+
+Timings here mean nothing: the check is a second full marking pass that production never does.
 
 Throwaway. -/
 
-namespace PrimeCert.SegTune.ZZBG_SweepFourCheck
+namespace PrimeCert.SegTune.ZZBG_SweepSelfCheck
 
 run_sieve 10000000
 
 set_option maxRecDepth 1000000 in
 run_segment_skip_part 8202 100000000000001 4194304 3333333 8192 0 65536 10000000
 
-end PrimeCert.SegTune.ZZBG_SweepFourCheck
-
-namespace PrimeCert.SegTune.ZZBG_SweepEightCheck
-
-set_option maxRecDepth 1000000 in
-run_segment_skip_part 16394 100000000000001 4194304 3333333 8192 0 65536 10000000
-
-end PrimeCert.SegTune.ZZBG_SweepEightCheck
+end PrimeCert.SegTune.ZZBG_SweepSelfCheck
