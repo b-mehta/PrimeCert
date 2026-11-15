@@ -8094,6 +8094,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- affordable before the work of combining them goes in. Every statement emitted is still
   -- kernel-checked.
   let assemble := parts ≥ 32
+  -- Adding 64 also establishes the skipped product from its own records rather than asserting it,
+  -- which is the last asserted literal in the chain: chunks of skip records, each with its product
+  -- and its assembly, combined pairwise by kernel-checked multiplications up to the literal the
+  -- gcds are stated against. Implies `assemble`, being past 32.
+  let skipCert := parts ≥ 64
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8309,7 +8314,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   rssLog s!"{nGcd} gcds over slices of {bs} bits, parts {parts}, \
     route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}, \
     records {if recordCert then "on" else "off"}, \
-    assembly {if assemble then "on" else "off"}"
+    assembly {if assemble then "on" else "off"}, \
+    skip product {if skipCert then "said" else "asserted"}"
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8345,6 +8351,74 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- 256 records a chunk, where the route's own slots sit. Depth 8 covers them with the slots
     -- past the count contributing the identity.
     let chunk := 256
+    if skipCert then
+      -- The skipped product, said rather than asserted. The same record machinery the live side
+      -- uses, over the skipped divisors instead: a chunk at a time, each chunk with its product
+      -- and the bits its records assemble to, then the chunk products combined upward by
+      -- multiplications the kernel checks, ending at the literal the gcds are stated against.
+      --
+      -- Combined pairwise rather than into one accumulator, for the reason the emitter's own
+      -- build was changed: halving the array multiplies operands of like size instead of touching
+      -- a 1.25 MB number at every step. What that costs the **kernel** is a separate question
+      -- from what it cost the emitter, and the point of this arm is to find out.
+      let t6 ← IO.monoMsNow
+      let mut leaves : Array Nat := #[]
+      let mut nChunk := 0
+      let mut nSkipRec := 0
+      for k in [0:(fuel + 65536) / 65536] do
+        let (recs, cnt) := SieveEmit.liveRecords sSkip k
+        nSkipRec := nSkipRec + cnt
+        for c in [0:(cnt + chunk - 1) / chunk] do
+          let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
+          let thisCnt := Nat.min chunk (cnt - c * chunk)
+          let mut pv := 1
+          let mut asm := 0
+          for o in [0:thisCnt] do
+            let pos := (lowRecs >>> (o * 16)) &&& 65535
+            pv := pv * value (k * 65536 + pos)
+            asm := asm ||| (1 <<< pos)
+          let prodE := mkAppN (mkConst ``prodChunkK)
+            #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit thisCnt,
+              mkRawNatLit 8, mkRawNatLit 0]
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipRec_{k}_{c}"))
+            (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
+          let asmE := mkAppN (mkConst ``asmChunkK)
+            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit 8, mkRawNatLit 0]
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipAsm_{k}_{c}"))
+            (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+          leaves := leaves.push pv
+          nChunk := nChunk + 1
+      let t7 ← IO.monoMsNow
+      rssLog s!"skip records: {nSkipRec} over {nChunk} chunks, {t7 - t6} ms, {← rssMB} MiB"
+      let mut level := leaves
+      let mut lvl := 0
+      let mut nMul := 0
+      while level.size > 1 do
+        let mut next : Array Nat := #[]
+        for j in [0:(level.size + 1) / 2] do
+          if 2 * j + 1 < level.size then
+            let a := level[2 * j]!
+            let b := level[2 * j + 1]!
+            let c := a * b
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipMul_{lvl}_{j}"))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.mul) (mkRawNatLit a) (mkRawNatLit b))
+                (mkRawNatLit c)) Lean.reflBoolTrue
+            nMul := nMul + 1
+            next := next.push c
+          else
+            next := next.push (level[2 * j]!)
+        level := next
+        lvl := lvl + 1
+      let top := if level.size == 0 then 1 else level[0]!
+      -- The emitter's own check, free: the chunks have to multiply to the literal the gcds are
+      -- stated against, or the two halves are about different divisor sets and the gcds mean
+      -- nothing. A record set that missed a divisor fails here rather than in a timing.
+      if top != pVal then
+        throwError "run_segment_skip: the skip records multiply to a different product from the \
+          one the gcds are stated against, so the record set is wrong"
+      let t8 ← IO.monoMsNow
+      rssLog s!"skip product chain: {nMul} multiplications over {lvl} levels, {t8 - t7} ms, \
+        {← rssMB} MiB"
     let mut nStmt := 0
     -- Counted while the records are taken, so the number of live values the certificate covers is
     -- always in the log beside the statement count. A window that was never finished shows up here
@@ -8425,8 +8499,9 @@ elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
 /-- `run_segment_skip_part parts a W fuel len thr bs` is `run_segment_skip` emitting one half of
 what it emits: `parts` 1 for the gcd equations alone, 2 for the marking route alone, 0 for both.
 Adding 8 takes the strike set from the wide band alone, 16 states the certificate over records
-rather than over the window's bits, and 32 also states that each chunk's records assemble to the
-bits the emitter says they do. Each implies the ones below it.
+rather than over the window's bits, 32 also states that each chunk's records assemble to the bits
+the emitter says they do, and 64 establishes the skipped product from its own records instead of
+asserting it. Each implies the ones below it.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
