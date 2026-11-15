@@ -6399,14 +6399,15 @@ public theorem dvd_prodChunkK (recs lo cnt : Nat) :
     have hb : Nat.blt o cnt = true := by
       simp only [Nat.blt_eq]
       exact h3
-    show valueK _ ∣ (Nat.blt o cnt).rec 1 (valueK _)
+    change valueK _ ∣ (Nat.blt o cnt).rec 1 (valueK _)
+    -- `rw` closes this itself: it tries `rfl`, and `Nat.dvd_refl` is `@[refl]`.
     rw [hb]
-    exact Nat.dvd_refl _
   | succ k ih =>
     intro off o h1 h2 h3
     have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
       rw [Nat.pow_succ, Nat.mul_two]
-    show valueK _ ∣ Nat.mul (prodChunkK recs lo cnt k off) (prodChunkK recs lo cnt k (off + 2 ^ k))
+    change valueK _ ∣
+      Nat.mul (prodChunkK recs lo cnt k off) (prodChunkK recs lo cnt k (off + 2 ^ k))
     by_cases hc : o < off + 2 ^ k
     · exact Nat.dvd_mul_right_of_dvd (ih off o h1 hc h3) _
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) o (by omega) (by omega) h3) _
