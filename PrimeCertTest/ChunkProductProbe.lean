@@ -418,6 +418,36 @@ example (a : Nat) : Nat.land a 0 = 0 := by
   change a &&& 0 = 0
   exact Nat.and_zero a
 
+/-! ## The middle hypothesis, stated existentially
+
+`segMarkK_eq_self_of_not_dvd` wants, per divisor, that no live position of the window holds a
+multiple of it — quantified over every live `j`. The certificate gives that a chunk at a time, and
+the step between is the cover. Two ways to write the cover as a hypothesis: index the chunks,
+which drags the emitter's layout into the statement, or say that every live `j` has *some* chunk
+holding it. This prototypes the second, which is the one that reads better, to find out whether
+the offsets make it awkward in practice rather than in the abstract.
+
+They do not, and the reason is that only one offset is free. A chunk's records are positions
+within its slice, so its assembly is read at `j - b` where `b` is the slice's base, and its product
+is taken from `lo + b`. Carrying `b` in the existential is enough; `valK (lo + j)` and
+`valK ((lo + b) + (j - b))` are then the same number, which `omega` settles from `b ≤ j`. -/
+
+/-- Every live position of the window names a value no divisor of `P` divides, given each live
+position is held by some chunk whose product is coprime to `P`. This is exactly the hypothesis
+`segMarkK_eq_self_of_not_dvd` takes, built from what the certificate states. -/
+public theorem not_dvd_of_cover {seg lo P p : Nat} (hp : p ∣ P) (hp1 : p ≠ 1)
+    (hcov : ∀ j, Nat.testBit seg j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1) :
+    ∀ j, Nat.testBit seg j = true → ¬ (p ∣ valK (Nat.add lo j)) := by
+  intro j hj
+  obtain ⟨recs, cnt, d, b, hb, hasm, hgcd⟩ := hcov j hj
+  have hsplit : Nat.add lo j = Nat.add (Nat.add lo b) (j - b) := by
+    change lo + j = lo + b + (j - b)
+    omega
+  rw [hsplit]
+  exact not_dvd_of_chunk hgcd hp hp1 hasm
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
