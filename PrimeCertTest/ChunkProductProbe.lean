@@ -393,6 +393,31 @@ public theorem not_dvd_of_merged_two {r₁ r₂ lo c₁ c₂ mid slice skipProd 
     · exact not_dvd_of_chunk hg₁ hp hp1 h1
   · exact not_dvd_of_chunk hg₂ hp hp1 h2
 
+/-- Disjointness survives a union, which is why the skipped divisors can be dropped together
+rather than one at a time. Stated with `Nat.land` and `Nat.lor` as the definitions spell them,
+since that is the form the fold over the skipped set presents. -/
+public theorem land_lor_eq_zero {a u m : Nat} (hu : Nat.land a u = 0) (hm : Nat.land a m = 0) :
+    Nat.land a (Nat.lor u m) = 0 := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  -- `Nat.testBit_and` is stated with `&&&`, the hypotheses with `Nat.land`, so the notation has
+  -- to be put back before the hypothesis will rewrite.
+  have hu' : (Nat.testBit a i && Nat.testBit u i) = false := by
+    rw [← Nat.testBit_and]
+    change Nat.testBit (Nat.land a u) i = false
+    rw [hu, Nat.zero_testBit]
+  have hm' : (Nat.testBit a i && Nat.testBit m i) = false := by
+    rw [← Nat.testBit_and]
+    change Nat.testBit (Nat.land a m) i = false
+    rw [hm, Nat.zero_testBit]
+  change Nat.testBit (a &&& (u ||| m)) i = Nat.testBit 0 i
+  rw [Nat.testBit_and, Nat.testBit_or, Nat.zero_testBit, Bool.and_or_distrib_left, hu', hm']
+  rfl
+
+-- And the base case the fold starts from, in the same spelling.
+example (a : Nat) : Nat.land a 0 = 0 := by
+  change a &&& 0 = 0
+  exact Nat.and_zero a
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
