@@ -2680,7 +2680,10 @@ public theorem maskUnionK_or {s₁ s₂ lo Wm1 start fuel : Nat} :
     maskUnionK (s₁ ||| s₂) lo Wm1 start fuel
       = maskUnionK s₁ lo Wm1 start fuel ||| maskUnionK s₂ lo Wm1 start fuel := by
   induction fuel with
-  | zero => rfl
+  | zero =>
+    -- Not `rfl`: `Nat.lor` does not reduce definitionally, so `0 = 0 ||| 0` needs a step.
+    change (0 : Nat) = 0 ||| 0
+    simp
   | succ k ih =>
     rw [maskUnionK_succ, maskUnionK_succ, maskUnionK_succ]
     have hbit : testBitK (s₁ ||| s₂) (start + k)
@@ -2696,10 +2699,10 @@ public theorem maskUnionK_or {s₁ s₂ lo Wm1 start fuel : Nat} :
 /-- Sieving by a divisor set equals sieving by a subset of it, when the masks of the divisors left
 out meet the resulting window nowhere.
 
-**The split is a hypothesis rather than a lemma deliberately.** Proving
-`maskUnionK (sM ||| sS) = maskUnionK sM ||| maskUnionK sS` means reasoning about `testBitK` on a
-union, whereas the emitter knows both subsets and can emit the equation as one more literal for
-the kernel to check, which is how every other fact in this file reaches the chain. -/
+The split is taken as a hypothesis so the caller may choose how to get it, but **`maskUnionK_or`
+proves it for `s = sM ||| sS`, and that is how it should be discharged.** Emitting it instead, as
+one more literal for the kernel to check, would make the kernel evaluate `maskUnionK` over every
+divisor — the mask-building this design exists to avoid. -/
 public theorem segLoopK_eq_of_skip {s sM sS lo Wm1 seg start fuel : Nat}
     (hsplit : maskUnionK s lo Wm1 start fuel
       = maskUnionK sM lo Wm1 start fuel ||| maskUnionK sS lo Wm1 start fuel)
