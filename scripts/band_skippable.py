@@ -60,18 +60,29 @@ bands = [
 
 print(f"window start {LO}, divisors to {BIG}")
 print()
-print(f"{'band':16} {'divisors':>10} {'strike':>9} {'skippable':>10} {'skippable %':>12}")
+print(
+    f"{'band':16} {'divisors':>10} {'strike':>9} {'skippable':>10} {'skippable %':>12}"
+    f" {'records saved':>14}"
+)
 
 for name, members in bands:
     struck = 0
+    saved = 0
     for p in members:
         p = int(p)
         start = ((LO + p - 1) // p) * p
+        hits = int(np.count_nonzero(coprime6[start - LO :: p])) if start < LO + SPAN else 0
         if start < LO + SPAN and base[start - LO :: p].any():
             struck += 1
+        else:
+            # A divisor the sweep drops costs the marking one record per position its mask
+            # covers, not one per divisor. That is why a band's worth is not its divisor count:
+            # the eight-strike band's members each cover up to eight positions where the
+            # four-strike band's cover up to four.
+            saved += hits
     skip = len(members) - struck
     pct = (100.0 * skip / len(members)) if len(members) else 0.0
-    print(f"{name:16} {len(members):10} {struck:9} {skip:10} {pct:11.1f}%")
+    print(f"{name:16} {len(members):10} {struck:9} {skip:10} {pct:11.1f}% {saved:14}")
 
 print()
 print("The small band is tested against a base that already includes it, so its own row says")

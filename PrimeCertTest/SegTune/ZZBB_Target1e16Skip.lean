@@ -10,8 +10,13 @@ public meta import PrimeCert.SegmentedSieve
 
 /-! # The whole design at the depth it is for
 
-`ZZAH_OneGcd1024` moved to a window at `10^16 + 1` with divisors to `10^8`: the settled shape,
-chunk 1024 and one gcd, at ten times the divisors.
+The settled shape moved to a window at `10^16 + 1` with divisors to `10^8`: chunk 1024, one gcd,
+and the sweep starting at the eight-strike band, at ten times the divisors.
+
+`parts 19907` rather than the 3523 this file first carried. Sweeping the four-strike band and then
+the eight-strike one each won on both kernel and processor at `10^14`, taking the design from −15%
+to about −23% against the production route, so the target run should ask about the shape that
+won rather than the one that was settled when the file was written.
 
 What this asks is whether the −15% kernel survives the move. Two things pull against each other.
 The sweep's saving is in the marking, which is where the extra divisors go, so it has more to
