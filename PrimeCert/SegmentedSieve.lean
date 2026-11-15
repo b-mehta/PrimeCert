@@ -8276,9 +8276,22 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- proving it goes in. Every statement emitted is still kernel-checked.
     let pName := ns ++ Name.mkSimple s!"skipProd_{a}_{W}_{fuel}"
     let t4 ← IO.monoMsNow
-    let mut pVal := 1
+    -- Combined pairwise rather than into one accumulator. Multiplying 435226 values into a single
+    -- number grows that number to 1.25 MB and touches all of it at every step; halving the array
+    -- multiplies operands of like size instead. Measured at 57.2 s the sequential way, which is
+    -- most of this arm's emitter cost.
+    let mut vals : Array Nat := #[]
     for i in SieveEmit.setBitsLow (sSkip >>> 1) fuel do
-      pVal := pVal * value (1 + i)
+      vals := vals.push (value (1 + i))
+    while vals.size > 1 do
+      let mut next : Array Nat := #[]
+      for j in [0:(vals.size + 1) / 2] do
+        if 2 * j + 1 < vals.size then
+          next := next.push ((vals[2 * j]!) * (vals[2 * j + 1]!))
+        else
+          next := next.push (vals[2 * j]!)
+      vals := next
+    let pVal := if vals.size == 0 then 1 else vals[0]!
     let t5 ← IO.monoMsNow
     rssLog s!"skipped product built in {t5 - t4} ms, {← rssMB} MiB"
     addDecl <| Declaration.defnDecl
