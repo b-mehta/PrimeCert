@@ -6632,7 +6632,8 @@ command's own computation alone. Mode 16 joins each batch's masks into a running
 the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
 and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
-    (prodNames : Bool := false) : MetaM Unit := do
+    (prodNames : Bool := false) (out : Option (IO.Ref (Option Nat)) := none) :
+    MetaM Unit := do
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
@@ -7540,6 +7541,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    if let some r := out then r.set (some bits)
     let accName := ns ++ Name.mkSimple s!"segAccV_{tag}"
     addSegThm accName
       (mkNatEq (mkAppN (mkConst ``segAccLoopK)
@@ -7795,6 +7797,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     addDecl <| Declaration.defnDecl
       { name := litName, levelParams := [], type := Nat.mkType,
         value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+    if let some r := out then r.set (some bits)
     addSegThm parent (mkNatEq lhsK (mkConst litName)) proof
     let bValS := value fuel
     addSegThm (ns ++ Name.mkSimple s!"segEqI_{tag}")
@@ -7941,6 +7944,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
   addDecl <| Declaration.defnDecl
     { name := litName, levelParams := [], type := Nat.mkType,
       value := mkRawNatLit bits, hints := .regular 0, safety := .safe }
+  if let some r := out then r.set (some bits)
   let finalProof := if clamped then
       mkAppN (mkConst ``segEq_of_clamped)
         #[sE, loE, mkRawNatLit W, wE, nE, mkRawNatLit fuel, mkRawNatLit bits,
@@ -8255,16 +8259,19 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- first and its window is read back, rather than built again here.
   let mut routeDone := false
   if recordCert && emitRoute then
-    runSegmentV ns markName 28 a W fuel len
+    -- `runSegmentV` writes its finished window here rather than this reading it back by a
+    -- constructed name, which would have duplicated that function's naming convention and broken
+    -- quietly if it ever changed.
+    let ref ← IO.mkRef (none : Option Nat)
+    runSegmentV ns markName 28 a W fuel len (out := some ref)
     routeDone := true
-    let routeLit := ns ++ Name.mkSimple s!"segBitsV_{a}_{W}_{fuel}_{Nat.max 1 len}_m28"
-    match (← getEnv).find? routeLit >>= (fun i => i.value?) >>= Expr.rawNatLit? with
+    match ← ref.get with
     | some v =>
       full := v
       rssLog s!"window taken from the route rather than rebuilt, {← rssMB} MiB"
     | none =>
-      throwError "run_segment_skip: expected the route to have emitted {routeLit}; if \
-        `runSegmentV`'s naming has changed, this lookup has to change with it"
+      throwError "run_segment_skip: the route emitted no window, so there is nothing for the \
+        certificate to be stated over"
   -- One gcd a slice, against the product of the skipped divisors, in the shape
   -- `segLoopK_eq_self_of_blocks` takes its hypotheses.
   -- Balanced products rather than folds, for the reason in `prodLiveTreeK`'s docstring. `dSkip`
