@@ -10,7 +10,12 @@ public meta import PrimeCert.SegmentedSieve
 
 /-! # The same certificate at 1024 records a chunk
 
-`parts 1987`: `ZZAE_Chunk512` with the chunk doubled again, depth 10 instead of 9.
+`parts 1475`: `ZZAE_Chunk512` with the chunk doubled again, depth 10 instead of 9.
+
+The value changed from 1987 after the flags above 256 became fields rather than thresholds, which
+they had to, since the chunk size and the certificate's shape are independent and a threshold
+cannot say one without the other. `ZZAE`'s 963 is the same number under both readings; this arm's
+is not, and 1987 now means a chunk of 2048.
 
 512 beat 256 on all three figures at once, kernel -7.3 s, processor -7.3 s and peak -65 MB, which
 settles nothing about where the trade turns. This is the third point. Fewer, fatter statements
@@ -29,6 +34,6 @@ namespace PrimeCert.SegTune.ZZAF_Chunk1024
 run_sieve 10000000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 1987 100000000000001 4194304 3333333 8192 0 65536 10000000
+run_segment_skip_part 1475 100000000000001 4194304 3333333 8192 0 65536 10000000
 
 end PrimeCert.SegTune.ZZAF_Chunk1024

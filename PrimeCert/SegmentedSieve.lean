@@ -8080,10 +8080,14 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- Adding 8 keeps the same emission and takes the strike set from the wide band alone, marking
   -- the three lower bands whether they strike or not.
   let pbase := parts % 8
-  let wideBandOnly := parts ≥ 8
+  -- The chain of thresholds reads the low digits alone. Reading the whole of `parts` would have
+  -- the fields above 256 switch every threshold on by being large, so asking for a bigger chunk
+  -- would silently also ask for the skip cover.
+  let base := parts % 512
+  let wideBandOnly := base ≥ 8
   -- Adding 16 states the certificate over records instead of over the window's bits. Implies the
   -- wide sweep, since 16 and above are also at or past 8.
-  let recordCert := parts ≥ 16
+  let recordCert := base ≥ 16
   -- Adding 32 also emits, beside each chunk's gcd, the statement that the chunk's records assemble
   -- to the bits the emitter says they do (`asmChunkK`). A product over records says nothing on its
   -- own: without this the kernel has no reason to believe the records are the window's live
@@ -8093,28 +8097,37 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- at a time and not yet combined into the slice, so this measures whether the reduction is
   -- affordable before the work of combining them goes in. Every statement emitted is still
   -- kernel-checked.
-  let assemble := parts ≥ 32
+  let assemble := base ≥ 32
   -- Adding 64 also establishes the skipped product from its own records rather than asserting it,
   -- which is the last asserted literal in the chain: chunks of skip records, each with its product
   -- and its assembly, combined pairwise by kernel-checked multiplications up to the literal the
   -- gcds are stated against. Implies `assemble`, being past 32.
-  let skipCert := parts ≥ 64
+  let skipCert := base ≥ 64
   -- Adding 128 also states the cover: that a slice's chunk assemblies `lor` to the slice, and that
   -- the slice is the window shifted down and masked. Without it every chunk statement is about
   -- some 256 records and nothing says those records exhaust the window's live bits, so a chunk
   -- left out would never be noticed. Implies `skipCert`, being past 64.
-  let coverCert := parts ≥ 128
+  let coverCert := base ≥ 128
   -- Adding 256 states the cover on the skipped side too. The live side's cover says the records
   -- exhaust the window; this says the skip records exhaust the skipped set, without which a
   -- divisor could be dropped from the marking and left out of the product, and nothing would
   -- divide anything. Implies `coverCert`, being past 128.
-  let skipCoverCert := parts ≥ 256
+  let skipCoverCert := base ≥ 256
+  -- Above 256 the flags stop being a chain and become fields, because the chunk size and the
+  -- certificate's shape are independent and a threshold cannot say "this one and not that one".
+  -- Everything up to 256 stays a threshold, since each of those really does imply the ones below.
+  --
   -- How many records a chunk holds, and so how deep the tree over it is. 256 is what every
-  -- measurement up to here used; adding 512 or 1024 doubles or quadruples it, which halves or
-  -- quarters the statement count and grows each statement's literals by the same factor. Which
-  -- way that trade goes is a measurement, and this is the knob it needs.
-  let chunkLog := if parts ≥ 1024 then 10 else if parts ≥ 512 then 9 else 8
+  -- measurement up to `ZZAD` used; 512 beat it on all three figures at once, and the field runs to
+  -- 2048. Doubling halves the statement count and doubles the literals a statement carries, so the
+  -- two pull opposite ways and only a measurement settles it.
+  let chunkLog := 8 + (parts / 512) % 4
   let chunk := Nat.pow 2 chunkLog
+  -- One gcd for the whole window instead of one a chunk. The chunk products are stated as
+  -- literals and combined pairwise into the live product, the way the skipped side already is,
+  -- and a single gcd is taken against the skipped product. That trades 786 gcds against a
+  -- multi-megabyte literal for 786 multiplications and one gcd of two large numbers.
+  let oneGcd := (parts / 2048) % 2 == 1
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8473,6 +8486,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     let mut nLive := 0
     let mut nAsm := 0
     let mut nCover := 0
+    let mut liveLeaves : Array Nat := #[]
     if coverCert && windowName.isNone then
       throwError "run_segment_skip: the cover is stated against the window the route names, so \
         the route has to run; use a parts value with the route on"
@@ -8488,9 +8502,19 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         let liveE := mkAppN (mkConst ``prodChunkK)
           #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
             mkRawNatLit chunkLog, mkRawNatLit 0]
-        addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recGcd_{k}_{c}"))
-          (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
-          Lean.reflBoolTrue
+        if oneGcd then
+          -- The chunk's product as a literal, to be combined with the others below. The gcd then
+          -- happens once for the window rather than once a chunk.
+          let mut pv := 1
+          for o in [0:thisCnt] do
+            pv := pv * value (lo + k * 65536 + ((lowRecs >>> (o * 16)) &&& 65535))
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recProd_{k}_{c}"))
+            (mkSegBeqTrue liveE (mkRawNatLit pv)) Lean.reflBoolTrue
+          liveLeaves := liveLeaves.push pv
+        else
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recGcd_{k}_{c}"))
+            (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
+            Lean.reflBoolTrue
         nStmt := nStmt + 1
         if assemble then
           -- The same records, read the same way `asmChunkK` reads them, so the literal below is
@@ -8529,8 +8553,40 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recSlice_{k}"))
           (mkSegBeqTrue sliceE (mkRawNatLit slice)) Lean.reflBoolTrue
         nCover := nCover + 1
-    rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records over {nLive} live \
-      values, {nAsm} assembly statements, {nCover} cover statements, {← rssMB} MiB"
+    rssLog s!"record certificate: {nStmt} chunk statements of {chunk} records over {nLive} live \
+      values, {nAsm} assembly statements, {nCover} cover statements, \
+      {if oneGcd then "one gcd" else "a gcd a chunk"}, {← rssMB} MiB"
+    if oneGcd then
+      -- The chunk products combined into the window's, pairwise for the reason the skipped side
+      -- is, and then one gcd. Each multiplication is a statement, so what the single gcd is taken
+      -- against is a number the kernel has agreed the chunks multiply to.
+      let t9 ← IO.monoMsNow
+      let mut level := liveLeaves
+      let mut lvl := 0
+      let mut nMul := 0
+      while level.size > 1 do
+        let mut next : Array Nat := #[]
+        for j in [0:(level.size + 1) / 2] do
+          if 2 * j + 1 < level.size then
+            let a := level[2 * j]!
+            let b := level[2 * j + 1]!
+            let c := a * b
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"liveMul_{lvl}_{j}"))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.mul) (mkRawNatLit a) (mkRawNatLit b))
+                (mkRawNatLit c)) Lean.reflBoolTrue
+            nMul := nMul + 1
+            next := next.push c
+          else
+            next := next.push (level[2 * j]!)
+        level := next
+        lvl := lvl + 1
+      let liveProd := if level.size == 0 then 1 else level[0]!
+      addSegThm (mkPrivateName env (ns ++ Name.mkSimple "liveGcd"))
+        (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit liveProd) (mkConst pName))
+          (mkRawNatLit 1)) Lean.reflBoolTrue
+      let t10 ← IO.monoMsNow
+      rssLog s!"live product chain: {nMul} multiplications over {lvl} levels then one gcd, \
+        {t10 - t9} ms, {← rssMB} MiB"
   -- The window-walking form, which `recordCert` replaces. Guarded by an empty range rather than
   -- an `else`, so the loop below keeps its indentation and stays the code that was measured.
   for k in [0:nGcd] do
@@ -8580,8 +8636,13 @@ rather than over the window's bits, 32 also states that each chunk's records ass
 the emitter says they do, 64 establishes the skipped product from its own records instead of
 asserting it, and 128 states the cover: a slice's chunk assemblies `lor` to the slice, and the
 slice is the window shifted down and masked, and 256 states the same cover on the skipped side.
-Each implies the ones below it. Adding 512 or 1024 on top sets the chunk to 512 or 1024 records
-rather than 256, which is the one knob here that trades statement count against literal size.
+Each of those implies the ones below it.
+
+Above 256 the digits are fields rather than thresholds, since the choices there are independent.
+`(parts / 512) % 4` sets the chunk to 256, 512, 1024 or 2048 records, which trades statement count
+against the size of the literals a statement carries. `(parts / 2048) % 2` takes one gcd for the
+window instead of one a chunk, stating the chunk products as literals and combining them pairwise
+first.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
