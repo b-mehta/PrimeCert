@@ -8146,6 +8146,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- and a single gcd is taken against the skipped product. That trades 786 gcds against a
   -- multi-megabyte literal for 786 multiplications and one gcd of two large numbers.
   let oneGcd := (parts / 2048) % 2 == 1
+  -- The assembly statement and the cover step as one, with the chunk's assembly left in place of
+  -- the literal naming its result. The kernel reduces the same `asmChunkK` either way, so what
+  -- goes is one statement and one 8 KB literal a chunk, on both sides. Implies the covers, since
+  -- without them there is nothing to merge into.
+  let mergedCover := (parts / 4096) % 2 == 1 && coverCert && skipCoverCert
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8369,7 +8374,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     assembly {if assemble then "on" else "off"}, \
     skip product {if skipCert then "said" else "asserted"}, \
     cover {if coverCert then "on" else "off"}, \
-    skip cover {if skipCoverCert then "on" else "off"}"
+    skip cover {if skipCoverCert then "on" else "off"}, \
+    cover {if mergedCover then "merged" else "separate"}"
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8450,19 +8456,28 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
           let asmE := mkAppN (mkConst ``asmChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
-          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipAsm_{k}_{c}"))
-            (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+          let next := acc ||| asm
+          -- The same merge as the live side: assembly and cover step as one statement, with the
+          -- chunk's assembly where its literal was.
+          if mergedCover then
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipCover_{k}_{c}"))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) asmE)
+                (mkRawNatLit next)) Lean.reflBoolTrue
+            acc := next
+            nSkipCover := nSkipCover + 1
+          else
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipAsm_{k}_{c}"))
+              (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+            if skipCoverCert then
+              addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipCover_{k}_{c}"))
+                (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
+                  (mkRawNatLit next)) Lean.reflBoolTrue
+              acc := next
+              nSkipCover := nSkipCover + 1
           let s1 ← IO.monoMsNow
           msStmt := msStmt + (s1 - p1)
           leaves := leaves.push pv
           nChunk := nChunk + 1
-          if skipCoverCert then
-            let next := acc ||| asm
-            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipCover_{k}_{c}"))
-              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
-                (mkRawNatLit next)) Lean.reflBoolTrue
-            acc := next
-            nSkipCover := nSkipCover + 1
         if skipCoverCert then
           -- Against the skipped-set literal the emitter already names, so the records are tied to
           -- the set the marking route was allowed to leave out rather than to a set of the
@@ -8570,16 +8585,31 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             asm := asm ||| (1 <<< ((lowRecs >>> (o * 16)) &&& 65535))
           let asmE := mkAppN (mkConst ``asmChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
-          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recAsm_{k}_{c}"))
-            (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
-          nAsm := nAsm + 1
-          if coverCert then
-            let next := acc ||| asm
+          let next := acc ||| asm
+          if mergedCover then
+            -- The assembly and the cover step as one statement, with the chunk's assembly left
+            -- where the literal was. The kernel reduces the same `asmChunkK` either way, so what
+            -- goes is a statement and the 8 KB literal naming its result.
+            --
+            -- The consumer loses nothing. From `lor acc (asmChunkK …) = next` a bit of `next` is
+            -- a bit of `acc` or a bit of `asmChunkK …`, and the second is already the hypothesis
+            -- `not_dvd_of_one_gcd` wants; the separate literal was only ever a step on the way to
+            -- it.
             addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recCover_{k}_{c}"))
-              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
+              (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) asmE)
                 (mkRawNatLit next)) Lean.reflBoolTrue
             acc := next
             nCover := nCover + 1
+          else
+            addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recAsm_{k}_{c}"))
+              (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+            nAsm := nAsm + 1
+            if coverCert then
+              addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recCover_{k}_{c}"))
+                (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkRawNatLit acc) (mkRawNatLit asm))
+                  (mkRawNatLit next)) Lean.reflBoolTrue
+              acc := next
+              nCover := nCover + 1
       if coverCert then
         -- And the slice itself: the window shifted down and masked is what the chunks covered.
         -- Stated against the name the route gave the window, so this is about the same definition
@@ -8689,7 +8719,8 @@ Above 256 the digits are fields rather than thresholds, since the choices there 
 `(parts / 512) % 4` sets the chunk to 256, 512, 1024 or 2048 records, which trades statement count
 against the size of the literals a statement carries. `(parts / 2048) % 2` takes one gcd for the
 window instead of one a chunk, stating the chunk products as literals and combining them pairwise
-first.
+first. `(parts / 4096) % 2` merges each chunk's assembly statement into its cover step, which
+drops a statement and an 8 KB literal a chunk on both sides.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
