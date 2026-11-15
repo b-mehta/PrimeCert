@@ -112,4 +112,137 @@ def seg1 : Nat := ofPositions [0, 1, 2, 5, 9, 17, 64, 65, 1000, 4095, 65534, 655
 #guard ((liveRecords seg1 0).1 >>> (11 * 16)) &&& 65535 == 65535
 #guard (liveRecords seg1 0).2 == 12
 
+/-! ## `stripeSort` against the packing it replaces
+
+`stripeSort` is the production marking route's own emitter path, so its four returned numbers have
+to come back bit for bit identical. The reference below is the shape before the pairwise packing
+went in: each record set into a growing slot, each slot into a growing list, each slice's assembly
+into a growing mask. -/
+
+/-- The earlier packing, kept to compare against. `meta` for the reason `refRecords` is. -/
+meta def refStripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in setBitsLow c len do
+    let p := valueE (start + i)
+    let d := p * 2
+    let b5 := firstLoc (indexE (p * 5)) lo d
+    let b7 := firstLoc (indexE (p * 7)) lo d
+    for w in [0:nrec] do
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
+      if X ≤ Wm1 then
+        slots := slots.modify (X >>> 16) (·.push (8 * i + w))
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+      else
+        slots := slots.modify np (·.push (8 * i + w))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let mut seen := 0
+  for w in [0:nrec] do
+    seen := seen ||| (c <<< (w * len))
+  let mut slotW := 16
+  for k in [0:np + 1] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np + 1] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
+/-- A divisor set with bits spread across a batch, including the first and last positions. -/
+def divisors : Nat := ofPositions [1, 2, 3, 5, 8, 13, 21, 34, 55, 63]
+
+-- One slice, the shape most batches take.
+#guard stripeSort divisors 0 65535 1 64 65536 4 == refStripeSort divisors 0 65535 1 64 65536 4
+#guard stripeSort divisors 0 65535 1 64 65536 2 == refStripeSort divisors 0 65535 1 64 65536 2
+#guard stripeSort divisors 0 65535 1 64 65536 8 == refStripeSort divisors 0 65535 1 64 65536 8
+
+-- Several slices, so the list and the assembly both have more than one slot to join.
+#guard stripeSort divisors 0 262143 1 64 262144 4
+  == refStripeSort divisors 0 262143 1 64 262144 4
+#guard stripeSort divisors 0 262143 1 64 262144 8
+  == refStripeSort divisors 0 262143 1 64 262144 8
+
+-- A window start other than zero, which moves every seed.
+#guard stripeSort divisors 1000 65535 1 64 65536 4
+  == refStripeSort divisors 1000 65535 1 64 65536 4
+#guard stripeSort divisors 100000 262143 1 64 262144 4
+  == refStripeSort divisors 100000 262143 1 64 262144 4
+
+-- An empty batch, where every slot is empty and the odd-element carry never happens.
+#guard stripeSort 0 0 65535 1 64 65536 4 == refStripeSort 0 0 65535 1 64 65536 4
+
+-- A batch where every position is a divisor, so slots are full and the carry happens at every
+-- level with an odd count.
+#guard stripeSort ((1 <<< 65) - 1) 0 65535 1 64 65536 4
+  == refStripeSort ((1 <<< 65) - 1) 0 65535 1 64 65536 4
+#guard stripeSort ((1 <<< 65) - 1) 0 262143 1 64 262144 6
+  == refStripeSort ((1 <<< 65) - 1) 0 262143 1 64 262144 6
+
+-- Odd counts specifically, where an element is carried rather than paired.
+#guard stripeSort (ofPositions [1, 2, 3]) 0 65535 1 64 65536 4
+  == refStripeSort (ofPositions [1, 2, 3]) 0 65535 1 64 65536 4
+#guard stripeSort (ofPositions [1, 2, 3, 4, 5]) 0 65535 1 64 65536 3
+  == refStripeSort (ofPositions [1, 2, 3, 4, 5]) 0 65535 1 64 65536 3
+
+/-! ## The variants with the other loop bound
+
+`stripeSortW` and `stripeSortG` run their joins over `np` slices rather than `np + 1`, and
+accumulate `seen` inside the main loop rather than repeating the slice. Those are the two places
+the conversion could have gone wrong in a way the `stripeSort` checks would not catch, so they get
+their own reference. -/
+
+/-- `stripeSortW` before the pairwise packing. -/
+meta def refStripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+  let np := W / 65536
+  let mut slots : Array (Array Nat) := Array.replicate np #[]
+  let mut slotAsm : Array Nat := Array.replicate np 0
+  let mut seen := 0
+  let c := (s >>> start) &&& ((1 <<< len) - 1)
+  for i in setBitsLow c len do
+    let p := valueE (start + i)
+    let d := p * 2
+    let b5 := firstLoc (indexE (p * 5)) lo d
+    let b7 := firstLoc (indexE (p * 7)) lo d
+    for w in [0:nrec] do
+      let X := (if w &&& 1 = 0 then b5 else b7) + (w >>> 1) * d
+      if X ≤ Wm1 then
+        slots := slots.modify (X >>> 16) (·.push (8 * i + w))
+        slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
+        seen := seen ||| (1 <<< (i + w * len))
+  let mut asm := 0
+  for k in [0:np] do
+    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let mut slotW := 16
+  for k in [0:np] do
+    slotW := Nat.max slotW (16 * (slots[k]!).size)
+  let mut ls := 0
+  let mut cs := 0
+  for k in [0:np] do
+    let mut packed := 0
+    for j in [0:(slots[k]!).size] do
+      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
+    ls := ls ||| (packed <<< (slotW * k))
+    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+  return (ls, cs, slotW, asm ||| (seen <<< W))
+
+#guard stripeSortW divisors 0 65535 1 64 65536 4
+  == refStripeSortW divisors 0 65535 1 64 65536 4
+#guard stripeSortW divisors 0 262143 1 64 262144 4
+  == refStripeSortW divisors 0 262143 1 64 262144 4
+#guard stripeSortW divisors 1000 262143 1 64 262144 8
+  == refStripeSortW divisors 1000 262143 1 64 262144 8
+#guard stripeSortW 0 0 65535 1 64 65536 4 == refStripeSortW 0 0 65535 1 64 65536 4
+#guard stripeSortW ((1 <<< 65) - 1) 0 262143 1 64 262144 6
+  == refStripeSortW ((1 <<< 65) - 1) 0 262143 1 64 262144 6
+#guard stripeSortW (ofPositions [1, 2, 3]) 0 65535 1 64 65536 3
+  == refStripeSortW (ofPositions [1, 2, 3]) 0 65535 1 64 65536 3
+
 end PrimeCert.SegTune.SetBitsProbe
