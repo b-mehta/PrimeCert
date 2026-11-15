@@ -163,6 +163,93 @@ public theorem dvd_prodChunkK (recs lo cnt : Nat) :
     · exact Nat.dvd_mul_right_of_dvd (ih off o h1 hc h3) _
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) o (by omega) (by omega) h3) _
 
+/-! ## The two halves, joined
+
+`dvd_prodChunkK` reaches a factor by slot number, which is the emitter's coordinate and not
+something the rest of the chain ever knows. What the chain has instead is a bit of the window, and
+`asmChunkK` is what connects the two: the statement the emitter emits beside each gcd says the
+chunk's records assemble to a known set of bits. So the useful form is the one below, which takes a
+bit the chunk assembles to and gives back that bit's value dividing the chunk's product, with the
+slot never mentioned.
+
+Without this the assembly statements and the gcd statements are about the same records but nothing
+in the kernel says so, and a chunk of 256 arbitrary numbers would certify as well as the right
+ones. -/
+
+/-- A single shifted bit is set at one index and no other. -/
+public theorem eq_of_testBit_one_shiftLeft {p i : Nat}
+    (h : Nat.testBit (Nat.shiftLeft 1 p) i = true) : i = p := by
+  -- The definitions here spell the operation `Nat.shiftLeft`, core states its lemmas with `<<<`,
+  -- and `rw` matches syntactically, so the notation has to be put on first.
+  change Nat.testBit (1 <<< p) i = true at h
+  rw [Nat.testBit_shiftLeft] at h
+  simp at h
+  -- `1` has its only bit at index 0, so the shifted index has to be the shift itself.
+  have h2 : ∀ m, Nat.testBit 1 m = true → m = 0 := by
+    intro m hm
+    cases m with
+    | zero => rfl
+    | succ n =>
+      rw [Nat.testBit_succ] at hm
+      simp at hm
+  have := h2 _ h.2
+  omega
+
+/-- Any bit the chunk assembles to has its value dividing the chunk's product. The slot it came
+from does not appear, which is the point: the certificate speaks of the window's bits. -/
+public theorem dvd_prodChunkK_of_testBit (recs lo cnt : Nat) :
+    ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
+      valK (Nat.add lo i) ∣ prodChunkK recs lo cnt d off := by
+  intro d
+  induction d with
+  | zero =>
+    intro off i hb
+    have ha : asmChunkK recs cnt 0 off = (Nat.blt off cnt).rec 0
+        (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul off 16)) 65535)) := rfl
+    have hp : prodChunkK recs lo cnt 0 off = (Nat.blt off cnt).rec 1
+        (valK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul off 16)) 65535))) := rfl
+    rw [ha] at hb
+    rw [hp]
+    cases hblt : Nat.blt off cnt with
+    | false =>
+      -- `cases` substitutes in the goal and not in a hypothesis, so `hb` is rewritten by hand.
+      rw [hblt] at hb
+      dsimp only at hb
+      simp at hb
+    | true =>
+      rw [hblt] at hb
+      dsimp only at hb
+      exact (eq_of_testBit_one_shiftLeft hb) ▸ Nat.dvd_refl _
+  | succ k ih =>
+    intro off i hb
+    have ha : asmChunkK recs cnt (k + 1) off = Nat.lor (asmChunkK recs cnt k off)
+        (asmChunkK recs cnt k (Nat.add off (Nat.pow 2 k))) := rfl
+    have hp : prodChunkK recs lo cnt (k + 1) off = Nat.mul (prodChunkK recs lo cnt k off)
+        (prodChunkK recs lo cnt k (Nat.add off (Nat.pow 2 k))) := rfl
+    rw [ha] at hb
+    change Nat.testBit (asmChunkK recs cnt k off |||
+      asmChunkK recs cnt k (Nat.add off (Nat.pow 2 k))) i = true at hb
+    rw [Nat.testBit_or] at hb
+    rw [hp]
+    cases h1 : Nat.testBit (asmChunkK recs cnt k off) i with
+    | true => exact Nat.dvd_mul_right_of_dvd (ih off i h1) _
+    | false =>
+      rw [h1, Bool.false_or] at hb
+      exact Nat.dvd_mul_left_of_dvd (ih (Nat.add off (Nat.pow 2 k)) i hb) _
+
+-- Used the way the certificate would use it: a bit of the assembled set, and the value standing at
+-- that bit divides the chunk's product. The hypothesis is `rfl` because the kernel reduces the
+-- assembly, which is the same reduction the emitted statements ask it for.
+example : valK (Nat.add 0 1) ∣ prodChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 0 3 2 0 :=
+  dvd_prodChunkK_of_testBit _ _ _ 2 0 1 rfl
+
+example : valK (Nat.add 0 2) ∣ prodChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 0 3 2 0 :=
+  dvd_prodChunkK_of_testBit _ _ _ 2 0 2 rfl
+
+-- A bit the chunk does not assemble to has no such proof, and the cutoff is what excludes it:
+-- position 2 is a record, but at `cnt = 2` the slot holding it contributes nothing.
+example : asmChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 2 2 0 = 3 := rfl
+
 /-! ## Marking is a set difference, and set differences collapse
 
 The other half of the chain: the sieve's marking loop is a fold, and what it folds is the set
