@@ -8084,6 +8084,16 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- Adding 16 states the certificate over records instead of over the window's bits. Implies the
   -- wide sweep, since 16 and above are also at or past 8.
   let recordCert := parts ≥ 16
+  -- Adding 32 also emits, beside each chunk's gcd, the statement that the chunk's records assemble
+  -- to the bits the emitter says they do (`asmChunkK`). A product over records says nothing on its
+  -- own: without this the kernel has no reason to believe the records are the window's live
+  -- positions rather than any 256 numbers the emitter chose. Implies `recordCert`, being past 16.
+  --
+  -- Timing only so far, like the gcds themselves: what the chunks assemble to is asserted a chunk
+  -- at a time and not yet combined into the slice, so this measures whether the reduction is
+  -- affordable before the work of combining them goes in. Every statement emitted is still
+  -- kernel-checked.
+  let assemble := parts ≥ 32
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8298,7 +8308,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   let nGcd := if emitGcd && !recordCert then W / bs else 0
   rssLog s!"{nGcd} gcds over slices of {bs} bits, parts {parts}, \
     route {if emitRoute then "on" else "off"}, check {if doCheck then "on" else "off"}, \
-    records {if recordCert then "on" else "off"}"
+    records {if recordCert then "on" else "off"}, \
+    assembly {if assemble then "on" else "off"}"
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8340,6 +8351,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- as a live count far above the primes in the range, rather than only as a statement count
     -- nobody has a reference for.
     let mut nLive := 0
+    let mut nAsm := 0
     for k in [0:W / 65536] do
       let (recs, cnt) := SieveEmit.liveRecords final k
       nLive := nLive + cnt
@@ -8353,8 +8365,21 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
           Lean.reflBoolTrue
         nStmt := nStmt + 1
+        if assemble then
+          -- The same records, read the same way `asmChunkK` reads them, so the literal below is
+          -- what the slots actually name and the kernel is being asked to agree rather than to
+          -- take it on trust. 256 shifts into an accumulator of at most 65536 bits; this is not
+          -- the shape that walks the whole window a bit at a time.
+          let mut asm := 0
+          for o in [0:thisCnt] do
+            asm := asm ||| (1 <<< ((lowRecs >>> (o * 16)) &&& 65535))
+          let asmE := mkAppN (mkConst ``asmChunkK)
+            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit 8, mkRawNatLit 0]
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recAsm_{k}_{c}"))
+            (mkSegBeqTrue asmE (mkRawNatLit asm)) Lean.reflBoolTrue
+          nAsm := nAsm + 1
     rssLog s!"record certificate: {nStmt} gcd statements of {chunk} records over {nLive} live \
-      values, {← rssMB} MiB"
+      values, {nAsm} assembly statements, {← rssMB} MiB"
   -- The window-walking form, which `recordCert` replaces. Guarded by an empty range rather than
   -- an `else`, so the loop below keeps its indentation and stays the code that was measured.
   for k in [0:nGcd] do
@@ -8399,6 +8424,10 @@ elab "run_segment_skip" aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
 
 /-- `run_segment_skip_part parts a W fuel len thr bs` is `run_segment_skip` emitting one half of
 what it emits: `parts` 1 for the gcd equations alone, 2 for the marking route alone, 0 for both.
+Adding 8 takes the strike set from the wide band alone, 16 states the certificate over records
+rather than over the window's bits, and 32 also states that each chunk's records assemble to the
+bits the emitter says they do. Each implies the ones below it.
+
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
 elab "run_segment_skip_part" pStx:num aStx:num wStx:num fStx:num lStx:num tStx:num sStx:num
