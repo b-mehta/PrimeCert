@@ -156,6 +156,63 @@ public theorem testBit_of_lor_eq {a b c j : Nat} (h : Nat.lor a b = c)
     rw [h1, Bool.false_or] at hj
     exact Or.inr hj
 
+/-! ## From one divisor at a time to the whole skipped set
+
+`segLoopK_eq_of_skip` wants the finished window to share no bit with `maskUnionK` over the skipped
+set — all of them at once. What the certificate gives, and what `segMarkK_eq_self_of_not_dvd`
+consumes, is one divisor at a time. This is the step between: `land` distributes over `lor`, so a
+union of masks that each miss the window misses it too, and the fold peels one divisor a step.
+
+With this the chain runs end to end. The certificate says no live value is a multiple of a skipped
+divisor; `mask_iff` in `SieveCorrect` turns that into each skipped divisor's mask missing the
+window; this turns the collection of those into the hypothesis the skip step takes; and
+`segLoopK_eq_of_skip` gives back that marking with the subset is marking with everything. -/
+
+/-- Disjointness survives a union: this is the whole of why the skipped divisors can be dropped
+together rather than one at a time. -/
+public theorem land_lor_eq_zero {a u m : Nat} (hu : Nat.land a u = 0) (hm : Nat.land a m = 0) :
+    Nat.land a (Nat.lor u m) = 0 := by
+  refine Nat.eq_of_testBit_eq fun i => ?_
+  -- `Nat.testBit_and` is stated with `&&&`, the hypotheses with `Nat.land`, so the notation has
+  -- to be put back before the hypothesis will rewrite.
+  have hu' : (Nat.testBit a i && Nat.testBit u i) = false := by
+    rw [← Nat.testBit_and]
+    change Nat.testBit (Nat.land a u) i = false
+    rw [hu, Nat.zero_testBit]
+  have hm' : (Nat.testBit a i && Nat.testBit m i) = false := by
+    rw [← Nat.testBit_and]
+    change Nat.testBit (Nat.land a m) i = false
+    rw [hm, Nat.zero_testBit]
+  change Nat.testBit (a &&& (u ||| m)) i = Nat.testBit 0 i
+  rw [Nat.testBit_and, Nat.testBit_or, Nat.zero_testBit, Bool.and_or_distrib_left, hu', hm']
+  rfl
+
+/-- A union of masks that each share no bit with `seg` shares none either. The hypothesis is per
+divisor and names only the ones the bitset actually holds, since the fold skips the rest. -/
+public theorem land_maskUnionK_eq_zero {sS lo Wm1 seg start : Nat} : ∀ fuel : Nat,
+    (∀ i, i < fuel → testBitK sS (start + i) = true →
+      Nat.land seg (maskOfK (valueK (start + i)) lo Wm1) = 0) →
+    Nat.land seg (maskUnionK sS lo Wm1 start fuel) = 0 := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro _
+    have h0 : maskUnionK sS lo Wm1 start 0 = 0 := rfl
+    rw [h0]
+    change seg &&& 0 = 0
+    exact Nat.and_zero seg
+  | succ k ih =>
+    intro h
+    rw [maskUnionK_succ]
+    cases hb : testBitK sS (start + k) with
+    | false =>
+      dsimp only
+      exact ih fun i hi hs => h i (Nat.lt_succ_of_lt hi) hs
+    | true =>
+      dsimp only
+      refine land_lor_eq_zero (ih fun i hi hs => h i (Nat.lt_succ_of_lt hi) hs) ?_
+      exact h k (Nat.lt_succ_self k) hb
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a record is sixteen bits wide and a slice is
