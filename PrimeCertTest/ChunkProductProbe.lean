@@ -317,6 +317,43 @@ public theorem not_dvd_of_cover_two {r₁ r₂ lo c₁ c₂ slice skipProd p j d
     rw [h1, Bool.false_or] at hj
     exact not_dvd_of_chunk hg₂ hp hp1 hj
 
+/-! ## The skipped side, and what the two of them together say
+
+The skipped side is the same machinery pointed the other way: its chunks name divisors rather than
+live values, and what is wanted of them is not that a gcd misses them but that each one divides the
+product the gcd is taken against. Otherwise a divisor could be dropped from the marking and left
+out of the product, and the gcd would come back 1 for the wrong reason.
+
+With both sides in hand the certificate amounts to one sentence, written below: a divisor the
+skipped set names does not divide a value the window names. That is the fact the skip step
+consumes, and everything else — the covers, the chains, the masks — exists to supply its
+hypotheses. -/
+
+/-- A bit of a skip chunk's assembly names a divisor that divides the skipped product. -/
+public theorem dvd_skipProd_of_testBit {recs lo cnt chunkProd skipProd i d : Nat}
+    (hchunk : prodChunkK recs lo cnt d 0 = chunkProd) (hdvd : chunkProd ∣ skipProd)
+    (hi : Nat.testBit (asmChunkK recs cnt d 0) i = true) : valK (Nat.add lo i) ∣ skipProd := by
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← hchunk]
+  exact dvd_prodChunkK_of_testBit recs lo cnt d 0 i hi
+
+/-- What the certificate says, in one statement. The two chunks are any live chunk and any skipped
+chunk; `i` and `j` are bits of their assemblies; the single gcd covers the window.
+
+Every hypothesis here is something the emitter states and the kernel checks, except the two
+divisibilities, which the multiplication chains supply a step at a time, and `hne`, which holds
+because 1 is not a divisor the sieve ever skips. -/
+public theorem skip_not_dvd_live {lrecs llo lcnt lchunk live : Nat}
+    {srecs slo scnt schunk skipProd i j d : Nat}
+    (hlchunk : prodChunkK lrecs llo lcnt d 0 = lchunk) (hlive : lchunk ∣ live)
+    (hschunk : prodChunkK srecs slo scnt d 0 = schunk) (hskip : schunk ∣ skipProd)
+    (hgcd : Nat.gcd live skipProd = 1)
+    (hne : valK (Nat.add slo i) ≠ 1)
+    (hi : Nat.testBit (asmChunkK srecs scnt d 0) i = true)
+    (hj : Nat.testBit (asmChunkK lrecs lcnt d 0) j = true) :
+    ¬ (valK (Nat.add slo i) ∣ valK (Nat.add llo j)) :=
+  not_dvd_of_one_gcd hlchunk hlive hgcd (dvd_skipProd_of_testBit hschunk hskip hi) hne hj
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
