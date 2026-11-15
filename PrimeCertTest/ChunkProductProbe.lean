@@ -250,6 +250,34 @@ example : valK (Nat.add 0 2) ∣ prodChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 0 
 -- position 2 is a record, but at `cnt = 2` the slot holding it contributes nothing.
 example : asmChunkK (0 ||| (1 <<< 16) ||| (2 <<< 32)) 2 2 0 = 3 := rfl
 
+/-! ## A slice's bits are the window's bits
+
+The certificate is stated a slice at a time, because a chunk's records are sixteen bits wide and a
+slice is what they can address. So the window's live bit at index `k * 65536 + j` has to be known
+to be the slice's live bit at `j`, where the slice is the window shifted down and masked. That is
+the lemma below, and it is the only place the slicing arithmetic appears.
+
+The emitter supplies the slice as a literal and the kernel checks the shift and mask produce it;
+this says what that literal then means about the window. -/
+
+/-- A bit of the window inside slice `k` is the matching bit of that slice. -/
+public theorem testBit_slice {seg s w j : Nat} (hj : j < w)
+    (h : Nat.testBit seg (s + j) = true) :
+    Nat.testBit (Nat.land (Nat.shiftRight seg s) (Nat.sub (Nat.shiftLeft 1 w) 1)) j = true := by
+  change Nat.testBit ((seg >>> s) &&& (1 <<< w - 1)) j = true
+  rw [Nat.testBit_and, Nat.testBit_shiftRight, Nat.shiftLeft_eq, Nat.one_mul,
+    Nat.testBit_two_pow_sub_one]
+  rw [h, decide_eq_true hj, Bool.and_true]
+
+/-- And the other way: a bit of the slice is a bit of the window. The certificate needs this
+direction to carry a gcd about the slice back to a statement about the window's live values. -/
+public theorem testBit_of_testBit_slice {seg s w j : Nat}
+    (h : Nat.testBit (Nat.land (Nat.shiftRight seg s) (Nat.sub (Nat.shiftLeft 1 w) 1)) j = true) :
+    Nat.testBit seg (s + j) = true := by
+  change Nat.testBit ((seg >>> s) &&& (1 <<< w - 1)) j = true at h
+  rw [Nat.testBit_and, Nat.testBit_shiftRight] at h
+  exact ((Bool.and_eq_true _ _).mp h).1
+
 /-! ## Marking is a set difference, and set differences collapse
 
 The other half of the chain: the sieve's marking loop is a fold, and what it folds is the set
