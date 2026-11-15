@@ -15,15 +15,24 @@ base is still correct and costs only skips. This counts the skips at each depth:
 
 The divisor counts at each depth say what the pass would cost in mask builds, and the skip counts
 say what it would give up. Counts only; what a mask build costs is for a measurement.
+
+The window start and the divisor bound are arguments, because the answer need not be the same at
+every depth: the fraction of wide divisors that strike nothing rises as the bound grows, which is
+measured, so what a shallower base gives up may rise with it too.
+
+  python3 scripts/wide_base_prefix.py                       # 10^14 + 1, divisors to 10^7
+  python3 scripts/wide_base_prefix.py 1000000000000001 31700000
 """
+
+import sys
 
 import numpy as np
 
-LO = 100000000000001
+LO = int(sys.argv[1]) if len(sys.argv) > 1 else 100000000000001
+BIG = int(sys.argv[2]) if len(sys.argv) > 2 else 10**7
 W = 4194304
 SPAN = 3 * W
 WM1 = W - 1
-BIG = 10**7
 
 
 def primes_upto(n):
@@ -50,6 +59,7 @@ depths = [
 
 wide = big > WM1 // 2
 wp = big[wide]
+print(f"window start {LO}, divisors to {BIG}")
 print(f"wide divisors: {len(wp)}")
 print()
 print(f"{'base depth':12} {'divisors marked':>16} {'wide struck':>12} {'wide skipped':>13}")
