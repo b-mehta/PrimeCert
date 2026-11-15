@@ -8387,7 +8387,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut nSkipRec := 0
       let mut nSkipCover := 0
       for k in [0:(fuel + 65536) / 65536] do
-        let (recs, cnt) := SieveEmit.liveRecords sSkip k chunk
+        let (recs, cnt) := SieveEmit.liveRecords sSkip k
         nSkipRec := nSkipRec + cnt
         let mut acc := 0
         for c in [0:(cnt + chunk - 1) / chunk] do
@@ -8477,7 +8477,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       throwError "run_segment_skip: the cover is stated against the window the route names, so \
         the route has to run; use a parts value with the route on"
     for k in [0:W / 65536] do
-      let (recs, cnt) := SieveEmit.liveRecords final k chunk
+      let (recs, cnt) := SieveEmit.liveRecords final k
       nLive := nLive + cnt
       -- The running union of this slice's chunk assemblies. Each step is a statement, so the
       -- chain ends at a literal the kernel has agreed is everything the chunks name together.

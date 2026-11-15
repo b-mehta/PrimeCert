@@ -921,23 +921,30 @@ At roughly 10645 live values a slice that is about 170 KB of record, against the
 records are bigger than the thing they describe, and whether that trade is worth making is for a
 measurement, not for this docstring.
 
-The packing is per block and joined once, for the reason `segLoopHits` is: setting each record
-into one growing number would copy it every time.
+Record `j` sits at bit `16 * j`, so a caller reaching chunk `c` of `n` records shifts down by
+`c * n * 16`; the layout owes nothing to how the packing was done.
 
-`per` is how many records a block holds, and it has to be the chunk size the caller reads back
-with, since the caller reaches chunk `c` by shifting `recs` down by `c * per * 16`. It is a
-parameter rather than a constant so that chunk size can be measured; 256 is what the first
-measurements used. -/
-public def liveRecords (seg k : Nat) (per : Nat := 256) : Nat × Nat := Id.run do
+The packing combines pairs rather than setting each record into one growing number. Setting them
+in turn copies the whole accumulator once a record, which over a slice's ten thousand records is
+the same trap `segLoopHits` was changed to avoid; halving the array joins operands of like size
+instead, and the number is copied about once a level. -/
+public def liveRecords (seg k : Nat) : Nat × Nat := Id.run do
   let slice := (seg >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
   let hits := setBitsLow slice 65536
-  let nblk := hits.size / per + 1
-  let mut acc : Array Nat := Array.replicate nblk 0
-  for j in [0:hits.size] do
-    acc := acc.modify (j / per) (· ||| ((hits[j]!) <<< (16 * (j % per))))
-  let mut packed := 0
-  for j in [0:nblk] do
-    packed := packed ||| ((acc[nblk - 1 - j]!) <<< ((nblk - 1 - j) * 16 * per))
-  return (packed, hits.size)
+  let mut vals := hits
+  let mut width := 16
+  while vals.size > 1 do
+    let mut next : Array Nat := #[]
+    for j in [0:(vals.size + 1) / 2] do
+      if 2 * j + 1 < vals.size then
+        -- The odd element out is carried up and is always last, so it is only ever the high
+        -- operand of a later pair or carried again. It is never the low one, which is what would
+        -- need it to be exactly `width` bits wide.
+        next := next.push ((vals[2 * j]!) ||| ((vals[2 * j + 1]!) <<< width))
+      else
+        next := next.push (vals[2 * j]!)
+    vals := next
+    width := width * 2
+  return (if vals.size == 0 then 0 else vals[0]!, hits.size)
 
 end SieveEmit
