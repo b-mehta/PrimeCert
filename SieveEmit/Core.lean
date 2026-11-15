@@ -101,6 +101,30 @@ public def buildMaskR (p M A B : Nat) : Nat :=
   let m := p * 2
   ((2 ^ (m * (M / m + 1)) - 1) / (2 ^ m - 1)) * ((1 <<< A) ||| (1 <<< B))
 
+/-- Pack values into fixed-width slots: value `j` lands at bit `width * j`.
+
+Combined pairwise rather than set into one growing number. Setting them in turn copies the whole
+accumulator once a value, which over a slice's records is the trap `liveRecords` and the skipped
+product were both changed to avoid; halving the array joins operands of like size, and the number
+is copied about once a level.
+
+The odd value out is carried up and is always last, so it is only ever the high operand of a later
+pair or carried again. It is never the low one, which is what would need it to be exactly as wide
+as its slot. -/
+public def packFixed (vals : Array Nat) (width : Nat) : Nat := Id.run do
+  let mut vs := vals
+  let mut w := width
+  while vs.size > 1 do
+    let mut next : Array Nat := #[]
+    for j in [0:(vs.size + 1) / 2] do
+      if 2 * j + 1 < vs.size then
+        next := next.push ((vs[2 * j]!) ||| ((vs[2 * j + 1]!) <<< w))
+      else
+        next := next.push (vs[2 * j]!)
+    vs := next
+    w := w * 2
+  return if vs.size == 0 then 0 else vs[0]!
+
 /-- `stripeSort` for 131072-bit slices: a seed's slice is its top bits above 17, its place within
 the slice the low 17, and a window of `W` positions holds `W / 131072` of them. -/
 public def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
@@ -120,23 +144,18 @@ public def stripeSortS (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
         slotAsm := slotAsm.modify (X >>> 17) (· ||| (1 <<< (X &&& 131071)))
       else
         slots := slots.modify np (·.push (8 * i + w))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 131072))
-  let mut seen := 0
-  for w in [0:nrec] do
-    seen := seen ||| (c <<< (w * len))
+  let asm := packFixed slotAsm 131072
+  let seen := packFixed (Array.replicate nrec c) len
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- Sort a batch's divisors by the slice of the segment each of their strikes lands in. Returns the
@@ -166,25 +185,20 @@ public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × N
         slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
       else
         slots := slots.modify np (·.push (8 * i + w))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  let asm := packFixed slotAsm 65536
   -- A tally bit is set exactly when the slice names that position, once per strike, so the whole
   -- tally is the slice itself shifted `nrec` times rather than a bit set per record.
-  let mut seen := 0
-  for w in [0:nrec] do
-    seen := seen ||| (c <<< (w * len))
+  let seen := packFixed (Array.replicate nrec c) len
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- `stripeSort` over sixteen lanes a divisor, the twin of `stripeBatchHK`.
@@ -213,20 +227,17 @@ public def stripeSortH (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat :
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  let mut seen := 0
-  for w in [0:16] do
-    seen := seen ||| (c <<< (w * len))
+  let seen := packFixed (Array.replicate 16 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- `stripeSort` over two lanes a divisor, the twin of `stripeBatchLK` at `lw = 1`.
@@ -254,20 +265,17 @@ public def stripeSortOne (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  let mut seen := 0
-  for w in [0:2] do
-    seen := seen ||| (c <<< (w * len))
+  let seen := packFixed (Array.replicate 2 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- `stripeSort` over thirty-two lanes a divisor, the twin of `stripeBatchXK`. The lane takes five
@@ -292,20 +300,17 @@ public def stripeSortX (s lo Wm1 start len W : Nat) : Nat × Nat × Nat × Nat :
   let mut asm := 0
   for k in [0:np] do
     asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
-  let mut seen := 0
-  for w in [0:32] do
-    seen := seen ||| (c <<< (w * len))
+  let seen := packFixed (Array.replicate 32 c) len
   let mut slotW := 16
   for k in [0:np + 1] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- `stripeSort` with the records whose strike falls past the window left out, and the tally
@@ -334,20 +339,19 @@ public def stripeSortW (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
         slotAsm := slotAsm.modify (X >>> 16) (· ||| (1 <<< (X &&& 65535)))
         -- The tally bit of a record that is kept, so the two sides ask for the same set.
         seen := seen ||| (1 <<< (i + w * len))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  -- `seen` is accumulated above, a bit a kept record, rather than being the slice repeated, so
+  -- unlike the other variants it is left as it is.
+  let asm := packFixed slotAsm 65536
   let mut slotW := 16
   for k in [0:np] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- `stripeSort` emitting only the records whose strike lands inside the window, with the last of
@@ -399,20 +403,18 @@ public def stripeSortG (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × 
               let w2 := q + 2 * j2
               if w2 ≥ w then
                 seen := seen ||| (1 <<< (i + w2 * len))
-  let mut asm := 0
-  for k in [0:np] do
-    asm := asm ||| ((slotAsm[k]!) <<< (k * 65536))
+  -- `seen` is accumulated above, a bit a kept record, so it is left as it is.
+  let asm := packFixed slotAsm 65536
   let mut slotW := 16
   for k in [0:np] do
     slotW := Nat.max slotW (16 * (slots[k]!).size)
-  let mut ls := 0
-  let mut cs := 0
+  let mut packedSlots : Array Nat := #[]
+  let mut counts : Array Nat := #[]
   for k in [0:np] do
-    let mut packed := 0
-    for j in [0:(slots[k]!).size] do
-      packed := packed ||| ((slots[k]!)[j]! <<< (16 * j))
-    ls := ls ||| (packed <<< (slotW * k))
-    cs := cs ||| ((slots[k]!).size <<< (16 * k))
+    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    counts := counts.push ((slots[k]!).size)
+  let ls := packFixed packedSlots slotW
+  let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
 
 /-- Twin of `segLoopStripeK`. -/
