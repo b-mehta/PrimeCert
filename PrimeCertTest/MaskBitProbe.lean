@@ -162,13 +162,118 @@ public theorem dvd_valueK_of_testBit_buildMaskK {p M A B n i : Nat}
 every divisor the sieve scans is, and the two checks below are the shape of that argument at a
 concrete `p`. Proving it for all coprime `p` is the next step and wants no new machinery. -/
 
+/-- Indexing and valuing are inverse on the numbers coprime to 6, which is what makes the seeds
+name `5p` and `7p` rather than whatever lies nearest. Stated by the residue rather than by
+`Nat.Coprime`, so that it needs core only and `omega` can see the division. -/
+public theorem valueK_indexK (q : Nat) (h : q % 6 = 1 ∨ q % 6 = 5) : valueK (indexK q) = q := by
+  change (q - 1) / 3 * 3 + 1 + (q - 1) / 3 % 2 = q
+  omega
+
+/-- The first seed names a multiple of `p`, for any `p` coprime to 6. -/
+public theorem dvd_valueK_seed_five {p : Nat} (h : p % 6 = 1 ∨ p % 6 = 5) :
+    p ∣ valueK (indexK (p * 5)) := by
+  rw [valueK_indexK _ (by omega)]
+  exact ⟨5, rfl⟩
+
+/-- The second seed names a multiple of `p`, for any `p` coprime to 6. -/
+public theorem dvd_valueK_seed_seven {p : Nat} (h : p % 6 = 1 ∨ p % 6 = 5) :
+    p ∣ valueK (indexK (p * 7)) := by
+  rw [valueK_indexK _ (by omega)]
+  exact ⟨7, rfl⟩
+
+/-- Both hypotheses discharged from the residue alone: every bit of `p`'s mask names a multiple of
+`p`, for every `p` the sieve scans. -/
+public theorem dvd_valueK_of_testBit_mask {p M n i : Nat} (hp : p % 6 = 1 ∨ p % 6 = 5)
+    (h : Nat.testBit (buildMaskK p M (indexK (p * 5)) (indexK (p * 7)) n) i = true) :
+    p ∣ valueK i :=
+  dvd_valueK_of_testBit_buildMaskK (dvd_valueK_seed_five hp) (dvd_valueK_seed_seven hp) h
+
 example : valueK (indexK (5 * 5)) = 25 := rfl
 example : valueK (indexK (5 * 7)) = 35 := rfl
+
+/-! ## The window's own seeds
+
+A segment's mask is not seeded with `indexK (5p)` itself but with `firstLocK (indexK (5p)) lo 2p`,
+the first offset inside the window that lands in the same class modulo `2p`. So the bits are local
+offsets and the value at offset `i` is `valueK (lo + i)`, which the lemmas above do not reach.
+
+What closes the distance is that `valueK` only cares about the index modulo `2p`, as far as `p`
+dividing it goes: an even step on the index is six times that step on the value, so a whole turn of
+`2p` adds `6p`. Hence divisibility can be read off the residue, and `firstLocK` was built to put
+`lo + i` in the right residue. -/
+
+/-- Reducing the index modulo `2p` leaves `valueK` the same up to a multiple of `p`. -/
+public theorem valueK_eq_mod (p x : Nat) :
+    valueK x = valueK (x % (2 * p)) + 6 * (p * (x / (2 * p))) := by
+  have hassoc : 2 * p * (x / (2 * p)) = 2 * (p * (x / (2 * p))) := Nat.mul_assoc 2 p _
+  have hx : x = x % (2 * p) + 2 * (p * (x / (2 * p))) := by
+    rw [← hassoc]
+    exact (Nat.mod_add_div x (2 * p)).symm
+  calc valueK x = valueK (x % (2 * p) + 2 * (p * (x / (2 * p)))) := by rw [← hx]
+    _ = valueK (x % (2 * p)) + 6 * (p * (x / (2 * p))) := valueK_add_two_mul _ _
+
+/-- So `p` divides a value exactly when it divides the value of the reduced index. -/
+public theorem dvd_valueK_iff_mod (p x : Nat) : p ∣ valueK x ↔ p ∣ valueK (x % (2 * p)) := by
+  have hd : p ∣ 6 * (p * (x / (2 * p))) := ⟨6 * (x / (2 * p)), by
+    simp only [Nat.mul_comm, Nat.mul_assoc]⟩
+  rw [valueK_eq_mod p x]
+  constructor
+  · intro h
+    rw [Nat.add_comm] at h
+    exact (Nat.dvd_add_right hd).mp h
+  · intro h
+    exact Nat.dvd_add h hd
+
+/-- Local copy of `firstLocK`, which lives in `PrimeCert/SegmentedSieve.lean` and so is out of
+reach here. Same arithmetic, so the two are `rfl` when this moves across. -/
+@[expose] public def firstLocK (A lo m : Nat) : Nat :=
+  Nat.mod (Nat.sub (Nat.add A m) (Nat.mod lo m)) m
+
+/-- `firstLocK` does what its name says: the offset it returns puts `lo + it` in `A`'s class. -/
+public theorem firstLocK_mod (A lo m : Nat) (hm : 0 < m) :
+    (lo + firstLocK A lo m) % m = A % m := by
+  have hle : lo % m ≤ A + m :=
+    Nat.le_trans (Nat.le_of_lt (Nat.mod_lt _ hm)) (Nat.le_add_left m A)
+  change (lo + (A + m - lo % m) % m) % m = A % m
+  rw [Nat.add_mod_mod, ← Nat.mod_add_mod, Nat.add_sub_cancel' hle, Nat.add_mod_right]
 
 -- Composed at a concrete divisor: any bit of 5's mask names a multiple of 5, and the two seed
 -- hypotheses are discharged by reduction.
 example (i : Nat) (h : Nat.testBit (buildMaskK 5 40 (indexK 25) (indexK 35) 3) i = true) :
     5 ∣ valueK i :=
   dvd_valueK_of_testBit_buildMaskK ⟨5, rfl⟩ ⟨7, rfl⟩ h
+
+/-- The segment's own statement, and the one the skip argument wants: every bit a window mask sets
+names a multiple of `p`, where the value at local offset `i` is `valueK (lo + i)`.
+
+So if a divisor's mask and the finished window share a bit, that bit's value is both live and a
+multiple of the divisor. The certificate rules the second out by a gcd, so the masks of the skipped
+divisors meet the window in nothing, and they may be dropped. -/
+public theorem dvd_valueK_of_testBit_segMask {p M lo n i : Nat} (hp : p % 6 = 1 ∨ p % 6 = 5)
+    (hpos : 0 < p)
+    (h : Nat.testBit (buildMaskK p M (firstLocK (indexK (p * 5)) lo (p * 2))
+      (firstLocK (indexK (p * 7)) lo (p * 2)) n) i = true) :
+    p ∣ valueK (lo + i) := by
+  have hm : p * 2 = 2 * p := Nat.mul_comm p 2
+  obtain ⟨t, ht⟩ := testBit_buildMaskK p M _ _ n i h
+  have hstep : ∀ A : Nat, p ∣ valueK A →
+      p ∣ valueK (lo + (firstLocK A lo (p * 2) + 2 * p * t)) := by
+    intro A hA
+    have hassoc : lo + (firstLocK A lo (p * 2) + 2 * p * t)
+        = lo + firstLocK A lo (p * 2) + 2 * (p * t) := by
+      rw [Nat.mul_assoc]
+      omega
+    rw [hassoc]
+    refine dvd_valueK_of_progression ?_
+    rw [dvd_valueK_iff_mod, ← hm, firstLocK_mod A lo (p * 2) (by omega), hm,
+      ← dvd_valueK_iff_mod]
+    exact hA
+  cases ht with
+  | inl hl =>
+    rw [hl]
+    exact hstep _ (dvd_valueK_seed_five hp)
+  | inr hr =>
+    rw [hr]
+    exact hstep _ (dvd_valueK_seed_seven hp)
 
 end PrimeCert.SegTune.MaskBitProbe
