@@ -13,9 +13,10 @@ public meta import PrimeCert.SegmentedSieve
 The settled shape moved to a window at `10^16 + 1` with divisors to `10^8`: chunk 1024, one gcd,
 and the sweep starting at the eight-strike band, at ten times the divisors.
 
-`parts 19907` rather than the 3523 this file first carried. Sweeping the four-strike band and then
-the eight-strike one each won on both kernel and processor at `10^14`, so the target run should
-ask about the shape that won rather than the one that was settled when the file was written.
+`parts 52675` rather than the 3523 this file first carried. Sweeping the four-strike band and then
+the eight-strike one each won on both kernel and processor at `10^14`, and building the base to
+`Wm1/128` took the marking pass from 24.2 s to 2.44 s on top of that, so the target run should ask
+about the shape that won rather than the one settled when the file was written.
 
 What that shape gives against the production route is not yet a measured number: `parts 19907` has
 only ever been run against `parts 3523`, which was itself run against the route in a different
@@ -42,6 +43,6 @@ namespace PrimeCert.SegTune.ZZBB_Target1e16Skip
 run_sieve 100000000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 3523 10000000000000001 4194304 33333333 8192 0 65536 100000000
+run_segment_skip_part 52675 10000000000000001 4194304 33333333 8192 0 65536 100000000
 
 end PrimeCert.SegTune.ZZBB_Target1e16Skip
