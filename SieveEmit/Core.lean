@@ -909,11 +909,15 @@ records are bigger than the thing they describe, and whether that trade is worth
 measurement, not for this docstring.
 
 The packing is per block and joined once, for the reason `segLoopHits` is: setting each record
-into one growing number would copy it every time. -/
-public def liveRecords (seg k : Nat) : Nat × Nat := Id.run do
+into one growing number would copy it every time.
+
+`per` is how many records a block holds, and it has to be the chunk size the caller reads back
+with, since the caller reaches chunk `c` by shifting `recs` down by `c * per * 16`. It is a
+parameter rather than a constant so that chunk size can be measured; 256 is what the first
+measurements used. -/
+public def liveRecords (seg k : Nat) (per : Nat := 256) : Nat × Nat := Id.run do
   let slice := (seg >>> (k * 65536)) &&& ((1 <<< 65536) - 1)
   let hits := setBitsLow slice 65536
-  let per := 256
   let nblk := hits.size / per + 1
   let mut acc : Array Nat := Array.replicate nblk 0
   for j in [0:hits.size] do
