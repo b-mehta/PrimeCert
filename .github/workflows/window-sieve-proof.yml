@@ -6,6 +6,8 @@ on:
       - 'ci/window-sieve-proof'
       # A second branch so a check can run while `ci/window-sieve-proof` holds whatever it holds.
       - 'ci/sieve-check'
+      # And a pattern, so each check gets a branch of its own and none of them is ever rewritten.
+      - 'ci/check-**'
   workflow_dispatch:
 
 jobs:
