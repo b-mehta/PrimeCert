@@ -1,8 +1,9 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to ci/sieve-bench.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-2
+1
 
-# Does a base sieve build at the bound a window at 10^17 needs, and what does it cost beside the
-# 10^8 base every 10^16 case already builds? Both arms in one job, so they share a runner.
-S8_Sieve1e8
-S9_Sieve1e17Base
+# Does the proved skip design complete a window at 10^17, and at what peak? One round, because
+# the question is whether it finishes at all; a time worth comparing needs a second round and a
+# baseline arm beside it. run.sh fails a case at 14 GB, so running out of memory is an answer
+# rather than a crash.
+ZZBP_Target1e17Skip

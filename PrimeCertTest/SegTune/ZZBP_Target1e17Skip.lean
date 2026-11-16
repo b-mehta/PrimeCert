@@ -34,10 +34,12 @@ Lines to read: `marked … skipped … of …` for the counts the script predict
 for the window theorem. Peak matters more than usual here: the skip design was at 7.47 GB partway
 through `10^16`, so whether this fits at all is part of the answer.
 
-The batch length stays at 8192, the length everything else was measured at, so that this moves
-one thing. Rerun at 32768 if that change lands.
+The batch length is 65536, which won at `10^16` on kernel time over 8192 and 32768. Peak is the
+reason it matters here rather than time: at `10^16` the same design peaked 9.92 GiB at 8192 and
+6.70 GiB at 32768, and `run.sh` fails a case at 14 GB.
 
-Expensive, and the `3.163 * 10^8` base sieve comes first.
+The `3.163 * 10^8` base sieve comes first, and on its own it is 86 to 88 processor seconds and
+6.41 GiB (`S9_Sieve1e17Base`, run 43820571523).
 
 Throwaway. -/
 
@@ -46,7 +48,7 @@ namespace PrimeCert.SegTune.ZZBP_Target1e17Skip
 run_sieve 316300000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 183747 100000000000000001 4194304 105433333 8192 0 65536 316300000
+run_segment_skip_part 183747 100000000000000001 4194304 105433333 65536 0 65536 316300000
 
 #print axioms segEqAll_100000000000000001_4194304_105433333
 
