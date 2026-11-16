@@ -6465,6 +6465,149 @@ public theorem dvd_prodChunkK (recs lo cnt : Nat) :
     · exact Nat.dvd_mul_right_of_dvd (ih off o h1 hc h3) _
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) o (by omega) (by omega) h3) _
 
+/-- The product of the values named by the four sixteen-bit records packed in the word `w`. -/
+@[expose] public noncomputable def quadK (lo w : Nat) : Nat :=
+  Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land w 65535)))
+      (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 16) 65535))))
+    (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 32) 65535)))
+      (valueK (Nat.add lo (Nat.shiftRight w 48))))
+
+/-- The product of the values named by the `4 * 2 ^ e` records of `recs` from slot `4 * off`, as a
+balanced tree over 64-bit words of four records each. Every slot counts. -/
+@[expose] public noncomputable def prodQuadK (recs lo e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => quadK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 64)) 18446744073709551615))
+    (fun k ih o => Nat.mul (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+theorem field_quad (recs o j : Nat) (hj : j < 4) :
+    (((recs >>> (o * 64)) &&& (2 ^ 64 - 1)) >>> (16 * j)) &&& (2 ^ 16 - 1) =
+      (recs >>> ((4 * o + j) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 16 * j + t < 64 := by omega
+    have h2 : o * 64 + (16 * j + t) = (4 * o + j) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · simp [ht]
+
+theorem field_quad_top (recs o : Nat) :
+    ((recs >>> (o * 64)) &&& (2 ^ 64 - 1)) >>> 48 =
+      (recs >>> ((4 * o + 3) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 48 + t < 64 := by omega
+    have h2 : o * 64 + (48 + t) = (4 * o + 3) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · have h1 : ¬ 48 + t < 64 := by omega
+    simp [ht, h1]
+
+/-- Each of the four slots of word `o` divides that word's product. -/
+theorem dvd_quadK (recs lo o s : Nat) (h1 : 4 * o ≤ s) (h2 : s < 4 * o + 4) :
+    valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535)) ∣
+      quadK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 64)) 18446744073709551615) := by
+  have hf : ∀ j, j < 3 → Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 64))
+      18446744073709551615) (16 * j)) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (4 * o + j) 16)) 65535 :=
+    fun j hj => field_quad recs o j (by omega)
+  have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 64))
+      18446744073709551615) 48 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (4 * o + 3) 16)) 65535 := field_quad_top recs o
+  have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul o 64)) 18446744073709551615) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (4 * o + 0) 16)) 65535 := hf 0 (by omega)
+  have h16 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 64))
+      18446744073709551615) 16) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (4 * o + 1) 16)) 65535 := hf 1 (by omega)
+  have h32 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 64))
+      18446744073709551615) 32) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (4 * o + 2) 16)) 65535 := hf 2 (by omega)
+  unfold quadK
+  rw [h0, h16, h32, ht]
+  rcases (by omega : s = 4 * o ∨ s = 4 * o + 1 ∨ s = 4 * o + 2 ∨ s = 4 * o + 3) with
+    hs | hs | hs | hs <;> subst hs
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _
+
+/-- Every slot in range divides the product. -/
+public theorem dvd_prodQuadK (recs lo : Nat) :
+    ∀ e off s, 4 * off ≤ s → s < 4 * (off + 2 ^ e) →
+      valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535))
+        ∣ prodQuadK recs lo e off := by
+  intro e
+  induction e with
+  | zero =>
+    intro off s h1 h2
+    have h2' : s < 4 * off + 4 := by
+      change s < 4 * (off + 1) at h2
+      omega
+    exact dvd_quadK recs lo off s h1 h2'
+  | succ k ih =>
+    intro off s h1 h2
+    have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
+      rw [Nat.pow_succ, Nat.mul_two]
+    change _ ∣ Nat.mul (prodQuadK recs lo k off) (prodQuadK recs lo k (off + 2 ^ k))
+    by_cases hc : s < 4 * (off + 2 ^ k)
+    · exact Nat.dvd_mul_right_of_dvd (ih off s h1 hc) _
+    · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
+
+/-- A set bit of a chunk's assembly is the position some slot in range names. -/
+public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
+    ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
+      ∃ s, off ≤ s ∧ s < off + 2 ^ d ∧
+        i = Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535 := by
+  intro d
+  induction d with
+  | zero =>
+    intro off i hb
+    have ha : asmChunkK recs cnt 0 off = (Nat.blt off cnt).rec 0
+        (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul off 16)) 65535)) := rfl
+    rw [ha] at hb
+    cases hblt : Nat.blt off cnt with
+    | false =>
+      rw [hblt] at hb
+      simp at hb
+    | true =>
+      rw [hblt] at hb
+      refine ⟨off, Nat.le_refl _, by simp, ?_⟩
+      change Nat.testBit (1 <<< _) i = true at hb
+      rw [Nat.one_shiftLeft, Nat.testBit_two_pow] at hb
+      exact (of_decide_eq_true hb).symm
+  | succ k ih =>
+    intro off i hb
+    have ha : asmChunkK recs cnt (k + 1) off = Nat.lor (asmChunkK recs cnt k off)
+        (asmChunkK recs cnt k (Nat.add off (Nat.pow 2 k))) := rfl
+    rw [ha] at hb
+    change Nat.testBit (asmChunkK recs cnt k off |||
+      asmChunkK recs cnt k (Nat.add off (Nat.pow 2 k))) i = true at hb
+    rw [Nat.testBit_or] at hb
+    have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
+      rw [Nat.pow_succ, Nat.mul_two]
+    cases h1 : Nat.testBit (asmChunkK recs cnt k off) i with
+    | true =>
+      obtain ⟨s, hs1, hs2, hs3⟩ := ih off i h1
+      exact ⟨s, hs1, by omega, hs3⟩
+    | false =>
+      rw [h1, Bool.false_or] at hb
+      obtain ⟨s, hs1, hs2, hs3⟩ := ih (Nat.add off (Nat.pow 2 k)) i hb
+      change off + 2 ^ k ≤ s at hs1
+      change s < off + 2 ^ k + 2 ^ k at hs2
+      exact ⟨s, by omega, by omega, hs3⟩
+
+/-- A bit a chunk assembles to names a value dividing the quad product over the same records,
+given the quad tree spans the assembly's slots. -/
+public theorem dvd_prodQuadK_of_testBit {recs lo cnt d e i : Nat}
+    (hde : Nat.ble (2 ^ d) (4 * 2 ^ e) = true)
+    (hb : Nat.testBit (asmChunkK recs cnt d 0) i = true) :
+    valueK (Nat.add lo i) ∣ prodQuadK recs lo e 0 := by
+  obtain ⟨s, -, hs2, rfl⟩ := slot_of_testBit_asmChunkK recs cnt d 0 i hb
+  have hle := Nat.le_of_ble_eq_true hde
+  exact dvd_prodQuadK recs lo e 0 s (Nat.zero_le _) (by omega)
+
 /-- If two numbers are coprime, nothing above 1 divides both. -/
 public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
     (h : Nat.gcd a b = 1) (hpa : p ∣ a) (hpb : p ∣ b) : p = 1 := by

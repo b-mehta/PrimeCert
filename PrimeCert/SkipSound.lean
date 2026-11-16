@@ -461,6 +461,18 @@ public theorem bitsDvd_chunk {recs L cnt d off asm pv D : Nat}
   rw [← Nat.eq_of_beq_eq_true hprod]
   exact dvd_prodChunkK_of_testBit recs L cnt d off j hj
 
+/-- `bitsDvd_chunk` for a chunk whose product is stated as `prodQuadK`, four records a leaf. -/
+public theorem bitsDvd_chunkQ {recs L cnt d e asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d 0) asm = true)
+    (hprod : Nat.beq (prodQuadK recs L e 0) pv = true) (hdvd : pv ∣ D)
+    (hde : Nat.ble (2 ^ d) (4 * 2 ^ e) = true) :
+    BitsDvd asm L D := by
+  intro j hj
+  rw [← Nat.eq_of_beq_eq_true hasm] at hj
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← Nat.eq_of_beq_eq_true hprod]
+  exact dvd_prodQuadK_of_testBit hde hj
+
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=
   Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).1 hc
