@@ -39,7 +39,9 @@ open Nat
 /-- The loop's bit test agrees with `Nat.testBit`. -/
 @[grind =]
 public theorem testBitK_eq_testBit {b i : ℕ} : testBitK b i = b.testBit i := by
-  grind [testBitK, shiftLeft_eq', one_shiftLeft, land_eq, and_two_pow, Nat.ble_eq]
+  -- `Nat.land_comm` because this branch swapped `testBitK`'s operand order, which `grind` saw
+  -- through on v4.33 and does not on v4.36.
+  grind [testBitK, shiftLeft_eq', one_shiftLeft, land_eq, and_two_pow, Nat.ble_eq, Nat.land_comm]
 
 lemma initK_eq {M : ℕ} : initK M = (2 ^ M - 1) <<< 1 := by
   simp [initK, Nat.shiftLeft_eq]

@@ -6061,7 +6061,7 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     · right
       obtain ⟨c, rfl⟩ : ∃ c, k = 7 + 6 * c := ⟨(k - 7) / 6, by lia⟩
       have hval : value (index a + j) = value (index (q * 7)) + 6 * (q * c) := by
-        rw [value_startB hq6]
+        rw [value_startB (coprime6_mod.mpr hq6)]
         lia
       have hstep : index a + j = index (q * 7) + 2 * q * c := by
         have := value_add_two_mul (k := index (q * 7)) (m := q * c)
@@ -6076,7 +6076,7 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     · left
       obtain ⟨c, rfl⟩ : ∃ c, k = 5 + 6 * c := ⟨(k - 5) / 6, by lia⟩
       have hval : value (index a + j) = value (index (q * 5)) + 6 * (q * c) := by
-        rw [value_startA hq6]
+        rw [value_startA (coprime6_mod.mpr hq6)]
         lia
       have hstep : index a + j = index (q * 5) + 2 * q * c := by
         have := value_add_two_mul (k := index (q * 5)) (m := q * c)

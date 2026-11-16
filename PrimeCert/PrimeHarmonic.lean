@@ -205,9 +205,6 @@ public theorem recipSum_mem_Icc {S : ℕ} (s start len step : ℕ) (hS : S ≠ 0
 
 /-! ## Identifying the scanned sum with a sum over primes -/
 
-theorem Sieve.IsSieve.mono {N M s : ℕ} (h : Sieve.IsSieve N s) (hM : M ≤ N) :
-    Sieve.IsSieve M s := fun t ht hv ↦ h t ht (hv.trans hM)
-
 theorem recipSum_eq_Icc (s len : ℕ) :
     recipSum s 1 len 1
       = ∑ t ∈ Finset.Icc 1 len, if s.testBit t then (Sieve.value t : ℚ)⁻¹ else 0 := by
