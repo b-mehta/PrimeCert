@@ -154,6 +154,18 @@ for round in $(seq 1 "$rounds"); do
     # The skip set's certificate, one `Nat.gcd` a slice. Reported apart from the batch lemmas
     # because that design trades the two against each other, so a single total hides the point.
     gcds=$(ksum "$out" "skipGcd_")
+    # The record certificate, in the groups the emitter names it in. Two ideas were built and
+    # measured against this cost before anyone knew which part of it was which, so the parts are
+    # reported from here on. `skipRec_` is a chunk of skipped divisors multiplied into one number,
+    # `skipMul_` a step of the tree that combines those chunks, and `skipCover_`, `skipAsm_` and
+    # `skipBlock_` say the records name exactly the skipped set. `recProd_` and `liveMul_` are the
+    # same two shapes on the live side, and `liveGcd` is the coprimality the whole thing is for.
+    skiprec=$(ksum "$out" "skipRec_")
+    skipmul=$(ksum "$out" "skipMul_")
+    skipcov=$(ksum "$out" "skip\(Cover\|Asm\|Block\)_")
+    liverec=$(ksum "$out" "recProd_")
+    livemul=$(ksum "$out" "liveMul_")
+    livegcd=$(ksum "$out" "liveGcd")
     elab=$(esum "$out" "Elab.command")
     basecmd=$(cmdsum "$out" "run_sieve")
     wincmd=$(cmdsum "$out" "run_segment")
@@ -176,6 +188,9 @@ for round in $(seq 1 "$rounds"); do
     echo "round $round | ${TAG}$f | kernel total ${total}s | batch lemmas ${steps}s | sorted" \
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
       "skip gcds ${gcds}s |" \
+      "cert skip records ${skiprec}s | cert skip chain ${skipmul}s |" \
+      "cert skip cover ${skipcov}s | cert live records ${liverec}s |" \
+      "cert live chain ${livemul}s | cert live gcd ${livegcd}s |" \
       "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
       "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \
       "segLoopC ${twinms}ms | gcd window ${gwin}ms | gcd primorial ${gpri}ms |" \

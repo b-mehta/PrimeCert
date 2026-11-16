@@ -1,9 +1,8 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to ci/sieve-bench.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-3
+2
 
-# The one-round sweep over 1, 2, 4 and 8 pieces put every arm inside 7.4 kernel seconds of the
-# others, which one round cannot separate from noise. These are the two ends of that spread, three
-# rounds each, alternating, so the comparison carries a range rather than a single number.
-SP_Pieces1
-SP_Pieces4
+# Where does the record certificate's time go? Two ideas were built against that cost before
+# anyone knew which part of it was which, and both lost. run.sh now reports the certificate in
+# six named groups, so this run says which of them the 189 seconds at 10^16 is.
+ZZBB_Target1e16Skip
