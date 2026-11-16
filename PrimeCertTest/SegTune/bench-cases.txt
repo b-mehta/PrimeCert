@@ -2,8 +2,11 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 2
 
-# The certificate's time splits about evenly between its chunk products and its cover, 59 s and
-# 58 s at 10^16. The cover is three different statements under one name, so this run reports them
-# apart: the or that accumulates a chunk's bits, the assembly said separately, and the shift that
-# cuts the whole skipped bitset down to one block.
-ZZBB_Target1e16Skip
+# The certificate's cover is 48.9 kernel seconds at 10^16 and 48.5 of those are one statement,
+# skipAsm_, which asks the kernel to assemble a chunk's bits from its records. The chunk size is
+# already a flag and has never been swept against that group, because the group was only named
+# tonight. Four sizes, everything else identical, CH_Chunk1024 the settled one.
+CH_Chunk256
+CH_Chunk512
+CH_Chunk1024
+CH_Chunk2048
