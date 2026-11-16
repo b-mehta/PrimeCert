@@ -6596,7 +6596,7 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
             (Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + j) 16)) 65535)) := rfl
       rw [hu, hb]
     have ha : asmChunkK recs cnt 2 (4 * off) =
-        Nat.lor (Nat.lor (asmChunkK recs cnt 0 (4 * off)) (asmChunkK recs cnt 0 (4 * off + 1)))
+        Nat.lor (Nat.lor (asmChunkK recs cnt 0 (4 * off + 0)) (asmChunkK recs cnt 0 (4 * off + 1)))
           (Nat.lor (asmChunkK recs cnt 0 (4 * off + 2))
             (asmChunkK recs cnt 0 (4 * off + 3))) := rfl
     -- The four fields of the word, in the same four shapes `dvd_quadK` takes them in.
@@ -6621,17 +6621,17 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     rw [h0, h16, h32, ht]
   | succ k ih =>
     intro off hc
-    have hpow : (2 : Nat) ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
+    -- Everything below is written with `+` and `^` rather than `Nat.add` and `Nat.pow`, because
+    -- omega reads the two spellings as different atoms. The `rfl`s bridge them.
+    have hpow : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
+    have h4 : 2 ^ (k + 2) = 2 ^ k * 4 := by rw [Nat.pow_add]; norm_num
     have hq : asmQuadK recs (k + 1) off =
-        Nat.lor (asmQuadK recs k off) (asmQuadK recs k (Nat.add off (Nat.pow 2 k))) := rfl
+        Nat.lor (asmQuadK recs k off) (asmQuadK recs k (off + 2 ^ k)) := rfl
     have ha : asmChunkK recs cnt (k + 3) (4 * off) =
         Nat.lor (asmChunkK recs cnt (k + 2) (4 * off))
-          (asmChunkK recs cnt (k + 2) (Nat.add (4 * off) (Nat.pow 2 (k + 2)))) := rfl
-    have hoff : Nat.add (4 * off) (Nat.pow 2 (k + 2)) = 4 * (Nat.add off (Nat.pow 2 k)) := by
-      simp only [Nat.add_eq, Nat.pow_succ]
-      omega
-    rw [hq, ha, hoff, ih off (by omega), ih (Nat.add off (Nat.pow 2 k)) (by
-      simp only [Nat.add_eq] at *; omega)]
+          (asmChunkK recs cnt (k + 2) (4 * off + 2 ^ (k + 2))) := rfl
+    have hoff : 4 * off + 2 ^ (k + 2) = 4 * (off + 2 ^ k) := by rw [h4]; omega
+    rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
 
 /-- A set bit of a chunk's assembly is the position some slot in range names. -/
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
