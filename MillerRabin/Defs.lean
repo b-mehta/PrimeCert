@@ -59,7 +59,7 @@ noncomputable def mirimanoffK (p : ℕ) : Bool :=
 open PrimeCert
 
 theorem wieferich_mirimanoff₁ : ∀ n < 6000, n % 6 = 1 →
-    (wieferichK n).not'.or' (mirimanoffK n).not' :=
+    (wieferichK n).not.or (mirimanoffK n).not :=
   forallB_of_mod _ (start := 1) (len := 1000) (step := 6) (by quickRfl)
 
 theorem wieferich₅ : ∀ n < 6000, n % 6 = 5 → !wieferichK n :=

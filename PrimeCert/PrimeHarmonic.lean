@@ -232,7 +232,7 @@ public theorem recipSum_eq_primeSum {N s len : ℕ} (hs : Sieve.IsSieve N s)
     simp only [Finset.mem_filter, Finset.mem_Icc] at hp ⊢
     obtain ⟨⟨h5, hN⟩, hprime⟩ := hp
     have hc : p % 6 = 1 ∨ p % 6 = 5 := hprime.mod_six_eq_one_or_five (by omega) (by omega)
-    have hv : Sieve.value (Sieve.index p) = p := Sieve.value_index hc
+    have hv : Sieve.value (Sieve.index p) = p := Sieve.value_index (Sieve.coprime6_mod.mpr hc)
     have h1 : 1 ≤ Sieve.index p := by
       rcases Nat.eq_zero_or_pos (Sieve.index p) with h | h
       · rw [h] at hv
@@ -254,7 +254,8 @@ public theorem recipSum_eq_primeSum {N s len : ℕ} (hs : Sieve.IsSieve N s)
     exact Sieve.index_value t
   · intro p hp
     simp only [Finset.mem_filter, Finset.mem_Icc] at hp
-    exact Sieve.value_index (hp.2.mod_six_eq_one_or_five (by omega) (by omega))
+    exact Sieve.value_index
+      (Sieve.coprime6_mod.mpr (hp.2.mod_six_eq_one_or_five (by omega) (by omega)))
   · intro t _
     rfl
 

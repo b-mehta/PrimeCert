@@ -5861,7 +5861,7 @@ public theorem index_mul_seven {p : ℕ} (hp : p % 6 = 1 ∨ p % 6 = 5) :
 divisor's own second progression. -/
 public theorem treeDiv2EK_eq {t : Lvl7} {lo Wm1 k : Nat} :
     treeDiv2EK t lo Wm1 k = treeDiv2K t lo Wm1 (valueK k) := by
-  have hp : (value k) % 6 = 1 ∨ (value k) % 6 = 5 := coprime6_mod.mp value_coprime6
+  have hp : (value k) % 6 = 1 ∨ (value k) % 6 = 5 := coprime6_mod.mp (value_coprime6 k)
   have hpos : 0 < value k * 2 := by
     have h1 : 1 ≤ value k := by grind [value]
     lia
@@ -6023,11 +6023,11 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     (ha : a % 6 = 1 ∨ a % 6 = 5) (hW : W - 1 < 2 ^ 32) (hB1 : 1 ≤ B) (h7B : 7 * B ≤ a) :
     SegmentSound s B a W := by
   intro j hj hbit q hqB hq hdvd
-  have hlo : value (index a) = a := value_index ha
+  have hlo : value (index a) = a := value_index (coprime6_mod.mpr ha)
   have hjval : a ≤ value (index a + j) := by
     have := value_strictMono.monotone (Nat.le_add_right (index a) j)
     lia
-  have hcop : Nat.Coprime (value (index a + j)) 6 := value_coprime6
+  have hcop : Nat.Coprime (value (index a + j)) 6 := value_coprime6 _
   have hqcop : Nat.Coprime q 6 := Nat.Coprime.coprime_dvd_left hdvd hcop
   have hq6 : q % 6 = 1 ∨ q % 6 = 5 := coprime6_mod.mp hqcop
   have hq2 : 2 ≤ q := hq.two_le
@@ -6042,7 +6042,7 @@ public theorem segmentSound_of {s B a W : Nat} (hs : IsSieve B s)
     lia
   have hk5 : 5 ≤ k := by lia
   -- the base index of `q`, and its bit in the base sieve
-  have hvq : value (index q) = q := value_index hq6
+  have hvq : value (index q) = q := value_index (coprime6_mod.mpr hq6)
   have ht0 : index q ≠ 0 := by
     unfold index
     lia
@@ -6123,8 +6123,8 @@ public theorem dvd_of_testBit_mask {p lo Wm1 j : Nat} (hp6 : p % 6 = 1 ∨ p % 6
     unfold index
     exact Nat.div_le_div_right (Nat.sub_le_sub_right (by lia) 1)
   have h5lo : index (p * 5) ≤ lo := by lia
-  have h5 : value (index (p * 5)) = p * 5 := value_index (by lia)
-  have h7 : value (index (p * 7)) = p * 7 := value_index (by lia)
+  have h5 : value (index (p * 5)) = p * 5 := value_index (coprime6_mod.mpr (by lia))
+  have h7 : value (index (p * 7)) = p * 7 := value_index (coprime6_mod.mpr (by lia))
   rw [testBit_buildMaskK (by lia) hj hW] at h
   rcases h with ⟨hle, d, hd⟩ | ⟨hle, d, hd⟩
   · obtain ⟨c, hc⟩ := firstLocK_spec (A := index (p * 5)) (lo := lo) hm h5lo
@@ -6180,7 +6180,7 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
     (hB6 : B % 6 = 1 ∨ B % 6 = 5) (hW : W - 1 < 2 ^ 32)
     (h7B : 7 * B ≤ a) : SegmentComplete s B a W := by
   intro j hj hno
-  have hvB : value (index B) = B := value_index hB6
+  have hvB : value (index B) = B := value_index (coprime6_mod.mpr hB6)
   refine testBit_segLoopK_of (testBit_initSegK hj) ?_
   · intro t h1 h2 hbit
     by_contra hmask
@@ -6201,7 +6201,8 @@ public theorem segmentComplete_of {s B a W : Nat} (hs : IsSieve B s)
       unfold index
       exact Nat.div_le_div_right (Nat.sub_le_sub_right hmul 1)
     exact hno (value t) htB hprime
-      (dvd_of_testBit_mask (value_mod6 t) ht5 hlo (Nat.le_sub_one_of_lt hj) hW hmask)
+      (dvd_of_testBit_mask (coprime6_mod.mp (value_coprime6 t)) ht5 hlo
+        (Nat.le_sub_one_of_lt hj) hW hmask)
 
 /-! ## A product of the values a window still holds
 
