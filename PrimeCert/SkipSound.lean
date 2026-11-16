@@ -337,6 +337,44 @@ public theorem segLoopK_eq_of_certificate {sVal sMark sSkip lo Wm1 seg win fuel 
     _ = segLoopK sSkip lo Wm1 win 1 fuel := segLoopK_eq_ldiff_union.symm
     _ = win := hskip
 
+/-! ## Positions to slices, which is the step chunks cannot do
+
+`segMarkK_eq_self_of_not_dvd` wants a fact about every live position. The certificate supplies
+facts about chunks. Going from one to the other looks like `not_dvd_of_blocks`, which finds the
+block holding position `j` by arithmetic, `j / bs` and `j % bs` — and that is exactly why it
+works: blocks are a uniform partition of positions.
+
+Chunks are not. A chunk is a fixed number of *records*, and records are the live positions, which
+are irregular, so no arithmetic names the chunk holding `j`. That is why a hypothesis quantified
+over every live `j` has nothing to compute with, and why the cover has to enter some other way.
+
+Slices are uniform, so the arithmetic works on them. Below is that step: one fact per slice
+becomes the fact about every position. What fills the per-slice fact is a case split over that
+slice's handful of chunks — about six at the settled chunk size — which is finite and belongs to
+the emitter, not here. -/
+
+/-- From a fact about each slice, the fact about each position. `nb` slices of width `w` cover the
+window, `j / w` names the slice holding `j`, and the rest is `not_dvd_of_coprime_products`. -/
+public theorem not_dvd_of_slices {seg lo Wm1 p P L nb w j : Nat} (hw : 0 < w)
+    (hp1 : p ≠ 1) (hpP : p ∣ P) (hgcd : Nat.gcd L P = 1)
+    (hcover : Wm1 + 1 ≤ nb * w)
+    (hslice : ∀ k, k < nb → ∀ r, r < w → Nat.testBit seg (k * w + r) = true →
+      valueK (Nat.add lo (k * w + r)) ∣ L)
+    (hj : j ≤ Wm1) (hlive : Nat.testBit seg j = true) : ¬ p ∣ valueK (Nat.add lo j) := by
+  have hk : j / w < nb := by
+    by_contra hc
+    have hle : nb * w ≤ (j / w) * w := Nat.mul_le_mul_right w (by omega)
+    have hjd : (j / w) * w ≤ j := Nat.div_mul_le_self j w
+    omega
+  have hr : j % w < w := Nat.mod_lt _ hw
+  have hsplit : (j / w) * w + j % w = j := Nat.div_add_mod' j w
+  have hlive' : Nat.testBit seg ((j / w) * w + j % w) = true := by
+    rw [hsplit]
+    exact hlive
+  have hd : valueK (Nat.add lo ((j / w) * w + j % w)) ∣ L := hslice _ hk _ hr hlive'
+  rw [hsplit] at hd
+  exact not_dvd_of_coprime_products hgcd hd hpP hp1
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a record is sixteen bits wide and a slice is
