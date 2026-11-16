@@ -163,8 +163,8 @@ packed lists, the packed counts, the widest slot in bits, and the value `stripeB
 A record's low two bits name one of a divisor's four possible strikes: the low bit picks the
 progression and the next steps it on by a further double. `nrec` says how many records a divisor
 gets, two where its double already passes the end of the segment and four where its double fits and
-its quadruple does not. -/
-public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat := Id.run do
+its quadruple does not. Each record is packed in `rb` bits. -/
+public def stripeSortR (s lo Wm1 start len W nrec rb : Nat) : Nat × Nat × Nat × Nat := Id.run do
   let np := W / 65536
   let mut slots : Array (Array Nat) := Array.replicate (np + 1) #[]
   -- The assembled mask is built one slice at a time rather than one bit at a time: joining a bit
@@ -189,17 +189,21 @@ public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × N
   -- A tally bit is set exactly when the slice names that position, once per strike, so the whole
   -- tally is the slice itself shifted `nrec` times rather than a bit set per record.
   let seen := packFixed (Array.replicate nrec c) len
-  let mut slotW := 16
+  let mut slotW := rb
   for k in [0:np + 1] do
-    slotW := Nat.max slotW (16 * (slots[k]!).size)
+    slotW := Nat.max slotW (rb * (slots[k]!).size)
   let mut packedSlots : Array Nat := #[]
   let mut counts : Array Nat := #[]
   for k in [0:np + 1] do
-    packedSlots := packedSlots.push (packFixed (slots[k]!) 16)
+    packedSlots := packedSlots.push (packFixed (slots[k]!) rb)
     counts := counts.push ((slots[k]!).size)
   let ls := packFixed packedSlots slotW
   let cs := packFixed counts 16
   return (ls, cs, slotW, asm ||| (seen <<< W))
+
+/-- `stripeSortR` with sixteen-bit records. -/
+public def stripeSort (s lo Wm1 start len W nrec : Nat) : Nat × Nat × Nat × Nat :=
+  stripeSortR s lo Wm1 start len W nrec 16
 
 /-- `stripeSort` over sixteen lanes a divisor, the twin of `stripeBatchHK`.
 

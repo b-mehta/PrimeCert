@@ -50,7 +50,7 @@ namespace PrimeCert.Sieve
 
 public theorem stripeStateLK_three {c lo start len Wm1 slotW Ls Cs np k : Nat} :
     stripeStateLK 3 c lo start len Wm1 slotW Ls Cs np k
-      = stripeStateK c lo start len Wm1 slotW Ls Cs np k := rfl
+      = stripeStateK c lo start len Wm1 slotW Ls Cs np 16 65535 k := rfl
 
 /-- A step of a slice's list, one bit at a time. -/
 public theorem testBit_stripeEntryLK {lw st c lo start k len e j : Nat} :
@@ -299,22 +299,22 @@ public theorem testBit_stripeUpToLK_high {lw c lo start len W Wm1 slotW Ls Cs np
 /-- A tally bit of a batch is set once the entry naming it is in its slice's list. -/
 public theorem testBit_stripeBatchLK_tally {lw c lo start len W Wm1 slotW Ls Cs np k m : Nat}
     (hW : np * 65536 ≤ W) (hk : k < np) (hm : m < cntOf Cs k)
-    (hc : testBitK c ((entryOf Ls slotW k m).shiftRight lw) = true)
-    (hk16 : (entrySeedLK lw lo start (entryOf Ls slotW k m)).shiftRight 16 = k) :
+    (hc : testBitK c ((entryOf Ls slotW 16 65535 k m).shiftRight lw) = true)
+    (hk16 : (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).shiftRight 16 = k) :
     (stripeBatchLK lw c lo start len W Wm1 slotW Ls Cs np).testBit
-      (W + ((entryOf Ls slotW k m).shiftRight lw
-        + (entryOf Ls slotW k m).land (laneMaskK lw) * len)) = true := by
+      (W + ((entryOf Ls slotW 16 65535 k m).shiftRight lw
+        + (entryOf Ls slotW 16 65535 k m).land (laneMaskK lw) * len)) = true := by
   have hbatch : stripeBatchLK lw c lo start len W Wm1 slotW Ls Cs np
       = stripeUpToLK lw c lo start len W Wm1 slotW Ls Cs np (np + 1) := rfl
   rw [hbatch]
   refine (testBit_stripeUpToLK_high (by lia :
-    W ≤ W + ((entryOf Ls slotW k m).shiftRight lw
-      + (entryOf Ls slotW k m).land (laneMaskK lw) * len)) hW (np + 1) (by lia)).mpr
+    W ≤ W + ((entryOf Ls slotW 16 65535 k m).shiftRight lw
+      + (entryOf Ls slotW 16 65535 k m).land (laneMaskK lw) * len)) hW (np + 1) (by lia)).mpr
     ⟨k, by lia, ?_⟩
-  have hJ : 65536 + (W + ((entryOf Ls slotW k m).shiftRight lw
-      + (entryOf Ls slotW k m).land (laneMaskK lw) * len) - W)
-      = 65536 + ((entryOf Ls slotW k m).shiftRight lw
-        + (entryOf Ls slotW k m).land (laneMaskK lw) * len) := by lia
+  have hJ : 65536 + (W + ((entryOf Ls slotW 16 65535 k m).shiftRight lw
+      + (entryOf Ls slotW 16 65535 k m).land (laneMaskK lw) * len) - W)
+      = 65536 + ((entryOf Ls slotW 16 65535 k m).shiftRight lw
+        + (entryOf Ls slotW 16 65535 k m).land (laneMaskK lw) * len) := by lia
   rw [hJ]
   have hstate : stripeStateLK lw c lo start len Wm1 slotW Ls Cs np k
       = stripeSlotLK lw c lo start k len
@@ -334,9 +334,9 @@ public theorem testBit_stripeBatchLK_eq {lw c lo start len W Wm1 slotW Ls Cs np 
     (hj : j < W) :
     (stripeBatchLK lw c lo start len W Wm1 slotW Ls Cs np).testBit j = true ↔
       ∃ k m, k < np ∧ m < cntOf Cs k ∧
-        testBitK c ((entryOf Ls slotW k m).shiftRight lw) = true ∧
-        (entrySeedLK lw lo start (entryOf Ls slotW k m)).shiftRight 16 = k ∧
-        entrySeedLK lw lo start (entryOf Ls slotW k m) = j := by
+        testBitK c ((entryOf Ls slotW 16 65535 k m).shiftRight lw) = true ∧
+        (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).shiftRight 16 = k ∧
+        entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m) = j := by
   have hbatch : stripeBatchLK lw c lo start len W Wm1 slotW Ls Cs np
       = stripeUpToLK lw c lo start len W Wm1 slotW Ls Cs np (np + 1) := rfl
   rw [hbatch, testBit_stripeUpToLK_low hj (np + 1)]
@@ -355,20 +355,20 @@ public theorem testBit_stripeBatchLK_eq {lw c lo start len W Wm1 slotW Ls Cs np 
       · unfold entryHitsL at he
         have h1 := (Bool.and_eq_true ..).mp he
         have h2 := (Bool.and_eq_true ..).mp h1.1
-        have hk16 : (entrySeedLK lw lo start (entryOf Ls slotW k m)).shiftRight 16 = k :=
+        have hk16 : (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).shiftRight 16 = k :=
           Nat.eq_of_beq_eq_true h2.2
         refine ⟨k, m, hk, hm, h2.1, hk16, ?_⟩
         rcases (Bool.or_eq_true ..).mp h1.2 with hseed | htally
         · have hlow : j - k * 65536
-              = (entrySeedLK lw lo start (entryOf Ls slotW k m)).land 65535 :=
+              = (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).land 65535 :=
             Nat.eq_of_beq_eq_true hseed
           rw [shiftRight16_eq] at hk16
           rw [land65535_eq] at hlow
-          have := Nat.div_add_mod (entrySeedLK lw lo start (entryOf Ls slotW k m)) 65536
+          have := Nat.div_add_mod (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)) 65536
           lia
-        · have hte : j - k * 65536 = entryTallyLK lw len (entryOf Ls slotW k m) :=
+        · have hte : j - k * 65536 = entryTallyLK lw len (entryOf Ls slotW 16 65535 k m) :=
             Nat.eq_of_beq_eq_true htally
-          have hge : 65536 ≤ entryTallyLK lw len (entryOf Ls slotW k m) := by
+          have hge : 65536 ≤ entryTallyLK lw len (entryOf Ls slotW 16 65535 k m) := by
             unfold entryTallyLK
             lia
           exact absurd hte (by lia)
@@ -386,8 +386,8 @@ public theorem testBit_stripeBatchLK_eq {lw c lo start len W Wm1 slotW Ls Cs np 
       simp at hst
   · rintro ⟨k, m, hk, hm, hc, hk16, hseed⟩
     rw [shiftRight16_eq] at hk16
-    have hdm := Nat.div_add_mod (entrySeedLK lw lo start (entryOf Ls slotW k m)) 65536
-    have hmod : entrySeedLK lw lo start (entryOf Ls slotW k m) % 65536 < 65536 :=
+    have hdm := Nat.div_add_mod (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)) 65536
+    have hmod : entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m) % 65536 < 65536 :=
       Nat.mod_lt _ (by lia)
     refine ⟨k, by lia, by lia, by lia, ?_⟩
     have hstate : stripeStateLK lw c lo start len Wm1 slotW Ls Cs np k
@@ -399,14 +399,15 @@ public theorem testBit_stripeBatchLK_eq {lw c lo start len W Wm1 slotW Ls Cs np 
     rw [hstate]
     refine (testBit_stripeSlotLK (cntOf Cs k)).mpr (Or.inr ⟨m, hm, ?_⟩)
     unfold entryHitsL
-    have hlow : j - k * 65536 = (entrySeedLK lw lo start (entryOf Ls slotW k m)).land 65535 := by
+    have hlow : j - k * 65536
+        = (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).land 65535 := by
       rw [land65535_eq]
       lia
     have hbeq : Nat.beq (j - k * 65536)
-        ((entrySeedLK lw lo start (entryOf Ls slotW k m)).land 65535) = true := by
+        ((entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).land 65535) = true := by
       rw [hlow]
       exact beq_self
-    have hk16' : Nat.beq ((entrySeedLK lw lo start (entryOf Ls slotW k m)).shiftRight 16) k
+    have hk16' : Nat.beq ((entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).shiftRight 16) k
         = true := by
       rw [shiftRight16_eq, hk16]
       exact beq_self
@@ -470,20 +471,21 @@ public theorem stripeBatchLK_complete {lw c lo start len W Wm1 slotW Ls Cs np i 
     · unfold entryHitsL at he
       have h1 := (Bool.and_eq_true ..).mp he
       have h2 := (Bool.and_eq_true ..).mp h1.1
-      have hbit : testBitK c ((entryOf Ls slotW k m).shiftRight lw) = true := h2.1
-      have hk16 : (entrySeedLK lw lo start (entryOf Ls slotW k m)).shiftRight 16 = k :=
+      have hbit : testBitK c ((entryOf Ls slotW 16 65535 k m).shiftRight lw) = true := h2.1
+      have hk16 : (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).shiftRight 16 = k :=
         Nat.eq_of_beq_eq_true h2.2
       rcases (Bool.or_eq_true ..).mp h1.2 with hseed | htal
       · have hlow : 65536 + (i + w * len)
-            = (entrySeedLK lw lo start (entryOf Ls slotW k m)).land 65535 :=
+            = (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m)).land 65535 :=
           Nat.eq_of_beq_eq_true hseed
         rw [land65535_eq] at hlow
-        have := Nat.mod_lt (entrySeedLK lw lo start (entryOf Ls slotW k m)) (by lia : 0 < 65536)
+        have := Nat.mod_lt (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 k m))
+          (by lia : 0 < 65536)
         lia
-      · have hte : entryTallyLK lw len (entryOf Ls slotW k m)
+      · have hte : entryTallyLK lw len (entryOf Ls slotW 16 65535 k m)
             = Nat.add 65536 (Nat.add i (Nat.mul w len)) :=
           (Nat.eq_of_beq_eq_true htal).symm
-        have heq : entryOf Ls slotW k m = 2 ^ lw * i + w := hentry _ hbit hte
+        have heq : entryOf Ls slotW 16 65535 k m = 2 ^ lw * i + w := hentry _ hbit hte
         exact (testBit_stripeBatchLK_eq
           (by lia : entrySeedLK lw lo start (2 ^ lw * i + w) < W)).mpr
           ⟨k, m, hk, hm, hbit, hk16, by rw [heq]⟩
@@ -502,11 +504,12 @@ public theorem stripeBatchLK_complete {lw c lo start len W Wm1 slotW Ls Cs np i 
     · unfold outHitsL at he
       have h1 := (Bool.and_eq_true ..).mp he
       have h2 := (Bool.and_eq_true ..).mp h1.1
-      have hte : entryTallyLK lw len (entryOf Ls slotW np m)
+      have hte : entryTallyLK lw len (entryOf Ls slotW 16 65535 np m)
           = Nat.add 65536 (Nat.add i (Nat.mul w len)) := (Nat.eq_of_beq_eq_true h1.2).symm
-      have hbit : testBitK c ((entryOf Ls slotW np m).shiftRight lw) = true := h2.1
-      have heq : entryOf Ls slotW np m = 2 ^ lw * i + w := hentry _ hbit hte
-      have hblt : Nat.blt Wm1 (entrySeedLK lw lo start (entryOf Ls slotW np m)) = true := h2.2
+      have hbit : testBitK c ((entryOf Ls slotW 16 65535 np m).shiftRight lw) = true := h2.1
+      have heq : entryOf Ls slotW 16 65535 np m = 2 ^ lw * i + w := hentry _ hbit hte
+      have hblt : Nat.blt Wm1 (entrySeedLK lw lo start (entryOf Ls slotW 16 65535 np m)) = true :=
+        h2.2
       rw [heq] at hblt
       have hble : Nat.ble (Wm1 + 1) (entrySeedLK lw lo start (2 ^ lw * i + w)) = true := hblt
       have := Nat.le_of_ble_eq_true hble
@@ -583,8 +586,8 @@ public theorem segLoopSCK_eq_stripe_band16 {c lo start len n W Wm1 slotW Ls Cs n
         obtain ⟨k, m, hk, hm, hcbit, hk16, hsd⟩ :=
           (testBit_stripeBatchLK_eq (by lia : j < W)).mp h
         refine (testBit_segAccLoopSK_band16 hj hn hband).mpr
-          ⟨(entryOf Ls slotW k m).shiftRight 4, ?_, (entryOf Ls slotW k m).land (laneMaskK 4),
-            landLw_lt4, hcbit, ?_⟩
+          ⟨(entryOf Ls slotW 16 65535 k m).shiftRight 4, ?_,
+            (entryOf Ls slotW 16 65535 k m).land (laneMaskK 4), landLw_lt4, hcbit, ?_⟩
         · by_contra hge
           rw [testBitK_of_lt hc2 (by lia)] at hcbit
           simp at hcbit
