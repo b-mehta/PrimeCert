@@ -28,10 +28,30 @@ jobs:
         run: lake exe cache get
       - name: Build the sieve and its correctness file
         run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
-      - name: What the base sieve costs beside the window
+      # Which cases to time comes from PrimeCertTest/SegTune/bench-cases.txt, read from the branch
+      # being pushed, so a timing run says what it measures in the same push that starts it. The
+      # first line holds the round count and the rest name one case a line, with `#` for comments
+      # and blank lines ignored. A branch without the file times WA_Narrow for 3 rounds, which is
+      # what this job did before the file existed.
+      - name: Time the cases this branch asks for
         run: |
+          set -euo pipefail
           chmod +x PrimeCertTest/SegTune/run.sh
-          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh 3 WA_Narrow
+          list=PrimeCertTest/SegTune/bench-cases.txt
+          if [ -f "$list" ]; then
+            mapfile -t lines < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$list" | grep -v '^$')
+            rounds=${lines[0]}
+            cases=("${lines[@]:1}")
+          else
+            rounds=3
+            cases=(WA_Narrow)
+          fi
+          if [ ${#cases[@]} -eq 0 ]; then
+            echo "bench-cases.txt names a round count and no cases"; exit 1
+          fi
+          echo "rounds: $rounds"
+          printf 'case: %s\n' "${cases[@]}"
+          LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh "$rounds" "${cases[@]}"
       - name: Fail the job if any case failed
         run: |
           if [ -s bench-failures.txt ]; then cat bench-failures.txt; exit 1; fi
