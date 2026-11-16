@@ -473,6 +473,24 @@ public theorem bitsDvd_chunkQ {recs L cnt d e asm pv D : Nat}
   rw [← Nat.eq_of_beq_eq_true hprod]
   exact dvd_prodQuadK_of_testBit hde hj
 
+/-- `bitsDvd_chunkQ` for a chunk whose assembly is stated as `asmQuadK` as well, four records a
+leaf on both sides.
+
+`asmQuadK_eq_asmChunkK` carries the wide assembly to the narrow one two levels deeper, so this
+needs no argument of its own beyond the condition that lets it: every slot the wide tree reads is
+below `cnt`, which the emitter arranges by padding a part-full chunk with copies of its last
+record. -/
+public theorem bitsDvd_chunkQA {recs L cnt a e asm pv D : Nat}
+    (hasm : Nat.beq (asmQuadK recs a 0) asm = true)
+    (hprod : Nat.beq (prodQuadK recs L e 0) pv = true) (hdvd : pv ∣ D)
+    (hcnt : 4 * (0 + 2 ^ a) ≤ cnt)
+    (hde : Nat.ble (2 ^ (a + 2)) (4 * 2 ^ e) = true) :
+    BitsDvd asm L D := by
+  have hwide := asmQuadK_eq_asmChunkK recs cnt a 0 hcnt
+  rw [hwide] at hasm
+  refine bitsDvd_chunkQ (cnt := cnt) (d := a + 2) ?_ hprod hdvd hde
+  simpa using hasm
+
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=
   Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).1 hc
