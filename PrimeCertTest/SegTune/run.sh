@@ -163,6 +163,14 @@ for round in $(seq 1 "$rounds"); do
     skiprec=$(ksum "$out" "skipRec_")
     skipmul=$(ksum "$out" "skipMul_")
     skipcov=$(ksum "$out" "skip\(Cover\|Asm\|Block\)_")
+    # The cover reported in its three kinds, because they are not the same statement. `skipCover_`
+    # ors a chunk's assembled bits into an accumulator of at most 65536 bits, one a chunk.
+    # `skipAsm_` is the assembly said separately, which the merged cover leaves unemitted.
+    # `skipBlock_` shifts the whole skipped bitset down to one 65536-bit block, one a block, and
+    # that bitset is 33 million bits at 10^16.
+    skipcov1=$(ksum "$out" "skipCover_")
+    skipcov2=$(ksum "$out" "skipAsm_")
+    skipcov3=$(ksum "$out" "skipBlock_")
     liverec=$(ksum "$out" "recProd_")
     livemul=$(ksum "$out" "liveMul_")
     livegcd=$(ksum "$out" "liveGcd")
@@ -189,7 +197,8 @@ for round in $(seq 1 "$rounds"); do
       "batch lemmas ${sorted}s | wide band lemmas ${wide}s | slice lemmas ${chunks}s |" \
       "skip gcds ${gcds}s |" \
       "cert skip records ${skiprec}s | cert skip chain ${skipmul}s |" \
-      "cert skip cover ${skipcov}s | cert live records ${liverec}s |" \
+      "cert skip cover ${skipcov}s | cover or ${skipcov1}s | cover asm ${skipcov2}s |" \
+      "cover block ${skipcov3}s | cert live records ${liverec}s |" \
       "cert live chain ${livemul}s | cert live gcd ${livegcd}s |" \
       "elab command ${elab}s | base sieve ${basecmd}s | window ${wincmd}s |" \
       "addDecl ${addd}s | typechecking ${typec}s | stripeSort ${sortms}ms |" \

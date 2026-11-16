@@ -2,7 +2,8 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 2
 
-# Where does the record certificate's time go? Two ideas were built against that cost before
-# anyone knew which part of it was which, and both lost. run.sh now reports the certificate in
-# six named groups, so this run says which of them the 189 seconds at 10^16 is.
+# The certificate's time splits about evenly between its chunk products and its cover, 59 s and
+# 58 s at 10^16. The cover is three different statements under one name, so this run reports them
+# apart: the or that accumulates a chunk's bits, the assembly said separately, and the shift that
+# cuts the whole skipped bitset down to one block.
 ZZBB_Target1e16Skip
