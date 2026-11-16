@@ -6584,30 +6584,41 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
   | zero =>
     intro off hc
     have hc4 : 4 * off + 3 < cnt := by simp only [Nat.pow_zero] at hc; omega
-    -- Each of the four slots is in range, so its leaf is the shifted bit and not the cutoff's `0`.
+    -- Each of the four slots is in range, so its leaf is the shifted bit, not the cutoff's `0`.
     have hleaf : ∀ j, j < 4 → asmChunkK recs cnt 0 (4 * off + j)
         = Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + j) 16)) 65535) := by
       intro j hj
       have hb : Nat.blt (4 * off + j) cnt = true := by
-        have : 4 * off + j < cnt := by omega
-        simpa using this
-      change (Nat.blt (4 * off + j) cnt).rec 0 _ = _
-      rw [hb]
+        have hlt : 4 * off + j < cnt := by omega
+        simpa using hlt
+      have hu : asmChunkK recs cnt 0 (4 * off + j) = (Nat.blt (4 * off + j) cnt).rec 0
+          (Nat.shiftLeft 1
+            (Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + j) 16)) 65535)) := rfl
+      rw [hu, hb]
     have ha : asmChunkK recs cnt 2 (4 * off) =
         Nat.lor (Nat.lor (asmChunkK recs cnt 0 (4 * off)) (asmChunkK recs cnt 0 (4 * off + 1)))
           (Nat.lor (asmChunkK recs cnt 0 (4 * off + 2))
-            (asmChunkK recs cnt 0 (4 * off + 3))) := by
-      norm_num [asmChunkK]
+            (asmChunkK recs cnt 0 (4 * off + 3))) := rfl
+    -- The four fields of the word, in the same four shapes `dvd_quadK` takes them in.
+    have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul off 64)) 18446744073709551615)
+        65535 = Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + 0) 16)) 65535 :=
+      field_quad recs off 0 (by omega)
+    have h16 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 64))
+        18446744073709551615) 16) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + 1) 16)) 65535 :=
+      field_quad recs off 1 (by omega)
+    have h32 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 64))
+        18446744073709551615) 32) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + 2) 16)) 65535 :=
+      field_quad recs off 2 (by omega)
+    have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 64))
+        18446744073709551615) 48 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + 3) 16)) 65535 := field_quad_top recs off
     have hq : asmQuadK recs 0 off =
         quadAsmK (Nat.land (Nat.shiftRight recs (Nat.mul off 64)) 18446744073709551615) := rfl
-    rw [hq, ha, hleaf 0 (by omega), hleaf 1 (by omega), hleaf 2 (by omega), hleaf 3 (by omega),
-      quadAsmK]
-    have h64 : (18446744073709551615 : Nat) = 2 ^ 64 - 1 := by norm_num
-    have h16 : (65535 : Nat) = 2 ^ 16 - 1 := by norm_num
-    simp only [h64, h16, Nat.land, Nat.shiftRight, Nat.mul]
-    rw [field_quad_top recs off]
-    rw [field_quad recs off 1 (by omega), field_quad recs off 2 (by omega)]
-    norm_num [field_quad recs off 0 (by omega)]
+    rw [hq, ha, hleaf 0 (by omega), hleaf 1 (by omega), hleaf 2 (by omega), hleaf 3 (by omega)]
+    unfold quadAsmK
+    rw [h0, h16, h32, ht]
   | succ k ih =>
     intro off hc
     have hpow : (2 : Nat) ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
