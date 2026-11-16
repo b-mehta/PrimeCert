@@ -274,6 +274,69 @@ public theorem segLoopK_eq_self_of_records {s lo Wm1 seg start fuel P : Nat}
       rw [Sieve.testBitK_eq_testBit] at hlive
       exact not_dvd_of_cover hP (by omega) hcov j hlive
 
+/-! ## The join
+
+This is the theorem the whole design exists to produce, and the one the emitter stubbed while its
+cost was being measured: marking by **every** divisor gives the window the route built from the
+subset. Everything above is a piece of it.
+
+The chain has no induction of its own. Marking is a set difference against the union of the
+masks, so:
+
+  marking by `s`                       is `seg` minus the union over `s`
+                                       (`segLoopK_eq_ldiff_union`)
+  the union over `sMark ||| sSkip`     splits (`maskUnionK_or`, and the split identity the
+                                       emitter checks says that bitset is `s`)
+  two differences collapse into one    (`ldiff_ldiff`), so this is marking by `sMark` and then
+                                       by `sSkip`
+  marking by `sMark` is the window     (the route's own theorem)
+  marking the window by `sSkip`        changes nothing (`segLoopK_eq_self_of_records`, from the
+                                       certificate)
+
+and the last two leave the window. -/
+
+/-- **The design's theorem.** Given the emitter's split identity, the route's theorem about the
+marked subset, and the certificate's two facts about the window and the skipped divisors, marking
+by every divisor gives the same window.
+
+`hcov` is the cover: every live position of the window is held by a chunk whose product is coprime
+to `P`. `hdiv` is the skipped side: every divisor the sweep left out divides `P`, and is a number
+the sieve could have marked with. -/
+public theorem segLoopK_eq_of_certificate {sVal sMark sSkip lo Wm1 seg win fuel P : Nat}
+    (hsplit : Nat.lor sMark sSkip = sVal)
+    (hroute : segLoopK sMark lo Wm1 seg 1 fuel = win)
+    (hwin : win < 2 ^ (Wm1 + 1)) (hW : Wm1 < 2 ^ 32)
+    (hcov : ∀ j, Nat.testBit win j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1)
+    (hdiv : ∀ i, i < fuel → testBitK sSkip (1 + i) = true →
+      (valueK (1 + i) % 6 = 1 ∨ valueK (1 + i) % 6 = 5) ∧ 5 ≤ valueK (1 + i) ∧
+        index (valueK (1 + i) * 7) ≤ lo ∧ valueK (1 + i) ∣ P) :
+    segLoopK sVal lo Wm1 seg 1 fuel = win := by
+  -- Marking the finished window by the skipped divisors changes nothing. This is the
+  -- certificate's whole content, and it is where `P` and the cover are used.
+  have hskip : segLoopK sSkip lo Wm1 win 1 fuel = win :=
+    segLoopK_eq_self_of_records hwin hW hcov hdiv
+  -- The rest is bookkeeping about set differences, with no induction. Written as a chain of
+  -- named steps rather than one `rw`: several of these rewrites match in more than one place,
+  -- and which one fires first is not something to leave to chance in a file I cannot compile.
+  have hsplitU : maskUnionK sVal lo Wm1 1 fuel
+      = Nat.lor (maskUnionK sMark lo Wm1 1 fuel) (maskUnionK sSkip lo Wm1 1 fuel) := by
+    rw [← hsplit]
+    exact maskUnionK_or
+  have hmark : Nat.ldiff seg (maskUnionK sMark lo Wm1 1 fuel) = win := by
+    rw [← segLoopK_eq_ldiff_union]
+    exact hroute
+  calc segLoopK sVal lo Wm1 seg 1 fuel
+      = Nat.ldiff seg (maskUnionK sVal lo Wm1 1 fuel) := segLoopK_eq_ldiff_union
+    _ = Nat.ldiff seg (Nat.lor (maskUnionK sMark lo Wm1 1 fuel)
+          (maskUnionK sSkip lo Wm1 1 fuel)) := by rw [hsplitU]
+    _ = Nat.ldiff (Nat.ldiff seg (maskUnionK sMark lo Wm1 1 fuel))
+          (maskUnionK sSkip lo Wm1 1 fuel) := ldiff_ldiff.symm
+    _ = Nat.ldiff win (maskUnionK sSkip lo Wm1 1 fuel) := by rw [hmark]
+    _ = segLoopK sSkip lo Wm1 win 1 fuel := segLoopK_eq_ldiff_union.symm
+    _ = win := hskip
+
 /-! ## A slice's bits are the window's bits
 
 The certificate is stated a slice at a time, because a record is sixteen bits wide and a slice is
