@@ -26,8 +26,12 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Fetch the mathlib build cache
         run: lake exe cache get
+      # `PrimeCert.SkipSound` is here because the cases that carry a proved window import it, and a
+      # case whose import has no olean fails in a fifth of a second with nothing timed.
       - name: Build the sieve and its correctness file
-        run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
+        run: >
+          lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
+          PrimeCert.NoPos PrimeCert.SkipSound
       # Which cases to time comes from PrimeCertTest/SegTune/bench-cases.txt, read from the branch
       # being pushed, so a timing run says what it measures in the same push that starts it. The
       # first line holds the round count and the rest name one case a line, with `#` for comments
