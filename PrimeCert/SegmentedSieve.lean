@@ -8171,6 +8171,19 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- Sound at either setting by the same argument the sweep rests on: a base with more live bits
   -- than the finished window can only make a divisor look like a striker, never the reverse.
   let baseK := if (parts / 32768) % 2 == 1 then 128 else 8
+  -- Emit the per-window theorem that the whole design is for: marking by **every** divisor gives
+  -- the same window as marking by the subset. Everything up to here emits the route's theorem
+  -- about the subset plus the certificate's facts, and leaves them unjoined, so nothing
+  -- downstream can use a skip-design window at all.
+  --
+  -- **Its proof is `sorryAx` and the theorem it states is therefore not proved.** The point is to
+  -- find out what the join costs the kernel before the proof work goes in, since the pieces it
+  -- would consume are literals already present and the cost of consuming them is unmeasured. The
+  -- split identity below is checked for real, because it is a new statement over two 3.3 Mbit
+  -- literals and is the part that plausibly costs something.
+  --
+  -- An arm with this on certifies nothing and must never be read as a soundness result.
+  let glueStub := (parts / 65536) % 2 == 1
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8707,6 +8720,33 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   rssLog s!"after the gcds, before the route {← rssMB} MiB"
   if emitRoute && !routeDone then
     runSegmentV ns markName 28 a W fuel len
+  if glueStub then
+    match windowName with
+    | none =>
+      throwError "run_segment_skip: the join is stated about the window the route names, so the \
+        route has to run; use a parts value with the route on"
+    | some wn =>
+      let t9 ← IO.monoMsNow
+      -- Checked for real: the marked subset and the skipped set together are the divisor set the
+      -- route was asked about. Without this the join could be about any two bitsets.
+      addSegThm (ns ++ Name.mkSimple s!"skipSplit_{a}_{W}_{fuel}")
+        (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkConst markName) (mkConst skipName))
+          (mkRawNatLit sVal)) Lean.reflBoolTrue
+      let t10 ← IO.monoMsNow
+      -- Stubbed: this is the statement the design exists to produce, and its proof is a hole.
+      -- `segLoopK_eq_self_of_records` and `segLoopK_eq_of_skip` are what would fill it, from the
+      -- certificate's facts and the split above.
+      let allE := mkSegLoopK (mkRawNatLit sVal) (mkRawNatLit lo) (mkRawNatLit wm1)
+        (mkApp (mkConst ``initSegK) (mkRawNatLit W)) 1 fuel
+      let stmt := mkNatEq allE (mkConst wn)
+      addDecl <| Declaration.thmDecl
+        { name := ns ++ Name.mkSimple s!"segEqAllSTUB_{a}_{W}_{fuel}", levelParams := [],
+          type := stmt, value := mkApp2 (mkConst ``sorryAx [Level.zero]) stmt (mkConst ``false) }
+      let t11 ← IO.monoMsNow
+      rssLog s!"join: split identity {t10 - t9} ms, stubbed window theorem {t11 - t10} ms, \
+        {← rssMB} MiB"
+      logWarning m!"run_segment_skip: segEqAllSTUB_{a}_{W}_{fuel} is stated with a hole for its \
+        proof. This arm measures what the join costs and certifies nothing."
   rssLog s!"done {← rssMB} MiB"
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
