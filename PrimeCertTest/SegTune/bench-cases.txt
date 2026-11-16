@@ -2,11 +2,8 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 2
 
-# The certificate's cover is 48.9 kernel seconds at 10^16 and 48.5 of those are one statement,
-# skipAsm_, which asks the kernel to assemble a chunk's bits from its records. The chunk size is
-# already a flag and has never been swept against that group, because the group was only named
-# tonight. Four sizes, everything else identical, CH_Chunk1024 the settled one.
-CH_Chunk256
-CH_Chunk512
-CH_Chunk1024
-CH_Chunk2048
+# The chunk products, prodChunkK, are about 59 kernel seconds at 10^16. ZZBU states them as
+# prodQuadK, four records a leaf with no cutoff, everything else as ZZBB. Read `cert skip records`
+# and `cert live records`.
+ZZBB_Target1e16Skip
+ZZBU_Target1e16Quad
