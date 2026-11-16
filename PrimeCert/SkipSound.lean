@@ -483,10 +483,10 @@ record. -/
 public theorem bitsDvd_chunkQA {recs L cnt a e asm pv D : Nat}
     (hasm : Nat.beq (asmQuadK recs a 0) asm = true)
     (hprod : Nat.beq (prodQuadK recs L e 0) pv = true) (hdvd : pv ∣ D)
-    (hcnt : 4 * (0 + 2 ^ a) ≤ cnt)
+    (hcnt : Nat.ble (4 * (0 + 2 ^ a)) cnt = true)
     (hde : Nat.ble (2 ^ (a + 2)) (4 * 2 ^ e) = true) :
     BitsDvd asm L D := by
-  have hwide := asmQuadK_eq_asmChunkK recs cnt a 0 hcnt
+  have hwide := asmQuadK_eq_asmChunkK recs cnt a 0 (Nat.le_of_ble_eq_true hcnt)
   rw [hwide] at hasm
   refine bitsDvd_chunkQ (cnt := cnt) (d := a + 2) ?_ hprod hdvd hde
   simpa using hasm

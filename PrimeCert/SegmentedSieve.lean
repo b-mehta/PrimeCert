@@ -8377,7 +8377,8 @@ order, and `leafPf` proves each chunk's product divides `D`. `thm tag k c` names
 `k`'s statement with that tag, and `sliceThm k` names slice `k`'s statement. -/
 meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
     (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
-    (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false) :
+    (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false)
+    (quadAsm : Bool := false) :
     Expr := Id.run do
   let maskE := mkApp2 (mkConst ``Nat.sub)
     (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536)) (mkRawNatLit 1)
@@ -8390,7 +8391,14 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       let ch := chunks[ci]!
       let c := ch[1]!
       let asmE := mkRawNatLit ch[4]!
-      let chunkPf := if quad then
+      let chunkPf := if quadAsm then
+        -- Both sides wide. The chunk's own `cnt` is the full chunk, because the padding fills a
+        -- part-full one, which is what lets the wide assembly read every slot.
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQA)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit (1 <<< chunkLog), mkRawNatLit (chunkLog - 2),
+            mkRawNatLit (chunkLog - 2), asmE, mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c),
+            mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue, Lean.reflBoolTrue]
+      else if quad then
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQ)
           #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
             mkRawNatLit (chunkLog - 2), asmE, mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c),
@@ -8533,10 +8541,6 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   if quadAsm && !quadProd then
     throwError "run_segment_skip: the wide assembly reads every slot of a full chunk, so it needs \
       the padding that (parts / 1048576) % 2 turns on; ask for both or neither"
-  if quadAsm && (parts / 131072) % 2 == 1 then
-    throwError "run_segment_skip: the join builds its chunk steps with bitsDvd_chunkQ, which takes \
-      the assembly as asmChunkK, so it does not yet accept the wide one; bitsDvd_chunkQA is the \
-      statement that would, and nothing emits it"
   -- Pads `lowRecs` past `cnt` to `chunk` slots with the record at `cnt - 1`.
   let padRecs (lowRecs cnt : Nat) : Nat := Id.run do
     if cnt == 0 || cnt ≥ chunk then return lowRecs
@@ -9190,7 +9194,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       (fun k => priv s!"recSlice_{k}") quadProd
     let skipCov := sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
-      (fun k => priv s!"skipBlock_{k}") quadProd
+      (fun k => priv s!"skipBlock_{k}") quadProd quadAsm
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
       mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[x, L, D, mkRawNatLit n]
     let tag := s!"{a}_{W}_{fuel}"
@@ -9276,8 +9280,9 @@ pieces; `segLoopK_eq_self_of_records_list` is the statement that takes them, and
 takes a single product, so the two cannot both be asked for. `(parts / 1048576) % 2` states each
 chunk's product as `prodQuadK`, four records a leaf, padding a part-full chunk with its last record.
 `(parts / 2097152) % 2` states each chunk's assembly as `asmQuadK`, four records a leaf likewise,
-which `asmQuadK_eq_asmChunkK` carries to the narrow tree and `bitsDvd_chunkQA` consumes. It reads
-every slot of a full chunk, so it needs the padding and refuses without it.
+which `asmQuadK_eq_asmChunkK` carries to the narrow tree and `bitsDvd_chunkQA` consumes, in the
+join as well. It reads every slot of a full chunk, so it needs the padding and refuses without it.
+The live side keeps the narrow assembly either way.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
