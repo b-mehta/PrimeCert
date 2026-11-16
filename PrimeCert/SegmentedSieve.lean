@@ -6624,7 +6624,7 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     -- Everything below is written with `+` and `^` rather than `Nat.add` and `Nat.pow`, because
     -- omega reads the two spellings as different atoms. The `rfl`s bridge them.
     have hpow : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
-    have h4 : 2 ^ (k + 2) = 2 ^ k * 4 := by rw [Nat.pow_add]; norm_num
+    have h4 : 2 ^ (k + 2) = 2 ^ k * 4 := by rw [Nat.pow_succ, Nat.pow_succ]; omega
     have hq : asmQuadK recs (k + 1) off =
         Nat.lor (asmQuadK recs k off) (asmQuadK recs k (off + 2 ^ k)) := rfl
     have ha : asmChunkK recs cnt (k + 3) (4 * off) =
