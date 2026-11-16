@@ -2334,8 +2334,8 @@ public theorem seedK_testBit {A M i : Nat} (hi : i ≤ M) :
     (seedK A M).testBit i = (1 <<< A : Nat).testBit i := by
   rw [seedK_eq]
   by_cases hA : A ≤ M
-  · rw [if_pos hA]
-  · rw [if_neg hA]
+  · rw [ite_eq_left hA]
+  · rw [ite_eq_right hA]
     have : A ≠ i := by lia
     simp [Nat.shiftLeft_eq, this]
 
@@ -2390,7 +2390,7 @@ public theorem buildMaskCK_wide {p M A B n : Nat} (hw : M < p * 2) :
     have hle : p * 2 ≤ p * 2 ^ (n + 1) := by
       have h2 : (2 : Nat) ≤ 2 ^ (n + 1) := Nat.one_lt_two_pow (by lia)
       exact Nat.mul_le_mul_left p h2
-    rw [if_neg (by lia)]
+    rw [ite_eq_right (by lia)]
 
 /-- A divisor whose double fits the window and whose quadruple does not gets exactly one round,
 whatever `n` says beyond the first. -/
@@ -2410,14 +2410,14 @@ public theorem buildMaskCK_band {p M A B n : Nat} (h4 : M < p * 4) (hn : 1 ≤ n
           rw [hy] at hx
           exact hx
         exact Nat.mul_le_mul_left p h2
-      rw [if_neg (by lia)]
+      rw [ite_eq_right (by lia)]
 
 /-- That one round is the two clamped seeds joined with the same two a double along. -/
 public theorem buildMaskCK_one {p M A B : Nat} (h2 : p * 2 ≤ M) :
     buildMaskCK p M A B 1
       = (seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2) := by
   have hp : (2 : Nat) ^ (0 + 1) = 2 := rfl
-  rw [buildMaskCK_succ, hp, if_pos h2, buildMaskCK_zero]
+  rw [buildMaskCK_succ, hp, ite_eq_left h2, buildMaskCK_zero]
 
 /-- A divisor whose quadruple fits the window and whose octuple does not gets exactly two rounds,
 whatever `n` says beyond the second. -/
@@ -2436,7 +2436,7 @@ public theorem buildMaskCK_octave {p M A B n : Nat} (h8 : M < p * 8) (hn : 2 ≤
         rw [hy] at hx
         exact hx
       have hle : p * 8 ≤ p * 2 ^ (n + 1) := Nat.mul_le_mul_left p h2
-      rw [if_neg (by lia)]
+      rw [ite_eq_right (by lia)]
 
 /-- Those two rounds are the one-round mask joined with the same mask a quadruple along. -/
 public theorem buildMaskCK_two {p M A B : Nat} (h2 : p * 2 ≤ M) (h4 : p * 4 ≤ M) :
@@ -2444,7 +2444,7 @@ public theorem buildMaskCK_two {p M A B : Nat} (h2 : p * 2 ≤ M) (h4 : p * 4 �
       = ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2))
         ||| ((seedK A M ||| seedK B M) ||| (seedK A M ||| seedK B M) <<< (p * 2)) <<< (p * 4) := by
   have hp : (2 : Nat) ^ (1 + 1) = 4 := rfl
-  rw [buildMaskCK_succ, hp, if_pos h4, buildMaskCK_one h2]
+  rw [buildMaskCK_succ, hp, ite_eq_left h4, buildMaskCK_one h2]
 
 /-- The octave below: where the divisor's sixteenfold passes the window's end, three rounds are
 all the mask ever gets, however many it is given. -/
@@ -2463,14 +2463,14 @@ public theorem buildMaskCK_hexa {p M A B n : Nat} (h16 : M < p * 16) (hn : 3 ≤
         rw [hy] at hx
         exact hx
       have hle : p * 16 ≤ p * 2 ^ (n + 1) := Nat.mul_le_mul_left p h2
-      rw [if_neg (by lia)]
+      rw [ite_eq_right (by lia)]
 
 /-- Those three rounds are the two-round mask joined with the same mask an octuple along. -/
 public theorem buildMaskCK_three {p M A B : Nat} (h8 : p * 8 ≤ M) :
     buildMaskCK p M A B 3
       = buildMaskCK p M A B 2 ||| (buildMaskCK p M A B 2) <<< (p * 8) := by
   have hp : (2 : Nat) ^ (2 + 1) = 8 := rfl
-  rw [buildMaskCK_succ, hp, if_pos h8]
+  rw [buildMaskCK_succ, hp, ite_eq_left h8]
 
 /-- Below `M`, the clamped mask is the mask. -/
 public theorem buildMaskCK_testBit {p M A B n : Nat} :
@@ -2484,12 +2484,12 @@ public theorem buildMaskCK_testBit {p M A B n : Nat} :
     intro i hi
     rw [buildMaskCK_succ, buildMaskK_succ']
     by_cases hc : p * 2 ^ (n + 1) ≤ M
-    · rw [if_pos hc, if_pos hc, Nat.testBit_or, Nat.testBit_or, Nat.testBit_shiftLeft,
+    · rw [ite_eq_left hc, ite_eq_left hc, Nat.testBit_or, Nat.testBit_or, Nat.testBit_shiftLeft,
         Nat.testBit_shiftLeft, ih i hi]
       rcases Nat.lt_or_ge i (p * 2 ^ (n + 1)) with hlt | hge
       · simp [Nat.not_le_of_lt hlt]
       · rw [ih (i - p * 2 ^ (n + 1)) (by lia)]
-    · rw [if_neg hc, if_neg hc]
+    · rw [ite_eq_right hc, ite_eq_right hc]
       exact ih i hi
 
 /-- Rounds past the width of the window change nothing. -/
@@ -2505,7 +2505,7 @@ public theorem buildMaskK_rounds {p M A B n : Nat} (hp : 1 ≤ p) (hM : M < 2 ^ 
       have h1 : (2 : ℕ) ^ n ≤ 2 ^ (m + 1) := Nat.pow_le_pow_right (by lia) (by lia)
       have h3 : 1 * 2 ^ (m + 1) ≤ p * 2 ^ (m + 1) := Nat.mul_le_mul_right _ hp
       have hbig : ¬ (p * 2 ^ (m + 1) ≤ M) := by lia
-      rw [buildMaskK_succ', if_neg hbig]
+      rw [buildMaskK_succ', ite_eq_right hbig]
       exact ih hnm
     · have hnm : n = m + 1 := by lia
       rw [hnm]
@@ -2524,7 +2524,7 @@ public theorem buildMaskK_rounds_stride {p M A B n : Nat} (hM : M < p * 2 ^ (n +
       have h1 : p * 2 ^ (n + 1) ≤ p * 2 ^ (m + 1) :=
         Nat.mul_le_mul_left p (Nat.pow_le_pow_right (by lia) (by lia))
       have hbig : ¬ (p * 2 ^ (m + 1) ≤ M) := by lia
-      rw [buildMaskK_succ', if_neg hbig]
+      rw [buildMaskK_succ', ite_eq_right hbig]
       exact ih hnm
     · have hnm : n = m + 1 := by lia
       rw [hnm]
@@ -2540,7 +2540,7 @@ public theorem buildMaskK_rounds_wide {p M A B : Nat} (hw : M < p * 2) :
       have : (2 : ℕ) ^ 1 ≤ 2 ^ (m + 1) := Nat.pow_le_pow_right (by lia) (by lia)
       have h2 : p * 2 ^ 1 ≤ p * 2 ^ (m + 1) := Nat.mul_le_mul_left _ this
       lia
-    rw [buildMaskK_succ', if_neg (by lia)]
+    rw [buildMaskK_succ', ite_eq_right (by lia)]
     exact ih
 
 /-- A window never grows as the loop runs. -/
@@ -2577,12 +2577,12 @@ public theorem segMarkCK_ldiff {seg p lo Wm1 n : Nat} :
     rw [h1, Nat.sub_and_eq_ldiff]
   rw [hite, hland]
   by_cases hc : p * 2 ≤ Wm1
-  · rw [if_pos hc, clearHitK_eq]
+  · rw [ite_eq_left hc, clearHitK_eq]
   · have hwide : buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
         (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) n
         = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := buildMaskCK_wide (by lia)
-    rw [if_neg hc, clearHitK_eq, hwide]
+    rw [ite_eq_right hc, clearHitK_eq, hwide]
 
 /-- Removing a mask, written with the two operations the kernel reduces directly. -/
 public theorem ldiff_eq_sub {seg m : Nat} : Nat.ldiff seg m = Nat.sub seg (Nat.land m seg) := by
@@ -2744,14 +2744,14 @@ public theorem segMarkCK_eq {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1 + 1)) 
   have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
   rw [hite, segMarkK, hsub]
   by_cases hc : p * 2 ≤ Wm1
-  · rw [if_pos hc, clearHitK_eq, buildMaskK_rounds hp hn 32 hn32,
+  · rw [ite_eq_left hc, clearHitK_eq, buildMaskK_rounds hp hn 32 hn32,
       land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
   · have hw : Wm1 < p * 2 := by lia
     have hseed : (seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
         (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)
         = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := rfl
-    rw [if_neg hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
+    rw [ite_eq_right hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
       land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
 
 /-- The value of a base index in ordinary notation. -/
@@ -2782,14 +2782,14 @@ public theorem segMarkCK_eq_stride {seg p lo Wm1 n : Nat} (hseg : seg < 2 ^ (Wm1
   have hsub : ∀ x : Nat, seg.sub x = seg - x := fun _ => rfl
   rw [hite, segMarkK, hsub]
   by_cases hc : p * 2 ≤ Wm1
-  · rw [if_pos hc, clearHitK_eq, buildMaskK_rounds_stride hn 32 hn32,
+  · rw [ite_eq_left hc, clearHitK_eq, buildMaskK_rounds_stride hn 32 hn32,
       land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
   · have hw : Wm1 < p * 2 := by lia
     have hseed : (seedK (firstLocK (indexK (p.mul 5)) lo (p.mul 2)) Wm1).lor
         (seedK (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) Wm1)
         = buildMaskCK p Wm1 (firstLocK (indexK (p.mul 5)) lo (p.mul 2))
           (firstLocK (indexK (p.mul 7)) lo (p.mul 2)) 0 := rfl
-    rw [if_neg hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
+    rw [ite_eq_right hc, clearHitK_eq, hseed, buildMaskK_rounds_wide hw 32,
       land_congr_below hseg fun i hi => buildMaskCK_testBit i hi]
 
 /-- A batch whose smallest divisor's stride already covers the window in `n` rounds runs the same
