@@ -8533,6 +8533,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   if quadAsm && !quadProd then
     throwError "run_segment_skip: the wide assembly reads every slot of a full chunk, so it needs \
       the padding that (parts / 1048576) % 2 turns on; ask for both or neither"
+  if quadAsm && (parts / 131072) % 2 == 1 then
+    throwError "run_segment_skip: the join builds its chunk steps with bitsDvd_chunkQ, which takes \
+      the assembly as asmChunkK, so it does not yet accept the wide one; bitsDvd_chunkQA is the \
+      statement that would, and nothing emits it"
   -- Pads `lowRecs` past `cnt` to `chunk` slots with the record at `cnt - 1`.
   let padRecs (lowRecs cnt : Nat) : Nat := Id.run do
     if cnt == 0 || cnt ≥ chunk then return lowRecs
