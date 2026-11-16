@@ -2,8 +2,8 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 2
 
-# The chunk products, prodChunkK, are about 59 kernel seconds at 10^16. ZZBU states them as
-# prodQuadK, four records a leaf with no cutoff, everything else as ZZBB. Read `cert skip records`
-# and `cert live records`.
-ZZBB_Target1e16Skip
+# Does stating a chunk's assembly four records a leaf cost or save? ZZBU already carries the wide
+# chunk products, ZZBV adds the wide assembly, and nothing else differs, so `cover asm` is the row
+# that answers it. Two rounds each, alternating, one job.
 ZZBU_Target1e16Quad
+ZZBV_Target1e16QuadAsm
