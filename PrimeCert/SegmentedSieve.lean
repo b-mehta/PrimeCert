@@ -8123,7 +8123,7 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       let c := ch[1]!
       let asmE := mkRawNatLit ch[4]!
       let chunkPf := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunk)
-        #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, asmE,
+        #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, mkRawNatLit 0, asmE,
           mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c), mkConst (thm prodTag k c),
           leafPf[ci]!]
       chain := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_lor)

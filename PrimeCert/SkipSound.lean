@@ -434,16 +434,19 @@ public theorem bitsDvd_lor {acc asm next L D : Nat} (hacc : BitsDvd acc L D)
   · exact hacc j h1
   · exact hasm j h1
 
-/-- A chunk's assembled bits name values dividing anything its product divides. -/
-public theorem bitsDvd_chunk {recs L cnt d asm pv D : Nat}
-    (hasm : Nat.beq (asmChunkK recs cnt d 0) asm = true)
-    (hprod : Nat.beq (prodChunkK recs L cnt d 0) pv = true) (hdvd : pv ∣ D) :
+/-- A chunk's assembled bits name values dividing anything its product divides.
+
+`off` is a variable so that the emitter passes the literal its statements carry, which makes each
+hypothesis syntactically the statement it is given and spares the kernel re-evaluating the chunk. -/
+public theorem bitsDvd_chunk {recs L cnt d off asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d off) asm = true)
+    (hprod : Nat.beq (prodChunkK recs L cnt d off) pv = true) (hdvd : pv ∣ D) :
     BitsDvd asm L D := by
   intro j hj
   rw [← Nat.eq_of_beq_eq_true hasm] at hj
   refine Nat.dvd_trans ?_ hdvd
   rw [← Nat.eq_of_beq_eq_true hprod]
-  exact dvd_prodChunkK_of_testBit recs L cnt d 0 j hj
+  exact dvd_prodChunkK_of_testBit recs L cnt d off j hj
 
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=
