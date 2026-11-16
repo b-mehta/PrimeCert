@@ -8289,6 +8289,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- identity, the route's theorem and the certificate's statements. Needs `PrimeCert.SkipSound`
   -- imported, both covers, one gcd and separate assembly statements.
   let joinProof := (parts / 131072) % 2 == 1
+  -- How many products the skipped side ends at. The chunk products are combined pairwise up a
+  -- tree; stopping that tree with several entries left states the gcds against the pieces instead
+  -- of against one number holding every skipped divisor, which at `10^16` is 5519007 of them.
+  -- `segLoopK_eq_self_of_records_list` is the statement that accepts the pieces.
+  let skipPieces := 1 <<< ((parts / 262144) % 4)
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8561,6 +8566,9 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           next := next.push (vals[2 * j]!)
       vals := next
     let pVal := if vals.size == 0 then 1 else vals[0]!
+    -- The products the gcds are stated against. One entry is the whole skipped product, which is
+    -- what every run before `skipPieces` did; several are the tree stopped early.
+    let mut pieces : Array Nat := #[]
     let t5 ← IO.monoMsNow
     rssLog s!"skipped product built in {t5 - t4} ms, {← rssMB} MiB"
     addDecl <| Declaration.defnDecl
@@ -8664,7 +8672,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut level := leaves
       let mut lvl := 0
       let mut nMul := 0
-      while level.size > 1 do
+      while level.size > skipPieces do
         if joinProof then
           jSkipLevels := jSkipLevels.push level
         let mut next : Array Nat := #[]
@@ -8684,13 +8692,21 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         lvl := lvl + 1
       if joinProof then
         jSkipLevels := jSkipLevels.push level
-      let top := if level.size == 0 then 1 else level[0]!
+      pieces := level
       -- The emitter's own check, free: the chunks have to multiply to the literal the gcds are
       -- stated against, or the two halves are about different divisor sets and the gcds mean
-      -- nothing. A record set that missed a divisor fails here rather than in a timing.
+      -- nothing. A record set that missed a divisor fails here rather than in a timing. With the
+      -- tree stopped early the same check is over the pieces together, since it is their product
+      -- that has to hold every skipped divisor.
+      let top := pieces.foldl (· * ·) 1
       if top != pVal then
         throwError "run_segment_skip: the skip records multiply to a different product from the \
           one the gcds are stated against, so the record set is wrong"
+      -- `segLoopK_eq_of_join` takes a single product, so the proved join and a split product have
+      -- not been put together yet. Saying so here beats emitting a join that cannot be proved.
+      if joinProof && pieces.size > 1 then
+        throwError "run_segment_skip: the proved join states one product, so it cannot be asked \
+          for with (parts / 262144) above 0; drop one of the two"
       let t8 ← IO.monoMsNow
       rssLog s!"skip product chain: {nMul} multiplications over {lvl} levels, {t8 - t7} ms, \
         {← rssMB} MiB"
@@ -8835,9 +8851,17 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         jLiveLevels := jLiveLevels.push level
       let liveProd := if level.size == 0 then 1 else level[0]!
       jLiveProd := liveProd
-      addSegThm (mkPrivateName env (ns ++ Name.mkSimple "liveGcd"))
-        (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit liveProd) (mkConst pName))
-          (mkRawNatLit 1)) Lean.reflBoolTrue
+      if pieces.size > 1 then
+        -- One gcd a piece. The live side stays a single product, so the pieces cost statements
+        -- here and nothing else; what they save is the levels of the skip tree above them.
+        for i in [0:pieces.size] do
+          addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"liveGcd_{i}"))
+            (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit liveProd)
+              (mkRawNatLit pieces[i]!)) (mkRawNatLit 1)) Lean.reflBoolTrue
+      else
+        addSegThm (mkPrivateName env (ns ++ Name.mkSimple "liveGcd"))
+          (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit liveProd) (mkConst pName))
+            (mkRawNatLit 1)) Lean.reflBoolTrue
       let t10 ← IO.monoMsNow
       rssLog s!"live product chain: {nMul} multiplications over {lvl} levels then one gcd, \
         {t10 - t9} ms, {← rssMB} MiB"
@@ -8969,7 +8993,11 @@ rather than `Wm1/8`, which counts to the identical strike set for a ninth fewer 
 `(parts / 131072) % 2` emits the per-window theorem, that marking by every divisor gives the
 route's window, as `segEqAll_…` with its proof, through `segLoopK_eq_of_join`, and needs
 `PrimeCert.SkipSound` imported. `(parts / 65536) % 2` was the same thing with its proof left a
-hole, for measuring the join before it was proved, and is gone.
+hole, for measuring the join before it was proved, and is gone. `(parts / 262144) % 4` stops the
+skipped side's product tree with 1, 2, 4 or 8 entries left and states one gcd against each, so the
+largest literal the kernel handles there is the whole skipped product divided among that many
+pieces; `segLoopK_eq_self_of_records_list` is the statement that takes them, and the proved join
+takes a single product, so the two cannot both be asked for.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
