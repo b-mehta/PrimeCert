@@ -6,6 +6,7 @@ Authors: Bhavik Mehta
 module
 
 public import PrimeCert.SegmentedSieve
+public import PrimeCert.NoPos
 
 /-!
 # Reading the record certificate
@@ -542,5 +543,33 @@ public theorem segLoopK_eq_of_join {sVal sMark sSkip lo Wm1 W win fuel P D nL nS
     refine ⟨valueK_mod6 _, five_le_valueK (by omega), ?_, hd⟩
     exact Nat.le_trans (index_mono hv) (Nat.le_of_ble_eq_true hlo)
   exact segLoopK_eq_of_certificate (Nat.eq_of_beq_eq_true hsplit) hroute hwin hWlt hcov hdiv
+
+/-! ## The divisors with no position in the window
+
+`hdiv` above asks every skipped divisor to divide the product `P`, so the skipped side carries one
+factor per skipped divisor: 5519007 at `10^16` and 50519424 at `10^18`. Most of those divisors are
+skipped for a reason that never reaches the window's live positions, having no multiple at a
+window position at all, which is 4688449 of the 5519007 and 49281838 of the 50519424.
+
+`PrimeCert.NoPos` states that reason as one fold per batch and takes it back apart. This is the
+last step: a divisor the fold names leaves the window exactly as it was, with no product and no
+gcd anywhere in the argument. -/
+
+/-- A divisor named by a true batch fold leaves the window exactly as it was.
+
+`NoPos.firstOffK` and `firstLocK` have the same body, so the mask in `segMarkK` is the mask
+`land_mask_eq_zero_of_noPosFoldK` speaks about and the two statements meet without conversion. -/
+public theorem segMarkK_eq_self_of_noPosFoldK {c lo Wm1 start fuel i seg : Nat}
+    (hfold : noPosFoldK c lo Wm1 start fuel = true) (hi : i < fuel)
+    (hbit : Nat.blt 0 (Nat.land c (Nat.shiftLeft 1 i)) = true)
+    (hseg : ∀ j, Wm1 < j → Nat.testBit seg j = false) :
+    segMarkK seg (valueK (Nat.add start i)) lo Wm1 = seg := by
+  have hz : Nat.land seg (buildMaskK (valueK (Nat.add start i)) Wm1
+      (firstLocK (indexK ((valueK (Nat.add start i)).mul 5)) lo ((valueK (Nat.add start i)).mul 2))
+      (firstLocK (indexK ((valueK (Nat.add start i)).mul 7)) lo ((valueK (Nat.add start i)).mul 2))
+      32) = 0 := land_mask_eq_zero_of_noPosFoldK hfold hi hbit hseg
+  change Nat.sub seg (Nat.land seg _) = seg
+  rw [hz]
+  exact Nat.sub_zero seg
 
 end PrimeCert.Sieve

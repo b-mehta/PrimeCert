@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'ci/window-sieve-proof'
+      # A second branch so a check can run while `ci/window-sieve-proof` holds whatever it holds.
+      - 'ci/sieve-check'
   workflow_dispatch:
 
 jobs:
@@ -20,4 +22,6 @@ jobs:
       - name: Fetch the mathlib build cache
         run: lake exe cache get
       - name: Build the segmented sieve and its correctness file
-        run: lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
+        run: >
+          lake build PrimeCert.SieveCorrect PrimeCert.Meta.Sieve PrimeCert.SegmentedSieve
+          PrimeCert.NoPos PrimeCert.SkipSound
