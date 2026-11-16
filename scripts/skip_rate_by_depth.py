@@ -51,7 +51,8 @@ def build_base(lo):
     sweep then tests everything above them.
     """
     n = lo + np.arange(SPAN, dtype=np.int64)
-    base = ((n % 2) != 0) & ((n % 3) != 0)
+    coprime6 = ((n % 2) != 0) & ((n % 3) != 0)
+    base = coprime6.copy()
     for p in small_primes(WM1 // BASE_K):
         p = int(p)
         if p <= 3:
@@ -59,35 +60,46 @@ def build_base(lo):
         start = ((lo + p - 1) // p) * p
         if start < lo + SPAN:
             base[start - lo :: p] = False
-    return base
+    return coprime6, base
 
 
-def sweep_chunk(ps, lo, base):
-    """How many of these divisors strike a live position in the base, and how many do not.
+def sweep_chunk(ps, lo, coprime6, base):
+    """Split these divisors three ways, by what their multiples in the window are.
+
+    A divisor strikes if one of its multiples is a position still live in the base. The rest are
+    skipped, and they divide into two kinds that the certificate has no reason to treat alike: a
+    divisor with no multiple at a position at all, which divides nothing the window holds, and one
+    whose positions exist but are all already dead.
 
     One column per possible multiple, so the whole chunk is tested at once rather than divisor by
     divisor. A column past the end of the window is masked off, not read.
     """
     if ps.size == 0:
-        return 0, 0
+        return 0, 0, 0
     p64 = ps.astype(np.int64)
     first = ((lo + p64 - 1) // p64) * p64 - lo
     hit = np.zeros(ps.size, dtype=bool)
+    pos = np.zeros(ps.size, dtype=bool)
     for k in range(MAXHITS):
         off = first + k * p64
         live = off < SPAN
         if not live.any():
             break
         idx = np.where(live, off, 0)
+        here = live & coprime6[idx]
+        pos |= here
         hit |= live & base[idx]
-    return int(np.count_nonzero(hit)), int(ps.size - np.count_nonzero(hit))
+    struck = int(np.count_nonzero(hit))
+    nopos = int(np.count_nonzero(~pos))
+    return struck, nopos, int(ps.size) - struck - nopos
 
 
 def report(lo, bound):
-    base = build_base(lo)
+    coprime6, base = build_base(lo)
     roots = small_primes(int(bound**0.5) + 1)
     struck = 0
-    skipped = 0
+    nopos = 0
+    dead = 0
     start = SWEEP_LO
     while start <= bound:
         stop = min(bound, start + CHUNK - 1)
@@ -98,16 +110,19 @@ def report(lo, bound):
             if begin <= stop:
                 seg[begin - start :: p] = False
         ps = np.flatnonzero(seg) + start
-        a, b = sweep_chunk(ps, lo, base)
+        a, b, c = sweep_chunk(ps, lo, coprime6, base)
         struck += a
-        skipped += b
+        nopos += b
+        dead += c
         start = stop + 1
+    skipped = nopos + dead
     total = struck + skipped
     pct = 100.0 * skipped / total if total else 0.0
+    nopct = 100.0 * nopos / skipped if skipped else 0.0
     live = int(np.count_nonzero(base))
     print(
-        f"{lo:>21} {bound:>12} {total:>12} {struck:>10} {skipped:>12} {pct:10.2f}%"
-        f" {live:>10}"
+        f"{lo:>21} {bound:>12} {total:>12} {struck:>10} {skipped:>12} {pct:8.2f}%"
+        f" {nopos:>12} {nopct:8.2f}% {dead:>10} {live:>10}"
     )
 
 
@@ -118,7 +133,8 @@ def main():
         depths = [10**14 + 1, 10**16 + 1]
     print(
         f"{'window start':>21} {'bound':>12} {'swept':>12} {'struck':>10}"
-        f" {'skipped':>12} {'skipped %':>11} {'base live':>10}"
+        f" {'skipped':>12} {'skip %':>9} {'no position':>12} {'of skip':>9}"
+        f" {'all dead':>10} {'base live':>10}"
     )
     for lo in depths:
         bound = int(lo**0.5) + 1
