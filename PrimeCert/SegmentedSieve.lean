@@ -6556,6 +6556,73 @@ public theorem dvd_prodQuadK (recs lo : Nat) :
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
 
 /-- A set bit of a chunk's assembly is the position some slot in range names. -/
+/-- The bits named by the four sixteen-bit records packed in the word `w`, associated as
+`asmChunkK` associates a tree of depth two. -/
+@[expose] public noncomputable def quadAsmK (w : Nat) : Nat :=
+  Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land w 65535))
+      (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 16) 65535)))
+    (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 32) 65535))
+      (Nat.shiftLeft 1 (Nat.shiftRight w 48)))
+
+/-- The bits named by the `4 * 2 ^ e` records of `recs` from slot `4 * off`, as a balanced tree
+over 64-bit words of four records each. The assembly side of `prodQuadK`. -/
+@[expose] public noncomputable def asmQuadK (recs e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => quadAsmK (Nat.land (Nat.shiftRight recs (Nat.mul o 64)) 18446744073709551615))
+    (fun k ih o => Nat.lor (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+/-- The wide tree assembles exactly what the narrow one does, two levels deeper, as long as no
+leaf of the narrow tree meets its slot cutoff.
+
+This is why the assembly side needs no argument of its own: every lemma about `asmChunkK` reaches
+`asmQuadK` by rewriting with this. A tree of depth two from slot `4 * off` associates as
+`lor (lor l₀ l₁) (lor l₂ l₃)`, which is how `quadAsmK` ors the four records of one word. -/
+public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
+    4 * (off + 2 ^ e) ≤ cnt → asmQuadK recs e off = asmChunkK recs cnt (e + 2) (4 * off) := by
+  intro e
+  induction e with
+  | zero =>
+    intro off hc
+    have hc4 : 4 * off + 3 < cnt := by simp only [Nat.pow_zero] at hc; omega
+    -- Each of the four slots is in range, so its leaf is the shifted bit and not the cutoff's `0`.
+    have hleaf : ∀ j, j < 4 → asmChunkK recs cnt 0 (4 * off + j)
+        = Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul (4 * off + j) 16)) 65535) := by
+      intro j hj
+      have hb : Nat.blt (4 * off + j) cnt = true := by
+        have : 4 * off + j < cnt := by omega
+        simpa using this
+      change (Nat.blt (4 * off + j) cnt).rec 0 _ = _
+      rw [hb]
+    have ha : asmChunkK recs cnt 2 (4 * off) =
+        Nat.lor (Nat.lor (asmChunkK recs cnt 0 (4 * off)) (asmChunkK recs cnt 0 (4 * off + 1)))
+          (Nat.lor (asmChunkK recs cnt 0 (4 * off + 2))
+            (asmChunkK recs cnt 0 (4 * off + 3))) := by
+      norm_num [asmChunkK]
+    have hq : asmQuadK recs 0 off =
+        quadAsmK (Nat.land (Nat.shiftRight recs (Nat.mul off 64)) 18446744073709551615) := rfl
+    rw [hq, ha, hleaf 0 (by omega), hleaf 1 (by omega), hleaf 2 (by omega), hleaf 3 (by omega),
+      quadAsmK]
+    have h64 : (18446744073709551615 : Nat) = 2 ^ 64 - 1 := by norm_num
+    have h16 : (65535 : Nat) = 2 ^ 16 - 1 := by norm_num
+    simp only [h64, h16, Nat.land, Nat.shiftRight, Nat.mul]
+    rw [field_quad_top recs off]
+    rw [field_quad recs off 1 (by omega), field_quad recs off 2 (by omega)]
+    norm_num [field_quad recs off 0 (by omega)]
+  | succ k ih =>
+    intro off hc
+    have hpow : (2 : Nat) ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
+    have hq : asmQuadK recs (k + 1) off =
+        Nat.lor (asmQuadK recs k off) (asmQuadK recs k (Nat.add off (Nat.pow 2 k))) := rfl
+    have ha : asmChunkK recs cnt (k + 3) (4 * off) =
+        Nat.lor (asmChunkK recs cnt (k + 2) (4 * off))
+          (asmChunkK recs cnt (k + 2) (Nat.add (4 * off) (Nat.pow 2 (k + 2)))) := rfl
+    have hoff : Nat.add (4 * off) (Nat.pow 2 (k + 2)) = 4 * (Nat.add off (Nat.pow 2 k)) := by
+      simp only [Nat.add_eq, Nat.pow_succ]
+      omega
+    rw [hq, ha, hoff, ih off (by omega), ih (Nat.add off (Nat.pow 2 k)) (by
+      simp only [Nat.add_eq] at *; omega)]
+
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
     ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
       ∃ s, off ≤ s ∧ s < off + 2 ^ d ∧
