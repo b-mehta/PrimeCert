@@ -8299,7 +8299,8 @@ order, and `leafPf` proves each chunk's product divides `D`. `thm tag k c` names
 `k`'s statement with that tag, and `sliceThm k` names slice `k`'s statement. -/
 meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
     (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
-    (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) : Expr := Id.run do
+    (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false) :
+    Expr := Id.run do
   let maskE := mkApp2 (mkConst ``Nat.sub)
     (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536)) (mkRawNatLit 1)
   let mut proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_zero) #[xE, LE, D]
@@ -8311,10 +8312,16 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       let ch := chunks[ci]!
       let c := ch[1]!
       let asmE := mkRawNatLit ch[4]!
-      let chunkPf := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunk)
-        #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, mkRawNatLit 0, asmE,
-          mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c), mkConst (thm prodTag k c),
-          leafPf[ci]!]
+      let chunkPf := if quad then
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQ)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
+            mkRawNatLit (chunkLog - 2), asmE, mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c),
+            mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue]
+      else
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunk)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, mkRawNatLit 0, asmE,
+            mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c), mkConst (thm prodTag k c),
+            leafPf[ci]!]
       chain := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_lor)
         #[mkRawNatLit ch[6]!, asmE, mkRawNatLit ch[7]!, LkE, D, chain, chunkPf,
           mkConst (thm coverTag k c)]
@@ -8437,6 +8444,18 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- of against one number holding every skipped divisor, which at `10^16` is 5519007 of them.
   -- `segLoopK_eq_self_of_records_list` is the statement that accepts the pieces.
   let skipPieces := 1 <<< ((parts / 262144) % 4)
+  -- Chunk products as `prodQuadK`, four records a leaf with no cutoff. A part-full chunk is padded
+  -- with copies of its last record, which repeats a factor of the product and a bit of the
+  -- assembly, so the gcd and the cover are what they were.
+  let quadProd := (parts / 1048576) % 2 == 1
+  -- Pads `lowRecs` past `cnt` to `chunk` slots with the record at `cnt - 1`.
+  let padRecs (lowRecs cnt : Nat) : Nat := Id.run do
+    if cnt == 0 || cnt ≥ chunk then return lowRecs
+    let last := (lowRecs >>> ((cnt - 1) * 16)) &&& 65535
+    let mut r := lowRecs
+    for o in [cnt:chunk] do
+      r := r ||| (last <<< (o * 16))
+    return r
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8700,6 +8719,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     let mut vals : Array Nat := #[]
     for i in SieveEmit.setBitsLow (sSkip >>> 1) fuel do
       vals := vals.push (value (1 + i))
+    if quadProd && skipCert then
+      -- The repeats the padding puts in each block's last chunk, so the product is the one the
+      -- chunks multiply to.
+      for k in [0:(fuel + 65536) / 65536] do
+        let (recs, cnt) := SieveEmit.liveRecords sSkip k
+        if cnt % chunk != 0 then
+          let last := (recs >>> ((cnt - 1) * 16)) &&& 65535
+          for _ in [0:chunk - cnt % chunk] do
+            vals := vals.push (value (k * 65536 + last))
     while vals.size > 1 do
       let mut next : Array Nat := #[]
       for j in [0:(vals.size + 1) / 2] do
@@ -8747,20 +8775,26 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         let mut acc := 0
         for c in [0:(cnt + chunk - 1) / chunk] do
           let p0 ← IO.monoMsNow
-          let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
           let thisCnt := Nat.min chunk (cnt - c * chunk)
+          let lowRecs0 := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
+          let lowRecs := if quadProd then padRecs lowRecs0 thisCnt else lowRecs0
           let mut vs : Array Nat := #[]
           let mut asm := 0
-          for o in [0:thisCnt] do
+          for o in [0:if quadProd then chunk else thisCnt] do
             let pos := (lowRecs >>> (o * 16)) &&& 65535
             vs := vs.push (value (k * 65536 + pos))
             asm := asm ||| (1 <<< pos)
           let pv := prodPairwise vs
           let p1 ← IO.monoMsNow
           msProd := msProd + (p1 - p0)
-          let prodE := mkAppN (mkConst ``prodChunkK)
-            #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit thisCnt,
-              mkRawNatLit chunkLog, mkRawNatLit 0]
+          let prodE := if quadProd then
+            mkAppN (mkConst ``prodQuadK)
+              #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit (chunkLog - 2),
+                mkRawNatLit 0]
+          else
+            mkAppN (mkConst ``prodChunkK)
+              #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit thisCnt,
+                mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipRec_{k}_{c}"))
             (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
           let asmE := mkAppN (mkConst ``asmChunkK)
@@ -8879,18 +8913,24 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       -- chain ends at a literal the kernel has agreed is everything the chunks name together.
       let mut acc := 0
       for c in [0:(cnt + chunk - 1) / chunk] do
-        let lowRecs := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
         let thisCnt := Nat.min chunk (cnt - c * chunk)
-        let liveE := mkAppN (mkConst ``prodChunkK)
-          #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
-            mkRawNatLit chunkLog, mkRawNatLit 0]
+        let lowRecs0 := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
+        let lowRecs := if quadProd then padRecs lowRecs0 thisCnt else lowRecs0
+        let liveE := if quadProd then
+          mkAppN (mkConst ``prodQuadK)
+            #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit (chunkLog - 2),
+              mkRawNatLit 0]
+        else
+          mkAppN (mkConst ``prodChunkK)
+            #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
+              mkRawNatLit chunkLog, mkRawNatLit 0]
         let mut curPv := 0
         if oneGcd then
           -- The chunk's product as a literal, to be combined with the others below. The gcd then
           -- happens once for the window rather than once a chunk. Pairwise, for the reason
           -- `prodPairwise` gives.
           let mut vs : Array Nat := #[]
-          for o in [0:thisCnt] do
+          for o in [0:if quadProd then chunk else thisCnt] do
             vs := vs.push (value (lo + k * 65536 + ((lowRecs >>> (o * 16)) &&& 65535)))
           let pv := prodPairwise vs
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recProd_{k}_{c}"))
@@ -9054,10 +9094,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         {skipLeafPf.size} leaves against {jLive.size} and {jSkip.size} chunks"
     let liveCov := sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
       (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
-      (fun k => priv s!"recSlice_{k}")
+      (fun k => priv s!"recSlice_{k}") quadProd
     let skipCov := sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
-      (fun k => priv s!"skipBlock_{k}")
+      (fun k => priv s!"skipBlock_{k}") quadProd
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
       mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[x, L, D, mkRawNatLit n]
     let tag := s!"{a}_{W}_{fuel}"
@@ -9140,7 +9180,8 @@ hole, for measuring the join before it was proved, and is gone. `(parts / 262144
 skipped side's product tree with 1, 2, 4 or 8 entries left and states one gcd against each, so the
 largest literal the kernel handles there is the whole skipped product divided among that many
 pieces; `segLoopK_eq_self_of_records_list` is the statement that takes them, and the proved join
-takes a single product, so the two cannot both be asked for.
+takes a single product, so the two cannot both be asked for. `(parts / 1048576) % 2` states each
+chunk's product as `prodQuadK`, four records a leaf, padding a part-full chunk with its last record.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
