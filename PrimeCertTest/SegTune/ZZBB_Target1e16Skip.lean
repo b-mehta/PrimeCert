@@ -43,6 +43,6 @@ namespace PrimeCert.SegTune.ZZBB_Target1e16Skip
 run_sieve 100000000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 52675 10000000000000001 4194304 33333333 8192 0 65536 100000000
+run_segment_skip_part 52675 10000000000000001 4194304 33333333 65536 0 65536 100000000
 
 end PrimeCert.SegTune.ZZBB_Target1e16Skip
