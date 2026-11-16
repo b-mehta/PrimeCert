@@ -1,11 +1,9 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to ci/sieve-bench.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+3
 
-# Does stopping the skipped side's product tree early cost or save? All four are the 10^16 skip
-# case with only the piece count moving, and SP_Pieces1 is the baseline the other three are read
-# against. One round each, four arms in one job so they share a runner.
+# The one-round sweep over 1, 2, 4 and 8 pieces put every arm inside 7.4 kernel seconds of the
+# others, which one round cannot separate from noise. These are the two ends of that spread, three
+# rounds each, alternating, so the comparison carries a range rather than a single number.
 SP_Pieces1
-SP_Pieces2
 SP_Pieces4
-SP_Pieces8
