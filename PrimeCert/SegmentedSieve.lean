@@ -7607,7 +7607,7 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       let nb := Nat.min 32 (Nat.log2 (wm1 / value start) + 1)
       let cVal := (sVal >>> start) &&& ((1 <<< stepN) - 1)
       let cE := mkRawNatLit cVal
-      let sorted := !marked && (wm1 < 2 * value start
+      let sorted := !marked && cVal != 0 && (wm1 < 2 * value start
         || (2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start)
         || (4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start)
         || (lane16 && 8 * value (start + stepN) ≤ wm1 && wm1 < 16 * value start))
@@ -7620,7 +7620,12 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       let batchE := mkAppN (mkConst ``segLoopSCK)
         #[cE, loE, wE, mkRawNatLit nb, bitsE, mkRawNatLit start, mkRawNatLit stepN]
       -- How many records a divisor of this batch needs, or none if the batch is not sorted.
-      let nrec := if marked then 0
+      -- A batch holding no divisor at all gets none either. Over a marked subset the batches are
+      -- cut by position, not by content, so once the subset is sparse enough a whole batch can
+      -- come out empty; at 10^16 the wide band skips 96.5% of its divisors and this happens. Such
+      -- a batch removes nothing from the window, which is exactly what the unsorted path emits
+      -- for `cVal = 0`, so it goes there rather than to a sort with nothing to sort.
+      let nrec := if marked || cVal == 0 then 0
         else if wm1 < 2 * value start then 2
         else if 2 * value (start + stepN) ≤ wm1 && wm1 < 4 * value start then 4
         else if 4 * value (start + stepN) ≤ wm1 && wm1 < 8 * value start then 8
@@ -7651,7 +7656,8 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       -- it. Reading one bit of a result is enough to force it and costs nothing beside the window.
       forceAcc := forceAcc + (match asmRes with | some asm => asm.land 1 | none => 0)
       if let some (_, _, _, expect) := sortRes then
-        if expect == 0 then throwError "run_segment_variant: the sorted batch came out empty"
+        if expect == 0 then throwError "run_segment_variant: batch {i} holds divisors but \
+          assembled no position; an empty batch is taken unsorted above, so this is not that"
       let t1 ← IO.monoNanosNow
       sortNanos := sortNanos + (t1 - t0)
       -- The window after this batch is the window with the batch's mask cleared from it, so a
