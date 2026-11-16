@@ -2,6 +2,14 @@ name: Window sieve tuning
 
 on:
   workflow_dispatch:
+  # A manual dispatch resolves the workflow file from the default branch, so while this file sits
+  # on a tuning branch alone that route answers 404. A push trigger reads the file from the branch
+  # being pushed, so pushing a timing run to `ci/sieve-bench` runs it from that branch's own copy.
+  # Keeping the trigger on a branch of its own means ordinary work on `ci/window-sieve-tune` stays
+  # clear of a 180 minute job.
+  push:
+    branches:
+      - ci/sieve-bench
 
 jobs:
   build:
