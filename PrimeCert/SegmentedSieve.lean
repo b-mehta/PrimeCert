@@ -8526,6 +8526,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- with copies of its last record, which repeats a factor of the product and a bit of the
   -- assembly, so the gcd and the cover are what they were.
   let quadProd := (parts / 1048576) % 2 == 1
+  -- The assembly stated the same way, four records a leaf. `asmQuadK_eq_asmChunkK` carries it to
+  -- the narrow tree two levels deeper, given every slot the wide tree reads is below `cnt`, which
+  -- is what the padding above arranges. So this needs `quadProd` on and says so if it is not.
+  let quadAsm := (parts / 2097152) % 2 == 1
+  if quadAsm && !quadProd then
+    throwError "run_segment_skip: the wide assembly reads every slot of a full chunk, so it needs \
+      the padding that (parts / 1048576) % 2 turns on; ask for both or neither"
   -- Pads `lowRecs` past `cnt` to `chunk` slots with the record at `cnt - 1`.
   let padRecs (lowRecs cnt : Nat) : Nat := Id.run do
     if cnt == 0 || cnt ≥ chunk then return lowRecs
@@ -8875,8 +8882,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
                 mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipRec_{k}_{c}"))
             (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
-          let asmE := mkAppN (mkConst ``asmChunkK)
-            #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
+          let asmE := if quadAsm then
+            mkAppN (mkConst ``asmQuadK)
+              #[mkRawNatLit lowRecs, mkRawNatLit (chunkLog - 2), mkRawNatLit 0]
+          else
+            mkAppN (mkConst ``asmChunkK)
+              #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           let next := acc ||| asm
           if joinProof then
             jSkip := jSkip.push #[k, c, lowRecs, thisCnt, asm, pv, acc, next]
@@ -9260,6 +9271,9 @@ largest literal the kernel handles there is the whole skipped product divided am
 pieces; `segLoopK_eq_self_of_records_list` is the statement that takes them, and the proved join
 takes a single product, so the two cannot both be asked for. `(parts / 1048576) % 2` states each
 chunk's product as `prodQuadK`, four records a leaf, padding a part-full chunk with its last record.
+`(parts / 2097152) % 2` states each chunk's assembly as `asmQuadK`, four records a leaf likewise,
+which `asmQuadK_eq_asmChunkK` carries to the narrow tree and `bitsDvd_chunkQA` consumes. It reads
+every slot of a full chunk, so it needs the padding and refuses without it.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
