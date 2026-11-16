@@ -6555,7 +6555,6 @@ public theorem dvd_prodQuadK (recs lo : Nat) :
     · exact Nat.dvd_mul_right_of_dvd (ih off s h1 hc) _
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
 
-/-- A set bit of a chunk's assembly is the position some slot in range names. -/
 /-- The bits named by the four sixteen-bit records packed in the word `w`, associated as
 `asmChunkK` associates a tree of depth two. -/
 @[expose] public noncomputable def quadAsmK (w : Nat) : Nat :=
@@ -6623,6 +6622,7 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     rw [hq, ha, hoff, ih off (by omega), ih (Nat.add off (Nat.pow 2 k)) (by
       simp only [Nat.add_eq] at *; omega)]
 
+/-- A set bit of a chunk's assembly is the position some slot in range names. -/
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
     ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
       ∃ s, off ≤ s ∧ s < off + 2 ^ d ∧
