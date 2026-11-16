@@ -1,9 +1,9 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to ci/sieve-bench.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-2
+1
 
-# Does stating a chunk's assembly four records a leaf cost or save? ZZBU already carries the wide
-# chunk products, ZZBV adds the wide assembly, and nothing else differs, so `cover asm` is the row
-# that answers it. Two rounds each, alternating, one job.
-ZZBU_Target1e16Quad
-ZZBV_Target1e16QuadAsm
+# Does the join accept the wide assembly? A build only compiles the emitter; whether the proof
+# term it builds typechecks is decided when a window runs. ZZBM is the same window with both
+# trees narrow, as the thing this is read against.
+ZZBM_JoinProved
+ZZBW_JoinQuadAsm
