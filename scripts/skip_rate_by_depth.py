@@ -104,7 +104,11 @@ def report(lo, bound):
         start = stop + 1
     total = struck + skipped
     pct = 100.0 * skipped / total if total else 0.0
-    print(f"{lo:>21} {bound:>12} {total:>12} {struck:>10} {skipped:>12} {pct:10.2f}%")
+    live = int(np.count_nonzero(base))
+    print(
+        f"{lo:>21} {bound:>12} {total:>12} {struck:>10} {skipped:>12} {pct:10.2f}%"
+        f" {live:>10}"
+    )
 
 
 def main():
@@ -114,7 +118,7 @@ def main():
         depths = [10**14 + 1, 10**16 + 1]
     print(
         f"{'window start':>21} {'bound':>12} {'swept':>12} {'struck':>10}"
-        f" {'skipped':>12} {'skipped %':>11}"
+        f" {'skipped':>12} {'skipped %':>11} {'base live':>10}"
     )
     for lo in depths:
         bound = int(lo**0.5) + 1
