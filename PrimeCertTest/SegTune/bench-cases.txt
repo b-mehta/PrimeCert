@@ -2,8 +2,10 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Does the proved skip design complete a window at 10^17, and at what peak? One round, because
-# the question is whether it finishes at all; a time worth comparing needs a second round and a
-# baseline arm beside it. run.sh fails a case at 14 GB, so running out of memory is an answer
-# rather than a crash.
-ZZBP_Target1e17Skip
+# Does stopping the skipped side's product tree early cost or save? All four are the 10^16 skip
+# case with only the piece count moving, and SP_Pieces1 is the baseline the other three are read
+# against. One round each, four arms in one job so they share a runner.
+SP_Pieces1
+SP_Pieces2
+SP_Pieces4
+SP_Pieces8
