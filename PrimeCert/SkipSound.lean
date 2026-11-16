@@ -275,6 +275,40 @@ public theorem segLoopK_eq_self_of_records {s lo Wm1 seg start fuel P : Nat}
       rw [Sieve.testBitK_eq_testBit] at hlive
       exact not_dvd_of_cover hP (by omega) hcov j hlive
 
+/-- **The record certificate over several products.** The same statement as
+`segLoopK_eq_self_of_records`, with the single product replaced by a list of them: each skipped
+divisor divides one of the products, and every live position is held by a chunk coprime to each.
+
+The single-product form builds one literal from every skipped divisor, 5519007 of them at `10^16`
+and 16797927 at `10^17`, by multiplying the chunk products pairwise up a tree. A list lets the
+emitter stop at any level of that tree and state the gcds against the pieces, which is the
+staging that segmented work allows and that the one-literal form forbids.
+
+The proof is the single-product proof. The induction never looks at more than one divisor, so it
+only ever needs the product that divisor divides, and the cover stated against that product. -/
+public theorem segLoopK_eq_self_of_records_list {s lo Wm1 seg start fuel : Nat} {Ps : List Nat}
+    (hseg : seg < 2 ^ (Wm1 + 1)) (hW : Wm1 < 2 ^ 32)
+    (hcov : ∀ P ∈ Ps, ∀ j, Nat.testBit seg j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1)
+    (hdiv : ∀ i, i < fuel → testBitK s (start + i) = true →
+      (valueK (start + i) % 6 = 1 ∨ valueK (start + i) % 6 = 5) ∧ 5 ≤ valueK (start + i) ∧
+        index (valueK (start + i) * 7) ≤ lo ∧ ∃ P ∈ Ps, valueK (start + i) ∣ P) :
+    segLoopK s lo Wm1 seg start fuel = seg := by
+  induction fuel with
+  | zero => rfl
+  | succ fuel ih =>
+    have hrec : segLoopK s lo Wm1 seg start fuel = seg :=
+      ih fun i hi => hdiv i (by omega)
+    rw [segLoopK_succ, hrec]
+    cases hb : testBitK s (start + fuel) with
+    | false => rfl
+    | true =>
+      obtain ⟨h6, h5, hlo, P, hmem, hP⟩ := hdiv fuel (by omega) hb
+      refine segMarkK_eq_self_of_not_dvd hseg hW h6 h5 hlo fun j _ hlive => ?_
+      rw [Sieve.testBitK_eq_testBit] at hlive
+      exact not_dvd_of_cover hP (by omega) (hcov P hmem) j hlive
+
 /-! ## The join
 
 This is the theorem the whole design exists to produce, and the one the emitter stubbed while its
