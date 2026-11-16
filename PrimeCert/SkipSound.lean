@@ -400,4 +400,166 @@ public theorem testBit_of_testBit_slice {seg s w j : Nat}
   rw [Nat.testBit_and, Nat.testBit_shiftRight] at h
   exact ((Bool.and_eq_true _ _).mp h).1
 
+/-! ## The join, as the emitter proves it
+
+The emitter states every fact below as a `Nat.beq` the kernel evaluates, and these lemmas are the
+steps of the term it builds from them. One predicate carries the whole argument: `BitsDvd x L D`,
+every set bit of `x` names a value, read from `L`, that divides `D`.
+
+A chunk has it from its assembly and its product (`bitsDvd_chunk`), the cover chain passes it
+along each `lor` (`bitsDvd_lor`), the slice statement moves it onto the window's slice
+(`bitsDvd_of_beq`), and `SliceCov` collects the slices. The chunk product dividing `D` comes from
+the multiplication tree, a factor at a time (`dvd_of_mul_beq_left`, `dvd_of_mul_beq_right`). On the
+live side `D` is the live product, coprime to `P` by the one gcd; on the skipped side `D` is `P`. -/
+
+/-- Every set bit of `x` names a value, read from `L`, that divides `D`. -/
+@[expose] public def BitsDvd (x L D : Nat) : Prop :=
+  ∀ j, Nat.testBit x j = true → valueK (Nat.add L j) ∣ D
+
+public theorem bitsDvd_zero {L D : Nat} : BitsDvd 0 L D := by
+  intro j hj
+  rw [Nat.zero_testBit] at hj
+  exact absurd hj (by decide)
+
+public theorem bitsDvd_of_beq {x y L D : Nat} (h : Nat.beq x y = true) (hy : BitsDvd y L D) :
+    BitsDvd x L D := by
+  rw [Nat.eq_of_beq_eq_true h]
+  exact hy
+
+/-- One step of a cover chain. -/
+public theorem bitsDvd_lor {acc asm next L D : Nat} (hacc : BitsDvd acc L D)
+    (hasm : BitsDvd asm L D) (h : Nat.beq (Nat.lor acc asm) next = true) : BitsDvd next L D := by
+  intro j hj
+  rcases testBit_of_lor_eq (Nat.eq_of_beq_eq_true h) hj with h1 | h1
+  · exact hacc j h1
+  · exact hasm j h1
+
+/-- A chunk's assembled bits name values dividing anything its product divides. -/
+public theorem bitsDvd_chunk {recs L cnt d asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d 0) asm = true)
+    (hprod : Nat.beq (prodChunkK recs L cnt d 0) pv = true) (hdvd : pv ∣ D) :
+    BitsDvd asm L D := by
+  intro j hj
+  rw [← Nat.eq_of_beq_eq_true hasm] at hj
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← Nat.eq_of_beq_eq_true hprod]
+  exact dvd_prodChunkK_of_testBit recs L cnt d 0 j hj
+
+public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
+    (hc : c ∣ D) : a ∣ D :=
+  Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).1 hc
+
+public theorem dvd_of_mul_beq_right {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
+    (hc : c ∣ D) : b ∣ D :=
+  Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).2 hc
+
+/-- `BitsDvd` for each of the first `n` slices of 65536 bits of `x`, slice `k` read from
+`L + k * 65536`. -/
+@[expose] public def SliceCov (x L D n : Nat) : Prop :=
+  ∀ k, k < n → BitsDvd (Nat.land (Nat.shiftRight x (Nat.mul k 65536))
+    (Nat.sub (Nat.shiftLeft 1 65536) 1)) (Nat.add L (Nat.mul k 65536)) D
+
+public theorem sliceCov_zero {x L D : Nat} : SliceCov x L D 0 :=
+  fun _ hk => absurd hk (Nat.not_lt_zero _)
+
+public theorem sliceCov_succ {x L D n : Nat} (h : SliceCov x L D n)
+    (hn : BitsDvd (Nat.land (Nat.shiftRight x (Nat.mul n 65536))
+      (Nat.sub (Nat.shiftLeft 1 65536) 1)) (Nat.add L (Nat.mul n 65536)) D) :
+    SliceCov x L D (n + 1) := by
+  intro k hk
+  rcases Nat.lt_succ_iff_lt_or_eq.mp hk with hlt | heq
+  · exact h k hlt
+  · rw [heq]
+    exact hn
+
+/-- The slices give every set bit of `x` below `n * 65536`. -/
+public theorem dvd_of_sliceCov {x L D n m : Nat} (h : SliceCov x L D n) (hm : m < n * 65536)
+    (hb : Nat.testBit x m = true) : valueK (Nat.add L m) ∣ D := by
+  have hk : m / 65536 < n := by omega
+  have hr : m % 65536 < 65536 := Nat.mod_lt _ (by decide)
+  have hsplit : Nat.mul (m / 65536) 65536 + m % 65536 = m := by
+    change m / 65536 * 65536 + m % 65536 = m
+    omega
+  have hb' : Nat.testBit x (Nat.mul (m / 65536) 65536 + m % 65536) = true := by
+    rw [hsplit]
+    exact hb
+  have key : valueK (Nat.add (Nat.add L (Nat.mul (m / 65536) 65536)) (m % 65536)) ∣ D :=
+    h (m / 65536) hk (m % 65536) (testBit_slice hr hb')
+  have he : Nat.add (Nat.add L (Nat.mul (m / 65536) 65536)) (m % 65536) = Nat.add L m := by
+    change L + m / 65536 * 65536 + m % 65536 = L + m
+    omega
+  rw [he] at key
+  exact key
+
+public theorem testBit_asmChunkK_single : Nat.testBit (asmChunkK 0 1 0 0) 0 = true := by
+  decide +kernel
+
+public theorem prodChunkK_single (L : Nat) : prodChunkK 0 L 1 0 0 = valueK L := by
+  have h0 : Nat.land (Nat.shiftRight 0 (Nat.mul 0 16)) 65535 = 0 := by decide +kernel
+  have hb : Nat.blt 0 1 = true := by decide +kernel
+  have hp : prodChunkK 0 L 1 0 0 = (Nat.blt 0 1).rec 1
+      (valueK (Nat.add L (Nat.land (Nat.shiftRight 0 (Nat.mul 0 16)) 65535))) := rfl
+  rw [hp, hb, h0]
+  all_goals rfl
+
+/-- **The emitted window theorem.** Marking by every divisor gives the window the route built from
+the marked subset, from the facts the emitter states: the split identity, the route's theorem, the
+live side's slices into `D` with `D` coprime to `P`, and the skipped side's slices into `P`.
+
+The cover `segLoopK_eq_of_certificate` asks for is met by the single record naming `j` itself,
+whose product is `valueK (lo + j)`, which divides `D`. -/
+public theorem segLoopK_eq_of_join {sVal sMark sSkip lo Wm1 W win fuel P D nL nS : Nat}
+    (hsplit : Nat.beq (Nat.lor sMark sSkip) sVal = true)
+    (hroute : segLoopK sMark lo Wm1 (initSegK W) 1 fuel = win)
+    (hW1 : Nat.beq (Wm1 + 1) W = true) (hW : Nat.blt Wm1 (2 ^ 32) = true)
+    (hnL : Nat.ble W (nL * 65536) = true) (hlive : SliceCov win lo D nL)
+    (hgcd : Nat.beq (Nat.gcd D P) 1 = true)
+    (hnS : Nat.blt fuel (nS * 65536) = true) (hskip : SliceCov sSkip 0 P nS)
+    (hlo : Nat.ble (index (valueK fuel * 7)) lo = true) :
+    segLoopK sVal lo Wm1 (initSegK W) 1 fuel = win := by
+  have hw : Wm1 + 1 = W := Nat.eq_of_beq_eq_true hW1
+  have hWlt : Wm1 < 2 ^ 32 := Nat.blt_eq.mp hW
+  have hwin' : win < 2 ^ W := by
+    rw [← hroute]
+    exact Nat.lt_of_le_of_lt segLoopK_le initSegK_lt
+  have hwin : win < 2 ^ (Wm1 + 1) := by
+    rw [hw]
+    exact hwin'
+  have hWn : W ≤ nL * 65536 := Nat.le_of_ble_eq_true hnL
+  have hD : ∀ j, Nat.testBit win j = true → valueK (Nat.add lo j) ∣ D := by
+    intro j hj
+    refine dvd_of_sliceCov hlive ?_ hj
+    by_cases hc : j < nL * 65536
+    · exact hc
+    · exfalso
+      have hle : W ≤ j := by omega
+      have hlt : win < 2 ^ j :=
+        Nat.lt_of_lt_of_le hwin' (Nat.pow_le_pow_right (by decide) hle)
+      rw [Nat.testBit_eq_false_of_lt hlt] at hj
+      exact absurd hj (by decide)
+  have hcov : ∀ j, Nat.testBit win j = true →
+      ∃ recs cnt d b, b ≤ j ∧ Nat.testBit (asmChunkK recs cnt d 0) (j - b) = true ∧
+        Nat.gcd (prodChunkK recs (Nat.add lo b) cnt d 0) P = 1 := by
+    intro j hj
+    refine ⟨0, 1, 0, j, Nat.le_refl j, ?_, ?_⟩
+    · rw [Nat.sub_self]
+      exact testBit_asmChunkK_single
+    · rw [prodChunkK_single]
+      exact Nat.Coprime.coprime_dvd_left (hD j hj) (Nat.eq_of_beq_eq_true hgcd)
+  have hfuel : fuel < nS * 65536 := Nat.blt_eq.mp hnS
+  have hdiv : ∀ i, i < fuel → testBitK sSkip (1 + i) = true →
+      (valueK (1 + i) % 6 = 1 ∨ valueK (1 + i) % 6 = 5) ∧ 5 ≤ valueK (1 + i) ∧
+        index (valueK (1 + i) * 7) ≤ lo ∧ valueK (1 + i) ∣ P := by
+    intro i hi hb
+    rw [testBitK_eq_testBit] at hb
+    have hd : valueK (Nat.add 0 (1 + i)) ∣ P := dvd_of_sliceCov hskip (by omega) hb
+    have he : Nat.add 0 (1 + i) = 1 + i := Nat.zero_add _
+    rw [he] at hd
+    have hv : valueK (1 + i) * 7 ≤ valueK fuel * 7 := by
+      have := valueK_le (i := 1 + i) (j := fuel) (by omega)
+      omega
+    refine ⟨valueK_mod6 _, five_le_valueK (by omega), ?_, hd⟩
+    exact Nat.le_trans (index_mono hv) (Nat.le_of_ble_eq_true hlo)
+  exact segLoopK_eq_of_certificate (Nat.eq_of_beq_eq_true hsplit) hroute hwin hWlt hcov hdiv
+
 end PrimeCert.Sieve

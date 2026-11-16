@@ -8075,6 +8075,69 @@ meta def prodPairwise (vals : Array Nat) : Nat := Id.run do
     vs := next
   return if vs.size == 0 then 1 else vs[0]!
 
+/-- Proofs that each leaf of a pairwise product tree divides `D`, read from the top down. `levels`
+holds the tree a level at a time, leaves first, as the emitter built it, and `mulName l j` names
+the checked multiplication of pair `j` of level `l`. `top` proves the root divides `D`. -/
+meta def leafDvdProofs (levels : Array (Array Nat)) (mulName : Nat → Nat → Name)
+    (D top : Expr) : Array Expr := Id.run do
+  if levels.size == 0 || levels[0]!.size == 0 then return #[]
+  let mut proofs : Array Expr := #[top]
+  let mut l := levels.size - 1
+  while l > 0 do
+    let below := levels[l - 1]!
+    let above := levels[l]!
+    let mut ps : Array Expr := #[]
+    for p in [0:above.size] do
+      let parent := proofs[p]!
+      if 2 * p + 1 < below.size then
+        let aE := mkRawNatLit below[2 * p]!
+        let bE := mkRawNatLit below[2 * p + 1]!
+        let cE := mkRawNatLit above[p]!
+        let h := mkConst (mulName (l - 1) p)
+        ps := ps.push (mkAppN (mkConst `PrimeCert.Sieve.dvd_of_mul_beq_left)
+          #[aE, bE, cE, D, h, parent])
+        ps := ps.push (mkAppN (mkConst `PrimeCert.Sieve.dvd_of_mul_beq_right)
+          #[aE, bE, cE, D, h, parent])
+      else
+        ps := ps.push parent
+    proofs := ps
+    l := l - 1
+  return proofs
+
+/-- The term proving `SliceCov x L D slices.size` from one side's record certificate. Each entry
+of `chunks` is `#[k, c, recs, cnt, asm, pv, acc, next]` for chunk `c` of slice `k`, in emission
+order, and `leafPf` proves each chunk's product divides `D`. `thm tag k c` names chunk `c` of slice
+`k`'s statement with that tag, and `sliceThm k` names slice `k`'s statement. -/
+meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
+    (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
+    (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) : Expr := Id.run do
+  let maskE := mkApp2 (mkConst ``Nat.sub)
+    (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536)) (mkRawNatLit 1)
+  let mut proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_zero) #[xE, LE, D]
+  let mut ci := 0
+  for k in [0:slices.size] do
+    let LkE := mkRawNatLit (L + k * 65536)
+    let mut chain := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_zero) #[LkE, D]
+    while ci < chunks.size && chunks[ci]![0]! == k do
+      let ch := chunks[ci]!
+      let c := ch[1]!
+      let asmE := mkRawNatLit ch[4]!
+      let chunkPf := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunk)
+        #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, asmE,
+          mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c), mkConst (thm prodTag k c),
+          leafPf[ci]!]
+      chain := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_lor)
+        #[mkRawNatLit ch[6]!, asmE, mkRawNatLit ch[7]!, LkE, D, chain, chunkPf,
+          mkConst (thm coverTag k c)]
+      ci := ci + 1
+    let sliceE := mkApp2 (mkConst ``Nat.land)
+      (mkApp2 (mkConst ``Nat.shiftRight) xE (mkRawNatLit (k * 65536))) maskE
+    let hn := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_of_beq)
+      #[sliceE, mkRawNatLit slices[k]!, LkE, D, mkConst (sliceThm k), chain]
+    proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_succ)
+      #[xE, LE, D, mkRawNatLit k, proof, hn]
+  return proof
+
 public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : Nat) :
     MetaM Unit := do
   let env ← getEnv
@@ -8184,6 +8247,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   --
   -- An arm with this on certifies nothing and must never be read as a soundness result.
   let glueStub := (parts / 65536) % 2 == 1
+  -- The same per-window theorem with a proof: `segLoopK_eq_of_join`, applied to the split
+  -- identity, the route's theorem and the certificate's statements. Needs `PrimeCert.SkipSound`
+  -- imported, both covers, one gcd and separate assembly statements.
+  let joinProof := (parts / 131072) % 2 == 1
   let emitGcd := pbase == 0 || pbase == 1 || pbase == 3 || pbase == 4
   let emitRoute := pbase == 0 || pbase == 2 || pbase == 3 || pbase == 5
   let doCheck := pbase ≤ 2 || pbase == 7
@@ -8420,6 +8487,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     cover {if coverCert then "on" else "off"}, \
     skip cover {if skipCoverCert then "on" else "off"}, \
     cover {if mergedCover then "merged" else "separate"}"
+  -- What the proved join reads back: each side's chunks as `#[k, c, recs, cnt, asm, pv, acc,
+  -- next]`, its slice literals, and its multiplication tree a level at a time.
+  let mut jLive : Array (Array Nat) := #[]
+  let mut jLiveSlice : Array Nat := #[]
+  let mut jLiveLevels : Array (Array Nat) := #[]
+  let mut jLiveProd := 0
+  let mut jSkip : Array (Array Nat) := #[]
+  let mut jSkipSlice : Array Nat := #[]
+  let mut jSkipLevels : Array (Array Nat) := #[]
   if recordCert then
     -- The record-driven certificate. `prodLiveTreeK` below walks the window one bit at a time,
     -- about 8 million `testBitK` calls, and was killed past 40 GB as a fold and as a tree alike.
@@ -8501,6 +8577,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           let asmE := mkAppN (mkConst ``asmChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           let next := acc ||| asm
+          if joinProof then
+            jSkip := jSkip.push #[k, c, lowRecs, thisCnt, asm, pv, acc, next]
           -- The same merge as the live side: assembly and cover step as one statement, with the
           -- chunk's assembly where its literal was.
           if mergedCover then
@@ -8538,6 +8616,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipBlock_{k}"))
             (mkSegBeqTrue blkE (mkRawNatLit blk)) Lean.reflBoolTrue
           nSkipCover := nSkipCover + 1
+          if joinProof then
+            jSkipSlice := jSkipSlice.push blk
       let t7 ← IO.monoMsNow
       rssLog s!"skip records: {nSkipRec} over {nChunk} chunks, {nSkipCover} cover statements, \
         {t7 - t6} ms, {← rssMB} MiB"
@@ -8547,6 +8627,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut lvl := 0
       let mut nMul := 0
       while level.size > 1 do
+        if joinProof then
+          jSkipLevels := jSkipLevels.push level
         let mut next : Array Nat := #[]
         for j in [0:(level.size + 1) / 2] do
           if 2 * j + 1 < level.size then
@@ -8562,6 +8644,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             next := next.push (level[2 * j]!)
         level := next
         lvl := lvl + 1
+      if joinProof then
+        jSkipLevels := jSkipLevels.push level
       let top := if level.size == 0 then 1 else level[0]!
       -- The emitter's own check, free: the chunks have to multiply to the literal the gcds are
       -- stated against, or the two halves are about different divisor sets and the gcds mean
@@ -8603,6 +8687,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         let liveE := mkAppN (mkConst ``prodChunkK)
           #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit thisCnt,
             mkRawNatLit chunkLog, mkRawNatLit 0]
+        let mut curPv := 0
         if oneGcd then
           -- The chunk's product as a literal, to be combined with the others below. The gcd then
           -- happens once for the window rather than once a chunk. Pairwise, for the reason
@@ -8614,6 +8699,7 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recProd_{k}_{c}"))
             (mkSegBeqTrue liveE (mkRawNatLit pv)) Lean.reflBoolTrue
           liveLeaves := liveLeaves.push pv
+          curPv := pv
         else
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recGcd_{k}_{c}"))
             (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) liveE (mkConst pName)) (mkRawNatLit 1))
@@ -8630,6 +8716,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           let asmE := mkAppN (mkConst ``asmChunkK)
             #[mkRawNatLit lowRecs, mkRawNatLit thisCnt, mkRawNatLit chunkLog, mkRawNatLit 0]
           let next := acc ||| asm
+          if joinProof then
+            jLive := jLive.push #[k, c, lowRecs, thisCnt, asm, curPv, acc, next]
           if mergedCover then
             -- The assembly and the cover step as one statement, with the chunk's assembly left
             -- where the literal was. The kernel reduces the same `asmChunkK` either way, so what
@@ -8671,6 +8759,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"recSlice_{k}"))
           (mkSegBeqTrue sliceE (mkRawNatLit slice)) Lean.reflBoolTrue
         nCover := nCover + 1
+        if joinProof then
+          jLiveSlice := jLiveSlice.push slice
       let r2 ← IO.monoMsNow
       msLiveRest := msLiveRest + (r2 - r1)
     rssLog s!"record certificate: {nStmt} chunk statements of {chunk} records over {nLive} live \
@@ -8686,6 +8776,8 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
       let mut lvl := 0
       let mut nMul := 0
       while level.size > 1 do
+        if joinProof then
+          jLiveLevels := jLiveLevels.push level
         let mut next : Array Nat := #[]
         for j in [0:(level.size + 1) / 2] do
           if 2 * j + 1 < level.size then
@@ -8701,7 +8793,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
             next := next.push (level[2 * j]!)
         level := next
         lvl := lvl + 1
+      if joinProof then
+        jLiveLevels := jLiveLevels.push level
       let liveProd := if level.size == 0 then 1 else level[0]!
+      jLiveProd := liveProd
       addSegThm (mkPrivateName env (ns ++ Name.mkSimple "liveGcd"))
         (mkSegBeqTrue (mkApp2 (mkConst ``Nat.gcd) (mkRawNatLit liveProd) (mkConst pName))
           (mkRawNatLit 1)) Lean.reflBoolTrue
@@ -8747,6 +8842,71 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         {← rssMB} MiB"
       logWarning m!"run_segment_skip: segEqAllSTUB_{a}_{W}_{fuel} is stated with a hole for its \
         proof. This arm measures what the join costs and certifies nothing."
+  if joinProof then
+    let some wn := windowName
+      | throwError "run_segment_skip: the join is stated about the window the route names, so the \
+          route has to run; use a parts value with the route on"
+    if !(skipCoverCert && oneGcd && !mergedCover) then
+      throwError "run_segment_skip: the proved join reads both covers, one gcd and separate \
+        assembly statements, and parts {parts} does not emit that shape"
+    let joinLemma := `PrimeCert.Sieve.segLoopK_eq_of_join
+    unless (← getEnv).contains joinLemma do
+      throwError "run_segment_skip: the proved join needs PrimeCert.SkipSound imported"
+    let routeName := ns ++ Name.mkSimple s!"segEqV_{a}_{W}_{fuel}_{Nat.max 1 len}_m28"
+    unless (← getEnv).contains routeName do
+      throwError "run_segment_skip: no route theorem {routeName}"
+    if index (value fuel * 7) > lo then
+      throwError "run_segment_skip: the largest divisor's seventh multiple lies past the window"
+    let nL := W / 65536
+    let nS := (fuel + 65536) / 65536
+    if jLiveSlice.size != nL || jSkipSlice.size != nS then
+      throwError "run_segment_skip: {jLiveSlice.size} live and {jSkipSlice.size} skip slices, \
+        expected {nL} and {nS}"
+    let t12 ← IO.monoMsNow
+    let priv (s : String) : Name := mkPrivateName env (ns ++ Name.mkSimple s)
+    let pE := mkConst (ns ++ Name.mkSimple s!"skipProd_{a}_{W}_{fuel}")
+    let dE := mkRawNatLit jLiveProd
+    let loE := mkRawNatLit lo
+    let liveLeafPf := leafDvdProofs jLiveLevels (fun l j => priv s!"liveMul_{l}_{j}") dE
+      (mkApp (mkConst ``Nat.dvd_refl) dE)
+    let skipLeafPf := leafDvdProofs jSkipLevels (fun l j => priv s!"skipMul_{l}_{j}") pE
+      (mkApp (mkConst ``Nat.dvd_refl) pE)
+    if liveLeafPf.size != jLive.size || skipLeafPf.size != jSkip.size then
+      throwError "run_segment_skip: the product trees have {liveLeafPf.size} and \
+        {skipLeafPf.size} leaves against {jLive.size} and {jSkip.size} chunks"
+    let liveCov := sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
+      (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
+      (fun k => priv s!"recSlice_{k}")
+    let skipCov := sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
+      jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
+      (fun k => priv s!"skipBlock_{k}")
+    let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
+      mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[x, L, D, mkRawNatLit n]
+    let tag := s!"{a}_{W}_{fuel}"
+    let splitName := ns ++ Name.mkSimple s!"joinSplit_{tag}"
+    addSegThm splitName
+      (mkSegBeqTrue (mkApp2 (mkConst ``Nat.lor) (mkConst markName) (mkConst skipName))
+        (mkConst baseLit)) Lean.reflBoolTrue
+    let t13 ← IO.monoMsNow
+    let liveName := ns ++ Name.mkSimple s!"joinLive_{tag}"
+    addSegThm liveName (sliceCovE (mkConst wn) loE dE nL) liveCov
+    let t14 ← IO.monoMsNow
+    let skipCovName := ns ++ Name.mkSimple s!"joinSkip_{tag}"
+    addSegThm skipCovName (sliceCovE (mkConst skipName) (mkRawNatLit 0) pE nS) skipCov
+    let t15 ← IO.monoMsNow
+    let stmt := mkNatEq (mkSegLoopK (mkConst baseLit) loE (mkRawNatLit wm1)
+      (mkApp (mkConst ``initSegK) (mkRawNatLit W)) 1 fuel) (mkConst wn)
+    let proof := mkAppN (mkConst joinLemma)
+      #[mkConst baseLit, mkConst markName, mkConst skipName, loE, mkRawNatLit wm1,
+        mkRawNatLit W, mkConst wn, mkRawNatLit fuel, pE, dE, mkRawNatLit nL, mkRawNatLit nS,
+        mkConst splitName, mkConst routeName, Lean.reflBoolTrue, Lean.reflBoolTrue,
+        Lean.reflBoolTrue, mkConst liveName, mkConst (priv "liveGcd"), Lean.reflBoolTrue,
+        mkConst skipCovName, Lean.reflBoolTrue]
+    addSegThm (ns ++ Name.mkSimple s!"segEqAll_{tag}") stmt proof
+    let t16 ← IO.monoMsNow
+    rssLog s!"join proved: {jLive.size} live and {jSkip.size} skip chunks over {nL} and {nS} \
+      slices | split identity {t13 - t12} ms | live cover {t14 - t13} ms | \
+      skip cover {t15 - t14} ms | window theorem {t16 - t15} ms, {← rssMB} MiB"
   rssLog s!"done {← rssMB} MiB"
 
 /-- `run_segment_variant mode a W fuel len` is `run_segment a W fuel len` run through the loop and
@@ -8795,6 +8955,9 @@ drops a statement and an 8 KB literal a chunk on both sides. `(parts / 8192) % 4
 the sweep starts at: 0 is the wide band alone, 1 takes in the four-strike band and 2 the
 eight-strike one too. `(parts / 32768) % 2` builds the base the sweep tests against to `Wm1/128`
 rather than `Wm1/8`, which counts to the identical strike set for a ninth fewer records.
+`(parts / 65536) % 2` emits the per-window theorem, marking by every divisor gives the route's
+window, with its proof a hole. `(parts / 131072) % 2` emits it as `segEqAll_…` with its proof,
+through `segLoopK_eq_of_join`, and needs `PrimeCert.SkipSound` imported.
 
 Its own command rather than a seventh argument to `run_segment_skip`, so that the argument cannot
 be read as the trailing base-sieve bound in a case that predates it. -/
