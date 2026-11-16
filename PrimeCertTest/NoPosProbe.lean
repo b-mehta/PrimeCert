@@ -62,4 +62,29 @@ def hitsFold (c lo Wm1 start fuel : Nat) : Bool := Id.run do
 -- And the check is not vacuously true: some single-divisor batch in this range says `false`.
 #guard (List.range 200).any fun k => noPosFold 1 77 511 (2 + k) 1 == false
 
+/-! ## At the size the run uses
+
+The checks above use windows of 64 to 512 positions, which exercise the arithmetic but leave open
+whether anything turns over at the real size. A window is `W = 4194304` positions, so `Wm1` is
+4194303, and a window start near `10^14` is index 33333333333333.
+
+Two groups of divisors, because where they sit decides which answer they give. The window spans
+12582912 integers, so a divisor at the start of the widest band near 2097152 has about six
+multiples inside it and in practice always has a position. The divisors with no position sit near
+the bound, which is `10^7` at this depth, where a divisor has one or two multiples in that span
+and often none at a position. Each divisor walks all 4194304 positions in the reference. -/
+
+#guard (List.range 8).all fun k =>
+  noPosAtK 33333333333333 4194303 (valueK (699050 + k))
+    == !hitsWindow 33333333333333 4194303 (valueK (699050 + k))
+
+#guard (List.range 8).all fun k =>
+  noPosAtK 33333333333333 4194303 (valueK (3333333 + k))
+    == !hitsWindow 33333333333333 4194303 (valueK (3333333 + k))
+
+-- Both answers occur at this size, so the agreement above is not one answer repeated.
+#guard (List.range 8).any fun k => noPosAtK 33333333333333 4194303 (valueK (699050 + k)) == false
+
+#guard (List.range 8).any fun k => noPosAtK 33333333333333 4194303 (valueK (3333333 + k)) == true
+
 end PrimeCert.Sieve.NoPosProbe
