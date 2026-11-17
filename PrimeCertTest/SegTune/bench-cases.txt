@@ -2,8 +2,9 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Can the base at 3.163e8 be built as its own module at all? The last job died in the dependency
-# step and took its log with it, so this one builds Base1e17 and then times the cheapest case
-# there is. If the dependency step prints "dependencies built", the base module is fine and the
-# failure was elsewhere.
-WA_Narrow
+# Is the 6522 MiB resident at entry the base sieve's elaboration or its leftovers? ZZBP builds the
+# base in the same file; ZZCA imports the identical sieve from Base1e17 and is otherwise the same
+# case. One job, so both entry figures come off one machine. The line to read is the first of the
+# phase log, not the peak.
+ZZBP_Target1e17Skip
+ZZCA_Target1e17Imported
