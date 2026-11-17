@@ -6634,6 +6634,38 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     have hoff : 4 * off + 2 ^ (k + 2) = 4 * (off + 2 ^ k) := by rw [h4]; omega
     rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
 
+/-- The mask of a 256-bit word, the width sixteen sixteen-bit records fill. -/
+public abbrev mask256 : Nat :=
+  115792089237316195423570985008687907853269984665640564039457584007913129639935
+
+/-- One field of a 256-bit word of sixteen records, read as the chunk's own slot. The 128-bit
+statement is `field_oct`; this is the same for the width above it. -/
+theorem field_hex (recs o j : Nat) (hj : j < 16) :
+    (((recs >>> (o * 256)) &&& (2 ^ 256 - 1)) >>> (16 * j)) &&& (2 ^ 16 - 1) =
+      (recs >>> ((16 * o + j) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 16 * j + t < 256 := by omega
+    have h2 : o * 256 + (16 * j + t) = (16 * o + j) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · simp [ht]
+
+/-- The top field of a 256-bit word, which needs no mask of its own. -/
+theorem field_hex_top (recs o : Nat) :
+    ((recs >>> (o * 256)) &&& (2 ^ 256 - 1)) >>> 240 =
+      (recs >>> ((16 * o + 15) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 240 + t < 256 := by omega
+    have h2 : o * 256 + (240 + t) = (16 * o + 15) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · have h1 : ¬ 240 + t < 256 := by omega
+    simp [ht, h1]
+
 /-- The product of the eight values named by the sixteen-bit records packed in the 128-bit word
 `w`, associated as `prodChunkK` associates a tree of depth three. -/
 @[expose] public noncomputable def octK (lo w : Nat) : Nat :=
