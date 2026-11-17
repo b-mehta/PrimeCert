@@ -62,30 +62,36 @@ jobs:
                 local p=$1 c
                 for c in $(pgrep -P "$p" 2>/dev/null || true); do echo "$c"; kids "$c"; done
               }
-              LEAN_NUM_THREADS=1 lake build "${targets[@]}" &
-              lpid=$!
-              depkilled=0
-              deppeak=0
-              while kill -0 "$lpid" 2>/dev/null; do
-                tree=$(kids "$lpid" | tr '\n' ' ')
-                rss=$(ps -o rss= -p "$lpid" $tree 2>/dev/null | awk '{s += $1} END {print s+0}')
-                if [ "$rss" -gt "$deppeak" ]; then deppeak=$rss; fi
-                if [ "$rss" -gt "$deplimit" ]; then
-                  kill -9 "$lpid" $tree 2>/dev/null || true
-                  depkilled=1
+              # One target an invocation, so two large sieves named together are never elaborated
+              # at once: LEAN_NUM_THREADS caps the threads inside a lean process and says nothing
+              # about how many lean processes lake starts. Each target's peak is reported on its
+              # own, which is the figure that says whether a base of that size can be afforded.
+              for target in "${targets[@]}"; do
+                LEAN_NUM_THREADS=1 lake build "$target" &
+                lpid=$!
+                depkilled=0
+                deppeak=0
+                while kill -0 "$lpid" 2>/dev/null; do
+                  tree=$(kids "$lpid" | tr '\n' ' ')
+                  rss=$(ps -o rss= -p "$lpid" $tree 2>/dev/null | awk '{s += $1} END {print s+0}')
+                  if [ "$rss" -gt "$deppeak" ]; then deppeak=$rss; fi
+                  if [ "$rss" -gt "$deplimit" ]; then
+                    kill -9 "$lpid" $tree 2>/dev/null || true
+                    depkilled=1
+                  fi
+                  sleep 1
+                done
+                if wait "$lpid"; then depstatus=0; else depstatus=$?; fi
+                echo "dependency peak: $target $deppeak KiB"
+                if [ "$depkilled" -eq 1 ]; then
+                  echo "DEPENDENCY KILLED: $target passed $deplimit KiB resident"
+                  exit 1
                 fi
-                sleep 1
+                if [ "$depstatus" -ne 0 ]; then
+                  echo "DEPENDENCY BUILD FAILED: $target exit $depstatus"
+                  exit "$depstatus"
+                fi
               done
-              if wait "$lpid"; then depstatus=0; else depstatus=$?; fi
-              echo "dependency peak: $deppeak KiB"
-              if [ "$depkilled" -eq 1 ]; then
-                echo "DEPENDENCY KILLED: resident memory passed $deplimit KiB"
-                exit 1
-              fi
-              if [ "$depstatus" -ne 0 ]; then
-                echo "DEPENDENCY BUILD FAILED exit $depstatus"
-                exit "$depstatus"
-              fi
               echo "dependencies built"
             fi
           fi

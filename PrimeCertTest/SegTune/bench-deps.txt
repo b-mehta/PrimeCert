@@ -7,5 +7,8 @@
 # taken the runner down twice, once uncapped and once at LEAN_NUM_THREADS=1, so it belongs here
 # only for a run that needs it.
 
-PrimeCertTest.SegTune.Base1e17
-PrimeCertTest.SegTune.S8_Sieve1e8
+# A case importing a module needs its olean and nothing else, so each line asks for that facet by
+# name. Lake's default facet is irArts, which also generates and compiles a C file, and for a
+# module whose whole body is a numeral of several megabytes that is work no case here reads.
+PrimeCertTest.SegTune.Base1e17:olean
+PrimeCertTest.SegTune.S8_Sieve1e8:olean
