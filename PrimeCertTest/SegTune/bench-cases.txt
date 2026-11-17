@@ -35,9 +35,18 @@
 #
 # The bound 10^18 needs was killed at 14465364 KiB at the default 16, which is what closed 10^18
 # here. These three ask whether it comes under the limit at a longer batch.
-S20_Base1e18Len32
-S21_Base1e18Len64
-S22_Base1e18Len128
+# And it does not. All three were killed: length 32 after 9:43 at 14298800 KiB, which is the
+# accumulation reaching the limit, and 64 and 128 after 25 and 31 seconds at 14015780 and
+# 14172380 KiB, which is the same cliff 256 fell off at the smaller bound arriving sooner for a
+# wider sieve. Against 14465364 at the default 16, so the knob is worth 1.1% there and 10^17
+# stays the ceiling.
+#
+# What it is worth is at 10^17, where the base is 6.5 GiB of a 10982212 KiB peak. `ZZCE` is
+# `ZZBP` with the base built in batches of 64 and nothing else changed; `S19` fills the gap
+# between 64 and 256 at that bound.
+ZZBP_Target1e17Skip
+ZZCE_Target1e17Len64
+S19_Base1e17Len128
 
 # Settled before that: importing a base sieve is free until something reads it. Three rounds each
 # of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
