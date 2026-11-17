@@ -6634,6 +6634,224 @@ public theorem asmQuadK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     have hoff : 4 * off + 2 ^ (k + 2) = 4 * (off + 2 ^ k) := by rw [h4]; omega
     rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
 
+/-- The product of the eight values named by the sixteen-bit records packed in the 128-bit word
+`w`, associated as `prodChunkK` associates a tree of depth three. -/
+@[expose] public noncomputable def octK (lo w : Nat) : Nat :=
+  Nat.mul
+    (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land w 65535)))
+        (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 16) 65535))))
+      (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 32) 65535)))
+        (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 48) 65535)))))
+    (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 64) 65535)))
+        (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 80) 65535))))
+      (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 96) 65535)))
+        (valueK (Nat.add lo (Nat.shiftRight w 112)))))
+
+/-- The product of the values named by the `8 * 2 ^ e` records of `recs` from slot `8 * off`, as a
+balanced tree over 128-bit words of eight records each. Every slot counts. -/
+@[expose] public noncomputable def prodOctK (recs lo e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => octK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455))
+    (fun k ih o => Nat.mul (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+theorem field_oct (recs o j : Nat) (hj : j < 8) :
+    (((recs >>> (o * 128)) &&& (2 ^ 128 - 1)) >>> (16 * j)) &&& (2 ^ 16 - 1) =
+      (recs >>> ((8 * o + j) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 16 * j + t < 128 := by omega
+    have h2 : o * 128 + (16 * j + t) = (8 * o + j) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · simp [ht]
+
+theorem field_oct_top (recs o : Nat) :
+    ((recs >>> (o * 128)) &&& (2 ^ 128 - 1)) >>> 112 =
+      (recs >>> ((8 * o + 7) * 16)) &&& (2 ^ 16 - 1) := by
+  apply Nat.eq_of_testBit_eq
+  intro t
+  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases ht : t < 16
+  · have h1 : 112 + t < 128 := by omega
+    have h2 : o * 128 + (112 + t) = (8 * o + 7) * 16 + t := by grind
+    simp [ht, h1, h2]
+  · have h1 : ¬ 112 + t < 128 := by omega
+    simp [ht, h1]
+
+/-- Each of the eight slots of word `o` divides that word's product. -/
+theorem dvd_octK (recs lo o s : Nat) (h1 : 8 * o ≤ s) (h2 : s < 8 * o + 8) :
+    valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535)) ∣
+      octK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+        340282366920938463463374607431768211455) := by
+  have hf : ∀ j, j < 7 → Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs
+      (Nat.mul o 128)) 340282366920938463463374607431768211455) (16 * j)) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + j) 16)) 65535 :=
+    fun j hj => field_oct recs o j (by omega)
+  have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 0) 16)) 65535 := hf 0 (by omega)
+  have h16 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 16) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 1) 16)) 65535 := hf 1 (by omega)
+  have h32 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 32) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 2) 16)) 65535 := hf 2 (by omega)
+  have h48 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 48) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 3) 16)) 65535 := hf 3 (by omega)
+  have h64 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 64) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 4) 16)) 65535 := hf 4 (by omega)
+  have h80 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 80) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 5) 16)) 65535 := hf 5 (by omega)
+  have h96 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 96) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 6) 16)) 65535 := hf 6 (by omega)
+  have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455) 112 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (8 * o + 7) 16)) 65535 := field_oct_top recs o
+  unfold octK
+  rw [h0, h16, h32, h48, h64, h80, h96, ht]
+  rcases (by omega : s = 8 * o ∨ s = 8 * o + 1 ∨ s = 8 * o + 2 ∨ s = 8 * o + 3 ∨
+      s = 8 * o + 4 ∨ s = 8 * o + 5 ∨ s = 8 * o + 6 ∨ s = 8 * o + 7) with
+    hs | hs | hs | hs | hs | hs | hs | hs <;> subst hs
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _
+
+/-- Every slot in range divides the product. -/
+public theorem dvd_prodOctK (recs lo : Nat) :
+    ∀ e off s, 8 * off ≤ s → s < 8 * (off + 2 ^ e) →
+      valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535))
+        ∣ prodOctK recs lo e off := by
+  intro e
+  induction e with
+  | zero =>
+    intro off s h1 h2
+    have h2' : s < 8 * off + 8 := by
+      change s < 8 * (off + 1) at h2
+      omega
+    exact dvd_octK recs lo off s h1 h2'
+  | succ k ih =>
+    intro off s h1 h2
+    have hsplit : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by
+      rw [Nat.pow_succ, Nat.mul_two]
+    change _ ∣ Nat.mul (prodOctK recs lo k off) (prodOctK recs lo k (off + 2 ^ k))
+    by_cases hc : s < 8 * (off + 2 ^ k)
+    · exact Nat.dvd_mul_right_of_dvd (ih off s h1 hc) _
+    · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
+
+/-- The bits named by the eight sixteen-bit records packed in the 128-bit word `w`, associated as
+`asmChunkK` associates a tree of depth three. -/
+@[expose] public noncomputable def octAsmK (w : Nat) : Nat :=
+  Nat.lor
+    (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land w 65535))
+        (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 16) 65535)))
+      (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 32) 65535))
+        (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 48) 65535))))
+    (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 64) 65535))
+        (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 80) 65535)))
+      (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 96) 65535))
+        (Nat.shiftLeft 1 (Nat.shiftRight w 112))))
+
+/-- The bits named by the `8 * 2 ^ e` records of `recs` from slot `8 * off`, as a balanced tree
+over 128-bit words of eight records each. The assembly side of `prodOctK`. -/
+@[expose] public noncomputable def asmOctK (recs e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => octAsmK (Nat.land (Nat.shiftRight recs (Nat.mul o 128))
+      340282366920938463463374607431768211455))
+    (fun k ih o => Nat.lor (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+/-- The wide tree assembles exactly what the narrow one does, three levels deeper, as long as no
+leaf of the narrow tree meets its slot cutoff. The same statement `asmQuadK_eq_asmChunkK` makes
+two levels deeper, and used the same way: every lemma about `asmChunkK` reaches `asmOctK` by
+rewriting with this. -/
+public theorem asmOctK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
+    8 * (off + 2 ^ e) ≤ cnt → asmOctK recs e off = asmChunkK recs cnt (e + 3) (8 * off) := by
+  intro e
+  induction e with
+  | zero =>
+    intro off hc
+    have hc8 : 8 * off + 7 < cnt := by simp only [Nat.pow_zero] at hc; omega
+    have hleaf : ∀ j, j < 8 → asmChunkK recs cnt 0 (8 * off + j)
+        = Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + j) 16)) 65535) := by
+      intro j hj
+      have hb : Nat.blt (8 * off + j) cnt = true := by
+        have hlt : 8 * off + j < cnt := by omega
+        simpa using hlt
+      have hu : asmChunkK recs cnt 0 (8 * off + j) = (Nat.blt (8 * off + j) cnt).rec 0
+          (Nat.shiftLeft 1
+            (Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + j) 16)) 65535)) := rfl
+      rw [hu, hb]
+    have ha : asmChunkK recs cnt 3 (8 * off) =
+        Nat.lor
+          (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (8 * off + 0))
+              (asmChunkK recs cnt 0 (8 * off + 1)))
+            (Nat.lor (asmChunkK recs cnt 0 (8 * off + 2))
+              (asmChunkK recs cnt 0 (8 * off + 3))))
+          (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (8 * off + 4))
+              (asmChunkK recs cnt 0 (8 * off + 5)))
+            (Nat.lor (asmChunkK recs cnt 0 (8 * off + 6))
+              (asmChunkK recs cnt 0 (8 * off + 7)))) := rfl
+    have hf : ∀ j, j < 7 → Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs
+        (Nat.mul off 128)) 340282366920938463463374607431768211455) (16 * j)) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + j) 16)) 65535 :=
+      fun j hj => field_oct recs off j (by omega)
+    have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 0) 16)) 65535 := hf 0 (by omega)
+    have h16 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 16) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 1) 16)) 65535 := hf 1 (by omega)
+    have h32 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 32) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 2) 16)) 65535 := hf 2 (by omega)
+    have h48 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 48) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 3) 16)) 65535 := hf 3 (by omega)
+    have h64 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 64) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 4) 16)) 65535 := hf 4 (by omega)
+    have h80 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 80) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 5) 16)) 65535 := hf 5 (by omega)
+    have h96 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 96) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 6) 16)) 65535 := hf 6 (by omega)
+    have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+        340282366920938463463374607431768211455) 112 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (8 * off + 7) 16)) 65535 := field_oct_top recs off
+    have hq : asmOctK recs 0 off =
+        octAsmK (Nat.land (Nat.shiftRight recs (Nat.mul off 128))
+          340282366920938463463374607431768211455) := rfl
+    rw [hq, ha, hleaf 0 (by omega), hleaf 1 (by omega), hleaf 2 (by omega), hleaf 3 (by omega),
+      hleaf 4 (by omega), hleaf 5 (by omega), hleaf 6 (by omega), hleaf 7 (by omega)]
+    unfold octAsmK
+    rw [h0, h16, h32, h48, h64, h80, h96, ht]
+  | succ k ih =>
+    intro off hc
+    -- Written with `+` and `^` rather than `Nat.add` and `Nat.pow`, because omega reads the two
+    -- spellings as different atoms. The `rfl`s carry them across.
+    have hpow : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
+    have h8 : 2 ^ (k + 3) = 2 ^ k * 8 := by rw [Nat.pow_succ, Nat.pow_succ, Nat.pow_succ]; omega
+    have hq : asmOctK recs (k + 1) off =
+        Nat.lor (asmOctK recs k off) (asmOctK recs k (off + 2 ^ k)) := rfl
+    have ha : asmChunkK recs cnt (k + 4) (8 * off) =
+        Nat.lor (asmChunkK recs cnt (k + 3) (8 * off))
+          (asmChunkK recs cnt (k + 3) (8 * off + 2 ^ (k + 3))) := rfl
+    have hoff : 8 * off + 2 ^ (k + 3) = 8 * (off + 2 ^ k) := by rw [h8]; omega
+    rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
+
 /-- A set bit of a chunk's assembly is the position some slot in range names. -/
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
     ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
