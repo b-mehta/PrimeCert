@@ -527,6 +527,21 @@ public theorem sliceCov_succ {x L D n : Nat} (h : SliceCov x L D n)
   · rw [heq]
     exact hn
 
+/-- `sliceCov_succ` with the slice's shift `o`, mask `m`, base `Lk` and the next count `n'` as
+variables, so the emitter passes the literals its slice statements carry and each hypothesis is
+syntactically the statement it is given. -/
+public theorem sliceCov_step {x L D n n' o m Lk : Nat} (h : SliceCov x L D n)
+    (ho : Nat.beq o (Nat.mul n 65536) = true)
+    (hm : Nat.beq m (Nat.sub (Nat.shiftLeft 1 65536) 1) = true)
+    (hL : Nat.beq Lk (Nat.add L o) = true) (hn' : Nat.beq n' (n + 1) = true)
+    (hn : BitsDvd (Nat.land (Nat.shiftRight x o) m) Lk D) : SliceCov x L D n' := by
+  have e1 := Nat.eq_of_beq_eq_true ho
+  have e2 := Nat.eq_of_beq_eq_true hm
+  have e3 := Nat.eq_of_beq_eq_true hL
+  have e4 := Nat.eq_of_beq_eq_true hn'
+  subst e1 e2 e3 e4
+  exact sliceCov_succ h hn
+
 /-- The slices give every set bit of `x` below `n * 65536`. -/
 public theorem dvd_of_sliceCov {x L D n m : Nat} (h : SliceCov x L D n) (hm : m < n * 65536)
     (hb : Nat.testBit x m = true) : valueK (Nat.add L m) ∣ D := by

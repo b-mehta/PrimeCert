@@ -8435,8 +8435,11 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       (mkApp2 (mkConst ``Nat.shiftRight) xE (mkRawNatLit (k * 65536))) maskE
     let hn := mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_of_beq)
       #[sliceE, mkRawNatLit slices[k]!, LkE, D, mkConst (sliceThm k), chain]
-    proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_succ)
-      #[xE, LE, D, mkRawNatLit k, proof, hn]
+    -- Every argument a literal the statements above carry, so the kernel matches `hn` and the
+    -- previous step by structure rather than evaluating the shift of `x` to compare them.
+    proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_step)
+      #[xE, LE, D, mkRawNatLit k, mkRawNatLit (k + 1), mkRawNatLit (k * 65536), maskE, LkE, proof,
+        Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue, hn]
     -- Staged: each prefix becomes its own declaration and the next step names it rather than
     -- carrying it. One `addDecl` over 1609 slices is what the kernel could not afford at 10^17,
     -- where building this same term costs about 20 MiB; this is the checkpointing the
