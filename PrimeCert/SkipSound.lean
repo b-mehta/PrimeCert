@@ -461,17 +461,21 @@ public theorem bitsDvd_chunk {recs L cnt d off asm pv D : Nat}
   rw [← Nat.eq_of_beq_eq_true hprod]
   exact dvd_prodChunkK_of_testBit recs L cnt d off j hj
 
-/-- `bitsDvd_chunk` for a chunk whose product is stated as `prodQuadK`, four records a leaf. -/
-public theorem bitsDvd_chunkQ {recs L cnt d e asm pv D : Nat}
-    (hasm : Nat.beq (asmChunkK recs cnt d 0) asm = true)
-    (hprod : Nat.beq (prodQuadK recs L e 0) pv = true) (hdvd : pv ∣ D)
-    (hde : Nat.ble (2 ^ d) (4 * 2 ^ e) = true) :
+/-- `bitsDvd_chunk` for a chunk whose product is stated as `prodQuadK`, four records a leaf.
+
+The offsets are variables for the reason `bitsDvd_chunk`'s is: the emitter passes the literals its
+statements carry, so each hypothesis is syntactically the statement it is given. -/
+public theorem bitsDvd_chunkQ {recs L cnt d e aoff qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d aoff) asm = true)
+    (hprod : Nat.beq (prodQuadK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hoff : Nat.beq aoff (4 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (4 * (qoff + 2 ^ e)) = true) :
     BitsDvd asm L D := by
   intro j hj
   rw [← Nat.eq_of_beq_eq_true hasm] at hj
   refine Nat.dvd_trans ?_ hdvd
   rw [← Nat.eq_of_beq_eq_true hprod]
-  exact dvd_prodQuadK_of_testBit hde hj
+  exact dvd_prodQuadK_of_testBit hoff hde hj
 
 /-- `bitsDvd_chunkQ` for a chunk whose assembly is stated as `asmQuadK` as well, four records a
 leaf on both sides.
@@ -480,16 +484,21 @@ leaf on both sides.
 needs no argument of its own beyond the condition that lets it: every slot the wide tree reads is
 below `cnt`, which the emitter arranges by padding a part-full chunk with copies of its last
 record. -/
-public theorem bitsDvd_chunkQA {recs L cnt a e asm pv D : Nat}
-    (hasm : Nat.beq (asmQuadK recs a 0) asm = true)
-    (hprod : Nat.beq (prodQuadK recs L e 0) pv = true) (hdvd : pv ∣ D)
-    (hcnt : Nat.ble (4 * (0 + 2 ^ a)) cnt = true)
+public theorem bitsDvd_chunkQA {recs L cnt a e off qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmQuadK recs a off) asm = true)
+    (hprod : Nat.beq (prodQuadK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hcnt : Nat.ble (4 * (off + 2 ^ a)) cnt = true)
+    (hoff : Nat.beq off qoff = true)
     (hde : Nat.ble (2 ^ (a + 2)) (4 * 2 ^ e) = true) :
     BitsDvd asm L D := by
-  have hwide := asmQuadK_eq_asmChunkK recs cnt a 0 (Nat.le_of_ble_eq_true hcnt)
+  have ho := Nat.eq_of_beq_eq_true hoff
+  subst ho
+  have hwide := asmQuadK_eq_asmChunkK recs cnt a off (Nat.le_of_ble_eq_true hcnt)
   rw [hwide] at hasm
-  refine bitsDvd_chunkQ (cnt := cnt) (d := a + 2) ?_ hprod hdvd hde
-  simpa using hasm
+  have hle := Nat.le_of_ble_eq_true hde
+  refine bitsDvd_chunkQ (cnt := cnt) (d := a + 2) (aoff := 4 * off) hasm hprod hdvd ?_ ?_
+  · exact Nat.beq_refl _
+  · exact Nat.ble_eq.mpr (by omega)
 
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=

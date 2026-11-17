@@ -6678,13 +6678,15 @@ public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
 
 /-- A bit a chunk assembles to names a value dividing the quad product over the same records,
 given the quad tree spans the assembly's slots. -/
-public theorem dvd_prodQuadK_of_testBit {recs lo cnt d e i : Nat}
-    (hde : Nat.ble (2 ^ d) (4 * 2 ^ e) = true)
-    (hb : Nat.testBit (asmChunkK recs cnt d 0) i = true) :
-    valueK (Nat.add lo i) ∣ prodQuadK recs lo e 0 := by
-  obtain ⟨s, -, hs2, rfl⟩ := slot_of_testBit_asmChunkK recs cnt d 0 i hb
+public theorem dvd_prodQuadK_of_testBit {recs lo cnt d e aoff qoff i : Nat}
+    (hoff : Nat.beq aoff (4 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (4 * (qoff + 2 ^ e)) = true)
+    (hb : Nat.testBit (asmChunkK recs cnt d aoff) i = true) :
+    valueK (Nat.add lo i) ∣ prodQuadK recs lo e qoff := by
+  obtain ⟨s, hs1, hs2, rfl⟩ := slot_of_testBit_asmChunkK recs cnt d aoff i hb
   have hle := Nat.le_of_ble_eq_true hde
-  exact dvd_prodQuadK recs lo e 0 s (Nat.zero_le _) (by omega)
+  have ho := Nat.eq_of_beq_eq_true hoff
+  exact dvd_prodQuadK recs lo e qoff s (by omega) (by omega)
 
 /-- If two numbers are coprime, nothing above 1 divides both. -/
 public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
@@ -8396,13 +8398,15 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
         -- part-full one, which is what lets the wide assembly read every slot.
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQA)
           #[mkRawNatLit ch[2]!, LkE, mkRawNatLit (1 <<< chunkLog), mkRawNatLit (chunkLog - 2),
-            mkRawNatLit (chunkLog - 2), asmE, mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c),
-            mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue, Lean.reflBoolTrue]
+            mkRawNatLit (chunkLog - 2), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
+            mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
+            Lean.reflBoolTrue, Lean.reflBoolTrue]
       else if quad then
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQ)
           #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
-            mkRawNatLit (chunkLog - 2), asmE, mkRawNatLit ch[5]!, D, mkConst (thm asmTag k c),
-            mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue]
+            mkRawNatLit (chunkLog - 2), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
+            mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
+            Lean.reflBoolTrue]
       else
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunk)
           #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog, mkRawNatLit 0, asmE,
