@@ -8918,6 +8918,7 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
     (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
     (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false)
     (quadAsm : Bool := false) (octAsm : Bool := false) (hexAsm : Bool := false)
+    (octProd : Bool := false) (hexProd : Bool := false)
     (stage : Option (Nat → Name) := none) :
     MetaM Expr := do
   let maskE := mkApp2 (mkConst ``Nat.sub)
@@ -8953,6 +8954,20 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
             mkRawNatLit (chunkLog - 2), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
             mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
             Lean.reflBoolTrue, Lean.reflBoolTrue]
+      else if hexProd then
+        -- The product sixteen a leaf with the assembly left narrow, which is the shape the live
+        -- side takes: its cover reads `asmChunkK` over the chunk's own count.
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkH)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
+            mkRawNatLit (chunkLog - 4), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
+            mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
+            Lean.reflBoolTrue]
+      else if octProd then
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkO)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
+            mkRawNatLit (chunkLog - 3), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
+            mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
+            Lean.reflBoolTrue]
       else if quad then
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkQ)
           #[mkRawNatLit ch[2]!, LkE, mkRawNatLit ch[3]!, mkRawNatLit chunkLog,
@@ -9627,7 +9642,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
         let thisCnt := Nat.min chunk (cnt - c * chunk)
         let lowRecs0 := (recs >>> (c * chunk * 16)) &&& ((1 <<< (chunk * 16)) - 1)
         let lowRecs := if quadProd then padRecs lowRecs0 thisCnt else lowRecs0
-        let liveE := if quadProd then
+        let liveE := if hexTree then
+          mkAppN (mkConst ``prodHexK)
+            #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit (chunkLog - 4),
+              mkRawNatLit 0]
+        else if octTree then
+          mkAppN (mkConst ``prodOctK)
+            #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit (chunkLog - 3),
+              mkRawNatLit 0]
+        else if quadProd then
           mkAppN (mkConst ``prodQuadK)
             #[mkRawNatLit lowRecs, mkRawNatLit (lo + k * 65536), mkRawNatLit (chunkLog - 2),
               mkRawNatLit 0]
@@ -9809,12 +9832,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     rssLog s!"join: leaf proofs for {jLive.size} live and {jSkip.size} skip chunks, {← rssMB} MiB"
     let liveCov ← sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
       (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
-      (fun k => priv s!"recSlice_{k}") quadProd false false false
+      (fun k => priv s!"recSlice_{k}") quadProd false false false octTree hexTree
       (if stagedCov then some (fun k => priv s!"liveStage_{k}") else none)
     rssLog s!"join: live cover over {jLiveSlice.size} slices, {← rssMB} MiB"
     let skipCov ← sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
-      (fun k => priv s!"skipBlock_{k}") quadProd quadAsm octTree hexTree
+      (fun k => priv s!"skipBlock_{k}") quadProd quadAsm octTree hexTree octTree hexTree
       (if stagedCov then some (fun k => priv s!"skipStage_{k}") else none)
     rssLog s!"join: skip cover over {jSkipSlice.size} slices, {← rssMB} MiB"
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
