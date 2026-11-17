@@ -7,6 +7,7 @@ module
 
 public meta import PrimeCert.Meta.Sieve
 public meta import PrimeCert.SegmentedSieve
+public meta import PrimeCert.SkipSound
 
 /-! # The proved window at `10^17`, over a base built in batches of 64
 
@@ -15,7 +16,10 @@ of the default 16. Alone, that base went from 6707116 to 5737748 KiB for the sam
 it stands for 6.5 GiB of the 10982212 KiB a whole window at this depth peaks at. What that is
 worth to the run, rather than to the base alone, is what this pair says.
 
-Nothing else moves: same `parts 3329987`, same window, same `#print axioms`.
+Nothing else moves: same `parts 3329987`, same window, same `#print axioms`, and the same three
+imports — `parts 3329987` turns the proved join on, which needs `PrimeCert.SkipSound`. Without it
+the command throws after the window is built, so the first attempt reported a peak of 7074748 KiB
+for a run that never reached the join and is not a reading of anything.
 
 Throwaway. -/
 
