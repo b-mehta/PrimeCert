@@ -138,7 +138,12 @@ for round in $(seq 1 "$rounds"); do
     fi
     # A case carrying `#print axioms` says so in its own message log, which nobody reading the job
     # sees. Lifted here, because what a proved window depends on is the point of running it.
-    grep -E 'depends on axioms' "$out" | sed "s/^/AXIOMS $f round $round: /"
+    # Lean wraps the list over several lines, so the two after the match come too, squashed onto
+    # one so the job log carries the whole list rather than its first entry.
+    if grep -q 'depends on axioms' "$out"; then
+      grep -A 2 -E 'depends on axioms' "$out" | tr '\n' ' ' | sed "s/^/AXIOMS $f round $round: /"
+      echo
+    fi
     # The skip emitter writes its phase lines to a fixed path, outside the message log so that a
     # case the watchdog kills still leaves them. Kept per case here, because the next case
     # overwrites the file and a killed case's lines are the ones worth having.
