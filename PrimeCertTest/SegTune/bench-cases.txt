@@ -2,13 +2,19 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# The chunk at the depth this is for. `ZZBY` is the settled proved window at 10^16, chunk 1024,
-# which is where the chunk was left as a trade of kernel time against peak; the other two take it
-# to 2048 and to 4096, the second reached by the bit that doubles whatever the two-bit field asks
-# for. Everything else is identical, both chunk trees four records a leaf, the join on.
+# The chunk sweep at 10^16, join on, one job, one round each, all three ending
+# [propext, Classical.choice, Quot.sound]:
 #
-# Worth asking because the certificate is the larger half of the kernel and the chunk sets how
-# many statements carry it.
+#   chunk 1024   201.512 s kernel   270.2 s processor   4445480 KiB
+#   chunk 2048   207.954 s          279.7 s            4217328 KiB
+#   chunk 4096   212.989 s          287.7 s            4105356 KiB
+#
+# So it costs kernel and saves peak, each step of the way, and at this depth the peak is 4.4 GB
+# against a limit of 14, so nothing is bought by paying for it. 1024 stays, and the bit that
+# reaches 4096 is for a depth where peak binds.
+#
+# What a run costs matters less than what it costs for each integer it covers, and the width is
+# what moves that. `ZZCI` is `ZZBY` at W = 8388608, covering 25165824 integers where `ZZBY` covers
+# 12582912, with 9.6 GiB of room for whatever that costs in peak.
 ZZBY_Join1e16Quad
-ZZCG_Join1e16Chunk2048
-ZZCH_Join1e16Chunk4096
+ZZCI_Join1e16W8M
