@@ -6867,25 +6867,17 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
         mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
         mkConst parent])
 
-/-- `runSegment` with a choice of loop and of batch assembly, for timing the draft variants
-against each other. The loop is `mode % 4`: 0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK`
-and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the base sieve
-(`…chunk_{i}`) per batch as well as the batch lemma (`…step_{i}`). Modes 0 to 3 assemble the
-batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}` equation and each
-`…join_{level}_{j}` combines two neighbours. Every mode ends at
-`ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
-Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 15 with the
-`segLoopC` twin, the same eight assemblies otherwise, so the pair `m` and `m + 8` differs in the
-command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
-the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
-and a chain, so mode 11 is the arm to compare it against. -/
 /-- Append a line to `/tmp/skip-rss.log` and flush it.
 
 `logInfo` holds its messages until the command finishes, so a command the watchdog kills prints
 none of them, and `IO.getStderr` is no better because the command elaborator runs inside
 `IO.FS.withIsolatedStreams` and that handle is the captured stream. A file opened by name is
 outside both, which is the whole reason for the path. Read it after the kill; it is not in the
-`out-` or `time-` file. -/
+`out-` or `time-` file.
+
+These sit above `runSegmentV` rather than beside the rest of the emitter's helpers, because the
+route is the one phase the log never covered and the reason it did not was that they were
+declared below it. -/
 meta def rssLog (msg : String) : IO Unit := do
   let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.append
   h.putStrLn s!"skip rss: {msg}"
@@ -6908,6 +6900,18 @@ meta def rssMB : IO Nat := do
     | none => return 0
   catch _ => return 0
 
+/-- `runSegment` with a choice of loop and of batch assembly, for timing the draft variants
+against each other. The loop is `mode % 4`: 0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK`
+and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the base sieve
+(`…chunk_{i}`) per batch as well as the batch lemma (`…step_{i}`). Modes 0 to 3 assemble the
+batches as one chain, modes 4 to 7 as a tree: each batch becomes a `…leaf_{i}` equation and each
+`…join_{level}_{j}` combines two neighbours. Every mode ends at
+`ns.segEqV_{tag} : segLoopK … = ns.segBitsV_{tag}`, the clamped loops through `segEq_of_clamped`.
+Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 15 with the
+`segLoopC` twin, the same eight assemblies otherwise, so the pair `m` and `m + 8` differs in the
+command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
+the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
+and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     (prodNames : Bool := false) (out : Option (IO.Ref (Option (Nat × Name))) := none) :
     MetaM Unit := do
@@ -8330,17 +8334,6 @@ a 65536-bit slice having reached 40 GB against the control's 2.61 with the kerne
 the upper bound on what the idea can buy**: it marks only the divisors that strike and certifies
 nothing, so no certificate can do better than it, and if it saves nothing against mode 28 then no
 certificate is worth looking for. Neither 1 nor 2 is sound on its own. -/
-/-- Append a line to `/tmp/skip-rss.log` and flush it.
-
-Twice now this has had to move further out. `logInfo` holds its messages until the command
-finishes, so a command the watchdog kills prints none of them. Writing to `IO.getStderr` does not
-help either: the command elaborator runs inside `IO.FS.withIsolatedStreams`, so that handle is the
-captured stream rather than the real file descriptor, and the capture is turned into messages at
-the same point `logInfo` would have been. **A file opened by name is outside both**, which is the
-whole reason for the path here. Read it after the kill; it is not in the `out-` or `time-` file. -/
-The definitions themselves sit above `runSegmentV`, because the route is the one phase the log
-never covered and the reason it did not was that these were declared below it. -/
-
 /-- The product of an array, combined pairwise.
 
 Multiplying a thousand values into one accumulator in turn copies the accumulator once a value, so
