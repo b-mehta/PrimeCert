@@ -1,12 +1,17 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-4
+1
 
-# Four rounds rather than two, because the weakest part of the case for sixteen a leaf is the
-# baseline's own spread, not the gap. The last job gave the four-a-leaf arm 135.962 and 152.134
-# kernel seconds in consecutive rounds on one machine, against 122.145 and 124.524 for sixteen,
-# so the comparison rests on a baseline that moved 12% while the other arm moved 2%.
+# Sixteen a leaf is the settled shape at 10^16 as of 2026-11-17. Four rounds a side in one job,
+# eight clean axiom lines, every round separating:
 #
-# Four rounds each, alternating, is what decides whether the headline is 8% or something narrower.
-ZZBY_Join1e16Quad
+#   four a leaf      kernel 175.083, 173.163, 184.567, 172.326   records 33.142, 33.585, 37.167, 33.051
+#   sixteen a leaf   kernel 160.747, 158.895, 172.943, 159.019   records 27.132, 27.461, 29.926, 27.004
+#
+# Paired by round the kernel is 8.2, 8.2, 6.3 and 7.7% down, the skipped records about 18%, the
+# assembly about 21%, and the peak 4446124 against 4407580 KiB, 0.87% down. `ZZBB` and `ZZCN` now
+# carry parts 53530051 and 53661123; `ZZBY` stays as the arm they were measured against.
+#
+# This run checks the two settled cases still build and prove what they did.
+ZZBB_Target1e16Skip
 ZZCN_Join1e16Hex
