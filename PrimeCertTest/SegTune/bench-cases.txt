@@ -4,6 +4,8 @@
 
 # What does an imported base cost before anything uses it? Importing the 3.163e8 sieve rather than
 # building it leaves 5508 MiB resident where building leaves 6400, so 892 MiB is elaboration and
-# 5.5 GiB is not. The literal is about 13 MB. S13 imports it and runs nothing, which is the floor
-# on its own, and that floor is what decides whether a larger base can ever be afforded.
+# 5.5 GiB is not. The literal is about 13 MB. Each case below imports a sieve and runs nothing,
+# which is that floor on its own, and the two together say whether the floor tracks the literal's
+# size or is a fixed charge for having a sieve imported at all.
 S13_BaseFloor
+S14_BaseFloor1e8

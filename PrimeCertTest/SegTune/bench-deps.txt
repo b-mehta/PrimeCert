@@ -8,3 +8,4 @@
 # only for a run that needs it.
 
 PrimeCertTest.SegTune.Base1e17
+PrimeCertTest.SegTune.S8_Sieve1e8
