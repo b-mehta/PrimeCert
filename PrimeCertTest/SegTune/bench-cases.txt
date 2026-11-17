@@ -2,7 +2,10 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Is 10^18 reachable at all? A proved window at 10^17 finishes at 10.53 GiB with 2.82 GiB under
-# the limit, and its base sieve alone is 6.41 GiB of that. 10^18 needs divisors to 10^9. This
-# times that base by itself, which is the cheapest thing that could rule the depth out.
+# Does the base sieve's own batch length close the gap at 10^9? It was killed at 14465364 KiB
+# against a 14000000 KiB limit with the default length of 16, and `run_sieve n len` already takes
+# that length: a shorter one checks the chain in more declarations. Three points, because the
+# notes record this trade as U-shaped rather than monotone, so 4 may be worse than 8.
 S10_Sieve1e18Base
+S12_Base1e18Len8
+S11_Base1e18Len4
