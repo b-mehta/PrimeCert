@@ -45,8 +45,8 @@
 # `ZZBP` with the base built in batches of 64 and nothing else changed; `S19` fills the gap
 # between 64 and 256 at that bound.
 # First attempt: `ZZBP` 548.613 s kernel, 15:11, 11047892 KiB, axioms clean; `S19` at length 128
-# peaked 9432488 KiB for the base alone, worse than both 64 and the default, so 64 is the knee and
-# 128 is out. `ZZCE` reported 7074748 KiB but had not imported `PrimeCert.SkipSound`, which
+# peaked 9432488 KiB for the base alone, worse than both 64 and the default, so 64 is the best of
+# the four and 128 is out. `ZZCE` reported 7074748 KiB but had not imported `PrimeCert.SkipSound`, which
 # `parts 3329987` needs for the join, so it threw after building the window and that figure is a
 # reading of a run that stopped early. Import added; this is the pair again.
 ZZBP_Target1e17Skip
