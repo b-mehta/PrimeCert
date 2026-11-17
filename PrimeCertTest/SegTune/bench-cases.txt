@@ -2,8 +2,9 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Does the join accept the wide assembly? A build only compiles the emitter; whether the proof
-# term it builds typechecks is decided when a window runs. ZZBM is the same window with both
-# trees narrow, as the thing this is read against.
+# Which wide tree costs the memory when the join is on? Three arms at 10^14, same window, one job
+# so the peaks are on one machine: both trees narrow, the products wide alone, and both wide.
+# The two figures that raised the question were taken on different machines, which settles nothing.
 ZZBM_JoinProved
+ZZBT_QuadJoin
 ZZBW_JoinQuadAsm
