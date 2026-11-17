@@ -4,11 +4,9 @@
 #
 # Name a target here only while a case in the list actually imports it. Building one is not free
 # and the step now reports each target's peak: PrimeCertTest.SegTune.Base1e17 elaborates the
-# 3.163e8 sieve and peaks 14103956 KiB writing its olean, which is over the step's default limit,
-# so a run that needs it raises the limit in bench-deplimit.txt.
+# 3.163e8 sieve and peaked 14103956 and then 15063540 KiB writing its olean, over the step's
+# default limit both times, so no run can ask for it on a free runner.
 #
 # A case importing a module needs its olean and nothing else, so each line asks for that facet by
 # name. Lake's default facet is irArts, which also generates and compiles a C file, and for a
 # module whose whole body is a numeral of several megabytes that is work no case here reads.
-
-PrimeCertTest.SegTune.Base1e17:olean
