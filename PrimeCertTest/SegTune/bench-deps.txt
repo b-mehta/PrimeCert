@@ -1,5 +1,8 @@
 # Lake targets the cases in bench-cases.txt import, one a line, built before anything is timed.
 # A module named here is one a case imports rather than builds, so it has to exist as an olean;
 # without it the case fails in about a second with an unknown module prefix.
-
-PrimeCertTest.SegTune.Base1e17
+#
+# Name a target here only while a case in the list actually imports it. Building one is not free
+# and has no watchdog over it: PrimeCertTest.SegTune.Base1e17 elaborates the 3.163e8 sieve and has
+# taken the runner down twice, once uncapped and once at LEAN_NUM_THREADS=1, so it belongs here
+# only for a run that needs ZZCA_Target1e17Imported.
