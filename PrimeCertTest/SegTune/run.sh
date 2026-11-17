@@ -131,6 +131,12 @@ for round in $(seq 1 "$rounds"); do
     status=$?
     if [ "$killed" -eq 1 ]; then
       echo "KILLED $f round $round: resident memory passed $limit KiB" | tee -a bench-failures.txt
+      # A killed case never reaches the per-group kernel lines, so the only record of where it was
+      # is the emitter's own phase log, each line carrying the resident size at that point. Printed
+      # here because a case that dies is exactly the one nobody can read any other way.
+      if [ -f /tmp/skip-rss.log ]; then
+        sed "s/^/RSS $f round $round: /" /tmp/skip-rss.log
+      fi
     fi
     if [ "$status" -ne 0 ]; then
       echo "RUN FAILED $f round $round exit $status" | tee -a bench-failures.txt
