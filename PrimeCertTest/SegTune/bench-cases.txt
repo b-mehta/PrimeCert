@@ -2,7 +2,7 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Where does the route's memory go? Everything before it accounts for 10.4 of the 14 GiB at 10^17
-# and the rest has never been observed, because the logging helpers were declared below the route
-# and so could not be called from it. They are above it now and it logs one line every 64 batches.
-ZZBP_Target1e17Skip
+# Is the join what kills a window at 10^17? The phase log puts the route and the certificate at
+# 10426 MiB with 3.6 GiB still to account for, and the join is what runs after the last line.
+# This is the same case with the proved join off and nothing else changed.
+ZZCB_Target1e17NoJoin
