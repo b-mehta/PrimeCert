@@ -2,10 +2,8 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Does the base sieve's own batch length close the gap at 10^9? It was killed at 14465364 KiB
-# against a 14000000 KiB limit with the default length of 16, and `run_sieve n len` already takes
-# that length: a shorter one checks the chain in more declarations. Three points, because the
-# notes record this trade as U-shaped rather than monotone, so 4 may be worse than 8.
-S10_Sieve1e18Base
-S12_Base1e18Len8
+# Can the 10^9 base finish at all, given room? Its batch length moves the peak by 0.75% across
+# 16, 8 and 4, where the gap to run.sh's default limit is 1.9%, so the knob cannot close it. The
+# shortest batch is also the quickest, 3:02 against 5:17. This runs that arm against the raised
+# limit in bench-limit.txt, which is the only thing left that could let it through.
 S11_Base1e18Len4

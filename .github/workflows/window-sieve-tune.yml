@@ -75,6 +75,16 @@ jobs:
           fi
           echo "rounds: $rounds"
           printf 'case: %s\n' "${cases[@]}"
+          # run.sh kills a case above LIMIT_KB, 14000000 by default, which is its own choice and
+          # not the runner's size. A branch raises it in bench-limit.txt when a case is close
+          # enough to the default to be worth asking. Raising it risks the runner dying with the
+          # log, which the default exists to avoid, so it belongs to a run that says why.
+          limitfile=PrimeCertTest/SegTune/bench-limit.txt
+          if [ -f "$limitfile" ]; then
+            LIMIT_KB=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$limitfile" | grep -v '^$' | head -1)
+            echo "limit: $LIMIT_KB KiB"
+            export LIMIT_KB
+          fi
           LEAN_FLAGS=-DElab.async=false PrimeCertTest/SegTune/run.sh "$rounds" "${cases[@]}"
       - name: Fail the job if any case failed
         run: |
