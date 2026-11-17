@@ -1,13 +1,13 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+2
 
-# Eight records a leaf on the skipped side, against the settled window. Going from one a leaf to
-# four took the assembly down 58%, and the skipped side is where the certificate's time is: of
-# `ZZBY`'s kernel the records are 31 to 41 s and the assembly 27 to 39 s, out of 195 to 270
-# depending on the runner.
+# The eight-a-leaf skipped side proves the same window: both arms ended
+# [propext, Classical.choice, Quot.sound] on `segEqAll_10000000000000001_4194304_33333333`.
 #
-# One round first, because the new tree has never run: either it emits a proved window with the
-# same three axioms or it does not, and only then is a timing worth taking.
+# First round: `ZZBY` 253.746 s kernel, skip records 40.550, assembly 37.499, peak 4409572 KiB;
+# `ZZCL` 247.560 s, 37.352, 34.575, 4441692 KiB. So the two groups the tree touches are each
+# about 8% down and the total 2.4%, which is inside the spread between runs — hence a second
+# round, and the groups rather than the total are what to read.
 ZZBY_Join1e16Quad
 ZZCL_Join1e16Oct
