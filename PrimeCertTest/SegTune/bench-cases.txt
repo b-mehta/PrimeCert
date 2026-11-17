@@ -1,12 +1,13 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+2
 
-# Sixteen records a leaf against eight, both on the skipped side, chunk 1024, join on. One round
-# first, because the new tree has never run: either it emits a proved window with the same three
-# axioms or it does not, and only then is a timing worth taking.
+# Sixteen a leaf proves the same window: both arms ended
+# [propext, Classical.choice, Quot.sound] on segEqAll_10000000000000001_4194304_33333333.
 #
-# The line so far: one a leaf to four took the assembly down 58%; four to eight took the records
-# 10.1%, the assembly 9.3% and the whole kernel 2.6%, for 0.7% more peak.
+# First round: eight a leaf 161.274 s kernel, records 29.324, assembly 25.347, peak 4443468 KiB;
+# sixteen a leaf 156.709, 27.270, 22.863, 4461456. Records 7.0% down, assembly 9.8%, kernel 2.8%,
+# peak 0.4% up — the same size of step as four to eight, so the line has not stopped. Second
+# round, because 2.8% on one round is inside the spread between runs.
 ZZCL_Join1e16Oct
 ZZCN_Join1e16Hex
