@@ -7,6 +7,7 @@ module
 
 import Lean.Elab.Command
 public meta import PrimeCert.Meta.SieveCache
+public meta import PrimeCert.Meta.Rss
 meta import PrimeCert.Sieve
 public import PrimeCert.SieveCorrect
 
@@ -42,7 +43,11 @@ meta def emitChain (parent : Name) (M fuel len : Nat) : MetaM (Nat × Expr) := d
   let mut bitsE := initE
   let env ← getEnv
   let mut proof := mkAppN (mkConst ``Eq.refl [Level.succ Level.zero]) #[Nat.mkType, lhsLoop]
-  for i in [0:(fuel + len - 1) / len] do
+  let nStep := (fuel + len - 1) / len
+  rssLog s!"sieve chain: {nStep} batches of {len} over fuel {fuel}, M {M}, {← rssMB} MiB"
+  for i in [0:nStep] do
+    if i % 64 == 0 then
+      rssLog s!"sieve chain at batch {i} of {nStep}, {← rssMB} MiB"
     let start := 1 + i * len
     let owed := fuel - i * len
     let step := Nat.min len owed
@@ -60,6 +65,7 @@ meta def emitChain (parent : Name) (M fuel len : Nat) : MetaM (Nat × Expr) := d
             mkRawNatLit (owed - step), proof, mkConst stepName]
     bits := next
     bitsE := mkRawNatLit next
+  rssLog s!"sieve chain built, {← rssMB} MiB"
   return (bits, proof)
 
 /-- Build the cache for numbers up to `n` and register it. The sieving runs in batches of `len?`
@@ -73,6 +79,7 @@ meta def runSieve (n : Nat) (len? : Option Nat := none) : MetaM Unit := do
   let sq := Nat.sqrt n + 1
   let fuel := index sq
   let len := Nat.max 1 (len?.getD 16)
+  rssLog s!"run_sieve {n} entry, {← rssMB} MiB"
   let (lit, proof) ← emitChain dataName (index n) fuel len
   -- `forceExpose` keeps the literal readable from a module consumer, which `sieve_lookup` needs
   addDecl (forceExpose := true) <| Declaration.defnDecl
@@ -89,6 +96,7 @@ meta def runSieve (n : Nat) (len? : Option Nat := none) : MetaM Unit := do
       Lean.reflBoolTrue, Lean.reflBoolTrue]
   addThm isSieveName (mkAppN (mkConst ``IsSieve) #[mkRawNatLit n, mkConst litName]) isSieveProof
   sieveCacheExt.add { lo := 5, hi := n, litName, dataName, isSieveName }
+  rssLog s!"run_sieve {n} done, {← rssMB} MiB"
 
 /-- Command wrapper for `runSieve`: `run_sieve n` builds the certified cache for numbers up to
 `n`, and `run_sieve n len` sets the batch length to `len` sieving steps. -/
