@@ -2,9 +2,9 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Does a window at 10^17 complete now? The first attempt was killed at 13.51 GiB against run.sh's
-# 14000000 KiB. Since then the chunk trees went to four records a leaf, which cost 1% peak at
-# 10^16, and this case also takes the chunk to 2048 records, which cost 4.6% less peak there. If
-# the two together are enough the case finishes; if not, the watchdog says so rather than the
-# runner dying.
+# Is the 6522 MiB resident at entry the base sieve's elaboration or its leftovers? ZZBP builds the
+# base in the same file; ZZCA imports the identical sieve from Base1e17 and is otherwise the same
+# case. One job, so both entry figures come off one machine. The line to read is the first of the
+# phase log, not the peak.
 ZZBP_Target1e17Skip
+ZZCA_Target1e17Imported
