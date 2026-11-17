@@ -1,9 +1,9 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-3
+1
 
-# The settled shape at the depth it is for, three rounds, so the number that closes this work has
-# a range rather than a single reading. 10^18 is out: its base sieve needs more memory than a
-# runner has, which the raised-limit run showed by taking the runner down rather than being
-# killed. 10^17 is the ceiling and ZZCC is the proved window there.
-ZZCC_Target1e17Staged
+# What does an imported base cost before anything uses it? Importing the 3.163e8 sieve rather than
+# building it leaves 5508 MiB resident where building leaves 6400, so 892 MiB is elaboration and
+# 5.5 GiB is not. The literal is about 13 MB. S13 imports it and runs nothing, which is the floor
+# on its own, and that floor is what decides whether a larger base can ever be afforded.
+S13_BaseFloor

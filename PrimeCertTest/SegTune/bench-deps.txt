@@ -5,4 +5,6 @@
 # Name a target here only while a case in the list actually imports it. Building one is not free
 # and has no watchdog over it: PrimeCertTest.SegTune.Base1e17 elaborates the 3.163e8 sieve and has
 # taken the runner down twice, once uncapped and once at LEAN_NUM_THREADS=1, so it belongs here
-# only for a run that needs ZZCA_Target1e17Imported.
+# only for a run that needs it.
+
+PrimeCertTest.SegTune.Base1e17
