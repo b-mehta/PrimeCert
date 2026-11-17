@@ -6915,6 +6915,10 @@ and a chain, so mode 11 is the arm to compare it against. -/
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     (prodNames : Bool := false) (out : Option (IO.Ref (Option (Nat × Name))) := none) :
     MetaM Unit := do
+  -- The route is called more than once in a skip run, and the phase log could not tell the calls
+  -- apart: one set of batch lines reached 96% of fuel while the last line of the file was still
+  -- `before the route`, which cannot be the same call. Each call says so on entry now.
+  rssLog s!"route call: mode {mode}, fuel {fuel}, len {len}, {← rssMB} MiB"
   if a % 6 ≠ 1 && a % 6 ≠ 5 then
     throwError "run_segment_variant: the window start {a} is not 1 or 5 modulo 6"
   if W = 0 then throwError "run_segment_variant: the window is empty"
