@@ -1,6 +1,6 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+3
 
 # What does an imported base cost before anything uses it? Importing the 3.163e8 sieve rather than
 # building it leaves 5508 MiB resident where building leaves 6400, so 892 MiB is elaboration and
@@ -11,4 +11,10 @@
 # 14103956 KiB on its own at one thread and the watchdog stops it, where the same `run_sieve`
 # elaborated inside a case peaks 6.41 GiB. So the 3.163e8 floor has to come from `ZZCA`, which
 # measured 5508 MiB resident at entry on a job whose dependency build happened to survive.
+# Importing the 10^8 base and running nothing peaked 1043436 KiB in 0.56 s. That number alone says
+# nothing: it carries lean's startup and the two imports every case has. `Base0_Startup` is those
+# imports with no sieve, and `S15` is the same floor at 10^7, so the three together give the charge
+# for the sieve itself at two sizes a factor of ten apart.
+Base0_Startup
+S15_BaseFloor1e7
 S14_BaseFloor1e8
