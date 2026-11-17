@@ -2,9 +2,7 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Is the 6522 MiB resident at entry the base sieve's elaboration or its leftovers? ZZBP builds the
-# base in the same file; ZZCA imports the identical sieve from Base1e17 and is otherwise the same
-# case. One job, so both entry figures come off one machine. The line to read is the first of the
-# phase log, not the peak.
+# Where does the route's memory go? Everything before it accounts for 10.4 of the 14 GiB at 10^17
+# and the rest has never been observed, because the logging helpers were declared below the route
+# and so could not be called from it. They are above it now and it logs one line every 64 batches.
 ZZBP_Target1e17Skip
-ZZCA_Target1e17Imported
