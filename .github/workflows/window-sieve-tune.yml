@@ -50,10 +50,42 @@ jobs:
             mapfile -t targets < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$deps" | grep -v '^$')
             if [ ${#targets[@]} -gt 0 ]; then
               printf 'dependency: %s\n' "${targets[@]}"
-              # One thread, because this step has no watchdog over it the way a timed case does,
-              # and a dependency that elaborates a large sieve can take the runner down with the
-              # log, which is how this step first failed.
-              LEAN_NUM_THREADS=1 lake build "${targets[@]}"
+              # One thread, and a watchdog of this step's own. A dependency that elaborates a large
+              # sieve has three times taken the runner down and the job log with it, which reads as
+              # a job that simply stopped: no step marked failed, `gh run view --log` answering
+              # "log not found". Killing the build a little under the runner's size turns that into
+              # a failure anyone can read. DEP_LIMIT_KB adjusts it.
+              # A little under run.sh's 14000000 for a case, since a kill there has reliably left
+              # the runner alive and this step carries lake as well as lean.
+              deplimit=${DEP_LIMIT_KB:-13000000}
+              kids() {
+                local p=$1 c
+                for c in $(pgrep -P "$p" 2>/dev/null || true); do echo "$c"; kids "$c"; done
+              }
+              LEAN_NUM_THREADS=1 lake build "${targets[@]}" &
+              lpid=$!
+              depkilled=0
+              deppeak=0
+              while kill -0 "$lpid" 2>/dev/null; do
+                tree=$(kids "$lpid" | tr '\n' ' ')
+                rss=$(ps -o rss= -p "$lpid" $tree 2>/dev/null | awk '{s += $1} END {print s+0}')
+                if [ "$rss" -gt "$deppeak" ]; then deppeak=$rss; fi
+                if [ "$rss" -gt "$deplimit" ]; then
+                  kill -9 "$lpid" $tree 2>/dev/null || true
+                  depkilled=1
+                fi
+                sleep 1
+              done
+              if wait "$lpid"; then depstatus=0; else depstatus=$?; fi
+              echo "dependency peak: $deppeak KiB"
+              if [ "$depkilled" -eq 1 ]; then
+                echo "DEPENDENCY KILLED: resident memory passed $deplimit KiB"
+                exit 1
+              fi
+              if [ "$depstatus" -ne 0 ]; then
+                echo "DEPENDENCY BUILD FAILED exit $depstatus"
+                exit "$depstatus"
+              fi
               echo "dependencies built"
             fi
           fi
