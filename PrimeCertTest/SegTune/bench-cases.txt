@@ -1,10 +1,9 @@
-# The cases the tuning workflow times, read from whichever branch is pushed to ci/sieve-bench.
+# The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Which wide tree costs the memory when the join is on? Three arms at 10^14, same window, one job
-# so the peaks are on one machine: both trees narrow, the products wide alone, and both wide.
-# The two figures that raised the question were taken on different machines, which settles nothing.
-ZZBM_JoinProved
-ZZBT_QuadJoin
-ZZBW_JoinQuadAsm
+# The shape a run would ship: a proved window at 10^16, with both chunk trees narrow and then both
+# wide. The wide leaves have been priced at 10^16 without the join and at 10^14 with it, never
+# together. One job, so the peaks and the totals are on one machine.
+ZZBX_Join1e16Narrow
+ZZBY_Join1e16Quad
