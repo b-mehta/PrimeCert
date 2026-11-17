@@ -16,7 +16,11 @@ products and assemblies over 256-bit words of sixteen records instead of 128-bit
 
 One step further along the line that has paid twice: one record a leaf to four took the assembly
 down 58%, four to eight took the records 10.1% and the assembly 9.3%, and the whole kernel 2.6%.
-Whether a fourth level is worth having is the only way to find out where the line stops.
+
+Settled: four rounds a side in one job, every round separating, put this 6.3 to 8.2% below the
+four-a-leaf window on kernel, 18% on the skipped records, 21% on the assembly and 0.87% on peak.
+So `parts 53661123` is what a joined run at `10^16` asks for, and `ZZBY_Join1e16Quad` is kept as
+the four-a-leaf arm it was measured against rather than as anything to run.
 
 Throwaway. -/
 

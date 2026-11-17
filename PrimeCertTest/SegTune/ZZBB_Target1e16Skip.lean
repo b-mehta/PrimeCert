@@ -13,9 +13,11 @@ public meta import PrimeCert.SegmentedSieve
 The settled shape moved to a window at `10^16 + 1` with divisors to `10^8`: chunk 1024, one gcd,
 and the sweep starting at the eight-strike band, at ten times the divisors.
 
-`parts 3198403` rather than the 3523 this file first carried, and rather than the 52675 it carried
-until both chunk trees went to four records a leaf. Those two bits took a proved window at `10^16`
-from 310.3 to 211.2 kernel seconds for 1% more peak. Sweeping the four-strike band and then
+`parts 53530051` rather than the 3523 this file first carried, rather than the 52675 it carried
+until both chunk trees went to four records a leaf, and rather than the 3198403 it carried until
+they went to sixteen. Four a leaf took a proved window at `10^16` from 310.3 to 211.2 kernel
+seconds for 1% more peak, and sixteen took another 7.6% off it for 0.87% less peak, measured four
+rounds a side in one job. Sweeping the four-strike band and then
 the eight-strike one each won on both kernel and processor at `10^14`, and building the base to
 `Wm1/128` took the marking pass from 24.2 s to 2.44 s on top of that, so the target run should ask
 about the shape that won rather than the one settled when the file was written.
@@ -45,6 +47,6 @@ namespace PrimeCert.SegTune.ZZBB_Target1e16Skip
 run_sieve 100000000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 3198403 10000000000000001 4194304 33333333 65536 0 65536 100000000
+run_segment_skip_part 53530051 10000000000000001 4194304 33333333 65536 0 65536 100000000
 
 end PrimeCert.SegTune.ZZBB_Target1e16Skip

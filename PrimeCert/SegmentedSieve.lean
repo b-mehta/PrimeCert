@@ -9911,7 +9911,9 @@ Each of those implies the ones below it.
 Above 256 the digits are fields rather than thresholds, since the choices there are independent.
 `(parts / 512) % 4` sets the chunk to 256, 512, 1024 or 2048 records, which trades statement count
 against the size of the literals a statement carries, and `(parts / 8388608) % 2` doubles whatever
-that field asks for, so the two together reach 4096. `(parts / 2048) % 2` takes one gcd for the
+that field asks for, so the two together reach 4096. `(parts / 2097152) % 2`, `(parts / 16777216)
+% 2` and `(parts / 33554432) % 2` pack four, eight and sixteen records into a leaf of the chunk
+trees, each needing the one below it; sixteen is what a settled run at `10^16` asks for. `(parts / 2048) % 2` takes one gcd for the
 window instead of one a chunk, stating the chunk products as literals and combining them pairwise
 first. `(parts / 4096) % 2` merges each chunk's assembly statement into its cover step, which
 drops a statement and an 8 KB literal a chunk on both sides. `(parts / 8192) % 4` moves the band
