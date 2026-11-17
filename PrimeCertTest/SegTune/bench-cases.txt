@@ -2,7 +2,9 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Which part of the join needs the 3 GiB that is left? The same window completes at 10^17 with
-# the join off, at 10.31 GiB against a 13.35 GiB limit, and dies with it on. The join is now
-# logged in four places: the leaf proofs, each cover as it is built, and each as it is checked.
+# Does a proved window at 10^17 fit now? The same window completes with the join off at 10.31 GiB
+# against a 13.35 GiB limit, and sliceCov_step has just taken 2.2 GiB off the join at 10^16.
+# ZZBP checks the cover chain in one declaration, ZZCC a slice at a time; both carry the fix, so
+# what separates them is the staging alone. Read the AXIOMS lines as well as the peaks.
 ZZBP_Target1e17Skip
+ZZCC_Target1e17Staged
