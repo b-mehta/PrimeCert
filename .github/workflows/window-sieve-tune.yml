@@ -39,6 +39,20 @@ jobs:
       # first line holds the round count and the rest name one case a line, with `#` for comments
       # and blank lines ignored. A branch without the file times WA_Narrow for 3 rounds, which is
       # what this job did before the file existed.
+      # A case may import a module that is not one of the sieve targets, a prebuilt base sieve for
+      # instance. Such a module has no olean here and the case fails in a second, so a branch names
+      # what it needs in PrimeCertTest/SegTune/bench-deps.txt, one lake target a line.
+      - name: Build what the cases import
+        run: |
+          set -euo pipefail
+          deps=PrimeCertTest/SegTune/bench-deps.txt
+          if [ -f "$deps" ]; then
+            mapfile -t targets < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$deps" | grep -v '^$')
+            if [ ${#targets[@]} -gt 0 ]; then
+              printf 'dependency: %s\n' "${targets[@]}"
+              lake build "${targets[@]}"
+            fi
+          fi
       - name: Time the cases this branch asks for
         run: |
           set -euo pipefail

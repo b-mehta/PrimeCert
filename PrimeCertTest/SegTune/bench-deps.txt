@@ -1,0 +1,5 @@
+# Lake targets the cases in bench-cases.txt import, one a line, built before anything is timed.
+# A module named here is one a case imports rather than builds, so it has to exist as an olean;
+# without it the case fails in about a second with an unknown module prefix.
+
+PrimeCertTest.SegTune.Base1e17
