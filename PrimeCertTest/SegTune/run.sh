@@ -153,8 +153,15 @@ for round in $(seq 1 "$rounds"); do
     # The skip emitter writes its phase lines to a fixed path, outside the message log so that a
     # case the watchdog kills still leaves them. Kept per case here, because the next case
     # overwrites the file and a killed case's lines are the ones worth having.
+    #
+    # Printed for a case that finished too, not only for one that was killed. The file stays on
+    # the runner and goes with it, so a line nobody echoes is a line nobody reads: the pair that
+    # brackets the base sieve read was added, measured and lost that way once.
     if [ -f /tmp/skip-rss.log ]; then
       cp /tmp/skip-rss.log "skip-${TAG}$f-$round.txt"
+      if [ "$killed" -eq 0 ]; then
+        sed "s/^/RSS $f round $round: /" /tmp/skip-rss.log
+      fi
     fi
     total=$(ksum "$out" "")
     # `segEqV\?_` matches both name shapes. `run_segment_variant` emits `segEqV_…` and plain
