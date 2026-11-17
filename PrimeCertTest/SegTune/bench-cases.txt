@@ -1,6 +1,13 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+2
+
+# The same pair again, now that run.sh prints the phase log for a case that finished. The first
+# job of it gave, one round each: built in the file 254.709 s kernel, 340.5 s processor,
+# 4344140 KiB peak; imported 235.868 s, 307.5 s, 3499348 KiB. Identical window time (307.483
+# against 306.085 s) and the `base sieve` command 31.532 s against nothing, so importing takes
+# 825 MiB off the peak and 18.8 s off the kernel for the same work. This asks for a second round
+# of that, and for the two lines around the base read that the first job wrote and threw away.
 
 # Importing a base sieve is free until something reads it. Three rounds each of `Base0_Startup`
 # (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and `S14_BaseFloor1e8` gave
