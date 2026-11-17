@@ -2,7 +2,7 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# Is the join what kills a window at 10^17? The phase log puts the route and the certificate at
-# 10426 MiB with 3.6 GiB still to account for, and the join is what runs after the last line.
-# This is the same case with the proved join off and nothing else changed.
-ZZCB_Target1e17NoJoin
+# Which part of the join needs the 3 GiB that is left? The same window completes at 10^17 with
+# the join off, at 10.31 GiB against a 13.35 GiB limit, and dies with it on. The join is now
+# logged in four places: the leaf proofs, each cover as it is built, and each as it is checked.
+ZZBP_Target1e17Skip

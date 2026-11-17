@@ -9208,12 +9208,18 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     if liveLeafPf.size != jLive.size || skipLeafPf.size != jSkip.size then
       throwError "run_segment_skip: the product trees have {liveLeafPf.size} and \
         {skipLeafPf.size} leaves against {jLive.size} and {jSkip.size} chunks"
+    -- The join is the one block a killed case reaches and no line covers: at 10^17 the log ends
+    -- at the gcds and the case dies here, with the same window completing when the join is off.
+    -- One line a piece, because which piece is the question.
+    rssLog s!"join: leaf proofs for {jLive.size} live and {jSkip.size} skip chunks, {← rssMB} MiB"
     let liveCov := sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
       (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
       (fun k => priv s!"recSlice_{k}") quadProd
+    rssLog s!"join: live cover over {jLiveSlice.size} slices, {← rssMB} MiB"
     let skipCov := sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
       (fun k => priv s!"skipBlock_{k}") quadProd quadAsm
+    rssLog s!"join: skip cover over {jSkipSlice.size} slices, {← rssMB} MiB"
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
       mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[x, L, D, mkRawNatLit n]
     let tag := s!"{a}_{W}_{fuel}"
@@ -9225,9 +9231,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     let liveName := ns ++ Name.mkSimple s!"joinLive_{tag}"
     addSegThm liveName (sliceCovE (mkConst wn) loE dE nL) liveCov
     let t14 ← IO.monoMsNow
+    rssLog s!"join: live cover checked, {← rssMB} MiB"
     let skipCovName := ns ++ Name.mkSimple s!"joinSkip_{tag}"
     addSegThm skipCovName (sliceCovE (mkConst skipName) (mkRawNatLit 0) pE nS) skipCov
     let t15 ← IO.monoMsNow
+    rssLog s!"join: skip cover checked, {← rssMB} MiB"
     let stmt := mkNatEq (mkSegLoopK (mkConst baseLit) loE (mkRawNatLit wm1)
       (mkApp (mkConst ``initSegK) (mkRawNatLit W)) 1 fuel) (mkConst wn)
     let proof := mkAppN (mkConst joinLemma)
