@@ -1,20 +1,15 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-3
+1
 
-# What does an imported base cost before anything uses it? Importing the 3.163e8 sieve rather than
-# building it leaves 5508 MiB resident where building leaves 6400, so 892 MiB is elaboration and
-# 5.5 GiB is not. The literal is about 13 MB. Each case below imports a sieve and runs nothing,
-# which is that floor on its own, and the two together say whether the floor tracks the literal's
-# size or is a fixed charge for having a sieve imported at all.
-# S13, the 3.163e8 half of that pair, cannot run here: writing that base to an olean peaks
-# 14103956 KiB on its own at one thread and the watchdog stops it, where the same `run_sieve`
-# elaborated inside a case peaks 6.41 GiB. So the 3.163e8 floor has to come from `ZZCA`, which
-# measured 5508 MiB resident at entry on a job whose dependency build happened to survive.
-# Importing the 10^8 base and running nothing peaked 1043436 KiB in 0.56 s. That number alone says
-# nothing: it carries lean's startup and the two imports every case has. `Base0_Startup` is those
-# imports with no sieve, and `S15` is the same floor at 10^7, so the three together give the charge
-# for the sieve itself at two sizes a factor of ten apart.
-Base0_Startup
-S15_BaseFloor1e7
-S14_BaseFloor1e8
+# Importing a base sieve is free until something reads it. Three rounds each of `Base0_Startup`
+# (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and `S14_BaseFloor1e8` gave
+# 1043284 to 1044344 KiB across all nine readings, so a sieve ten times larger, and a sieve
+# against no sieve at all, are the same to within 0.1%.
+#
+# That moves the question to the read. `ZZCA` was at 5508 MiB by the time the emitter's `entry`
+# line printed, and the base sieve is read before it. `runSegmentSkip` now prints a line either
+# side of that read, and the pair below is the settled `10^16` window over a base that was built
+# in the file against the same window over a base that was imported.
+ZZBB_Target1e16Skip
+ZZCD_Target1e16Imported
