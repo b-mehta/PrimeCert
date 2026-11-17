@@ -2,8 +2,9 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# The shape a run would ship: a proved window at 10^16, with both chunk trees narrow and then both
-# wide. The wide leaves have been priced at 10^16 without the join and at 10^14 with it, never
-# together. One job, so the peaks and the totals are on one machine.
-ZZBX_Join1e16Narrow
+# The two production cases on the wide chunk trees, which is the run goldbach asked for before the
+# narrow path comes out of the emitter. ZZBY rides along for its second round, since the shape was
+# settled on one.
+ZZBB_Target1e16Skip
+ZZBM_JoinProved
 ZZBY_Join1e16Quad
