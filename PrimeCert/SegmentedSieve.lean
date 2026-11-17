@@ -8395,8 +8395,8 @@ order, and `leafPf` proves each chunk's product divides `D`. `thm tag k c` names
 meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
     (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
     (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false)
-    (quadAsm : Bool := false) :
-    Expr := Id.run do
+    (quadAsm : Bool := false) (stage : Option (Nat → Name) := none) :
+    MetaM Expr := do
   let maskE := mkApp2 (mkConst ``Nat.sub)
     (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536)) (mkRawNatLit 1)
   let mut proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_zero) #[xE, LE, D]
@@ -8437,6 +8437,14 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       #[sliceE, mkRawNatLit slices[k]!, LkE, D, mkConst (sliceThm k), chain]
     proof := mkAppN (mkConst `PrimeCert.Sieve.sliceCov_succ)
       #[xE, LE, D, mkRawNatLit k, proof, hn]
+    -- Staged: each prefix becomes its own declaration and the next step names it rather than
+    -- carrying it. One `addDecl` over 1609 slices is what the kernel could not afford at 10^17,
+    -- where building this same term costs about 20 MiB; this is the checkpointing the
+    -- metaprogramming notes prescribe for a reduction whose peak follows the whole chain.
+    if let some name := stage then
+      let stmt := mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[xE, LE, D, mkRawNatLit (k + 1)]
+      addSegThm (name k) stmt proof
+      proof := mkConst (name k)
   return proof
 
 public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : Nat) :
@@ -8557,6 +8565,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- the narrow tree two levels deeper, given every slot the wide tree reads is below `cnt`, which
   -- is what the padding above arranges. So this needs `quadProd` on and says so if it is not.
   let quadAsm := (parts / 2097152) % 2 == 1
+  -- Each slice of a cover chain added as its own declaration rather than one term for all of
+  -- them. At 10^17 the skip cover is 1609 slices and its single `addDecl` is what crosses the
+  -- watchdog, with the term itself costing about 20 MiB to build.
+  let stagedCov := (parts / 4194304) % 2 == 1
   if quadAsm && !quadProd then
     throwError "run_segment_skip: the wide assembly reads every slot of a full chunk, so it needs \
       the padding that (parts / 1048576) % 2 turns on; ask for both or neither"
@@ -9212,13 +9224,15 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     -- at the gcds and the case dies here, with the same window completing when the join is off.
     -- One line a piece, because which piece is the question.
     rssLog s!"join: leaf proofs for {jLive.size} live and {jSkip.size} skip chunks, {← rssMB} MiB"
-    let liveCov := sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
+    let liveCov ← sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
       (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
-      (fun k => priv s!"recSlice_{k}") quadProd
+      (fun k => priv s!"recSlice_{k}") quadProd false
+      (if stagedCov then some (fun k => priv s!"liveStage_{k}") else none)
     rssLog s!"join: live cover over {jLiveSlice.size} slices, {← rssMB} MiB"
-    let skipCov := sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
+    let skipCov ← sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
       (fun k => priv s!"skipBlock_{k}") quadProd quadAsm
+      (if stagedCov then some (fun k => priv s!"skipStage_{k}") else none)
     rssLog s!"join: skip cover over {jSkipSlice.size} slices, {← rssMB} MiB"
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=
       mkAppN (mkConst `PrimeCert.Sieve.SliceCov) #[x, L, D, mkRawNatLit n]
