@@ -1,15 +1,12 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-2
+1
 
-# One round each of 65536, 131072 and 262144 gave kernel 269.218, 263.529 and 272.142 s at peaks
-# 4446540, 4812632 and 7746824 KiB, all three ending [propext, Classical.choice, Quot.sound]. So
-# 262144 is worse on both counts and is dropped, while 131072 is 2.1% faster for 8.2% more peak.
+# A compile check, not a measurement: the eight-a-leaf tree is new and nothing calls it yet, so
+# the job is here to build `PrimeCert.SegmentedSieve` and `PrimeCert.SkipSound` at step 5 and this
+# case costs half a second on top.
 #
-# 2.1% on one round is not enough to move a settled value, and the same case has come back at
-# 201.512, 202.363 and 269.218 kernel seconds across three jobs today, so the spread between
-# runners is larger than the effect. The part the batch length is meant to shrink does move with
-# it — the widest band, 38.359 against 34.148 s — which is why this is worth a second round
-# rather than dropping.
-ZZBY_Join1e16Quad
-ZZCJ_Join1e16Len131072
+# Settled by the second round of the route batch: 65536 stays. Two rounds each gave 198.180 and
+# 193.590 s kernel at 65536 against 193.874 and 194.977 at 131072, so the arms overlap and the
+# earlier 2.1% was the spread between runs, not the setting; 131072 also costs 8.3% peak.
+Base0_Startup
