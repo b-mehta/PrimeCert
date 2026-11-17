@@ -8917,7 +8917,8 @@ order, and `leafPf` proves each chunk's product divides `D`. `thm tag k c` names
 meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
     (chunks : Array (Array Nat)) (leafPf : Array Expr) (thm : String → Nat → Nat → Name)
     (asmTag prodTag coverTag : String) (sliceThm : Nat → Name) (quad : Bool := false)
-    (quadAsm : Bool := false) (octAsm : Bool := false) (stage : Option (Nat → Name) := none) :
+    (quadAsm : Bool := false) (octAsm : Bool := false) (hexAsm : Bool := false)
+    (stage : Option (Nat → Name) := none) :
     MetaM Expr := do
   let maskE := mkApp2 (mkConst ``Nat.sub)
     (mkApp2 (mkConst ``Nat.shiftLeft) (mkRawNatLit 1) (mkRawNatLit 65536)) (mkRawNatLit 1)
@@ -8930,7 +8931,13 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
       let ch := chunks[ci]!
       let c := ch[1]!
       let asmE := mkRawNatLit ch[4]!
-      let chunkPf := if octAsm then
+      let chunkPf := if hexAsm then
+        mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkHA)
+          #[mkRawNatLit ch[2]!, LkE, mkRawNatLit (1 <<< chunkLog), mkRawNatLit (chunkLog - 4),
+            mkRawNatLit (chunkLog - 4), mkRawNatLit 0, mkRawNatLit 0, asmE, mkRawNatLit ch[5]!, D,
+            mkConst (thm asmTag k c), mkConst (thm prodTag k c), leafPf[ci]!, Lean.reflBoolTrue,
+            Lean.reflBoolTrue, Lean.reflBoolTrue]
+      else if octAsm then
         -- Both sides eight a leaf, one level wider again. The same padding serves: a tree of
         -- `chunkLog - 3` levels over words of eight reads `2 ^ chunkLog` slots, the whole chunk.
         mkAppN (mkConst `PrimeCert.Sieve.bitsDvd_chunkOA)
@@ -9118,6 +9125,9 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- a tree of `chunkLog - 3` levels over words of eight reads the whole chunk. Implies both quad
   -- flags rather than sitting beside them, since it replaces what they state.
   let octTree := (parts / 16777216) % 2 == 1
+  -- And one level wider again, sixteen records a leaf over 256-bit words. Takes precedence over
+  -- `octTree`, which it needs for the same reason `octTree` needs the four-a-leaf flags.
+  let hexTree := (parts / 33554432) % 2 == 1
   -- Each slice of a cover chain added as its own declaration rather than one term for all of
   -- them. At 10^17 the skip cover is 1609 slices and its single `addDecl` is what crosses the
   -- watchdog, with the term itself costing about 20 MiB to build.
@@ -9129,6 +9139,9 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     throwError "run_segment_skip: eight records a leaf replaces what the four-a-leaf flags state \
       and needs the padding they turn on, so ask for (parts / 1048576) % 2 and \
       (parts / 2097152) % 2 with it"
+  if hexTree && !octTree then
+    throwError "run_segment_skip: sixteen records a leaf stands on the same padding the narrower \
+      trees need, so ask for (parts / 16777216) % 2 with it"
   -- Pads `lowRecs` past `cnt` to `chunk` slots with the record at `cnt - 1`.
   let padRecs (lowRecs cnt : Nat) : Nat := Id.run do
     if cnt == 0 || cnt ≥ chunk then return lowRecs
@@ -9467,7 +9480,11 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
           let pv := prodPairwise vs
           let p1 ← IO.monoMsNow
           msProd := msProd + (p1 - p0)
-          let prodE := if octTree then
+          let prodE := if hexTree then
+            mkAppN (mkConst ``prodHexK)
+              #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit (chunkLog - 4),
+                mkRawNatLit 0]
+          else if octTree then
             mkAppN (mkConst ``prodOctK)
               #[mkRawNatLit lowRecs, mkRawNatLit (k * 65536), mkRawNatLit (chunkLog - 3),
                 mkRawNatLit 0]
@@ -9481,7 +9498,10 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
                 mkRawNatLit chunkLog, mkRawNatLit 0]
           addSegThm (mkPrivateName env (ns ++ Name.mkSimple s!"skipRec_{k}_{c}"))
             (mkSegBeqTrue prodE (mkRawNatLit pv)) Lean.reflBoolTrue
-          let asmE := if octTree then
+          let asmE := if hexTree then
+            mkAppN (mkConst ``asmHexK)
+              #[mkRawNatLit lowRecs, mkRawNatLit (chunkLog - 4), mkRawNatLit 0]
+          else if octTree then
             mkAppN (mkConst ``asmOctK)
               #[mkRawNatLit lowRecs, mkRawNatLit (chunkLog - 3), mkRawNatLit 0]
           else if quadAsm then
@@ -9789,12 +9809,12 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
     rssLog s!"join: leaf proofs for {jLive.size} live and {jSkip.size} skip chunks, {← rssMB} MiB"
     let liveCov ← sliceCovProof (mkConst wn) loE dE lo chunkLog jLiveSlice jLive liveLeafPf
       (fun t k c => priv s!"{t}_{k}_{c}") "recAsm" "recProd" "recCover"
-      (fun k => priv s!"recSlice_{k}") quadProd false false
+      (fun k => priv s!"recSlice_{k}") quadProd false false false
       (if stagedCov then some (fun k => priv s!"liveStage_{k}") else none)
     rssLog s!"join: live cover over {jLiveSlice.size} slices, {← rssMB} MiB"
     let skipCov ← sliceCovProof (mkConst skipName) (mkRawNatLit 0) pE 0 chunkLog jSkipSlice
       jSkip skipLeafPf (fun t k c => priv s!"{t}_{k}_{c}") "skipAsm" "skipRec" "skipCover"
-      (fun k => priv s!"skipBlock_{k}") quadProd quadAsm octTree
+      (fun k => priv s!"skipBlock_{k}") quadProd quadAsm octTree hexTree
       (if stagedCov then some (fun k => priv s!"skipStage_{k}") else none)
     rssLog s!"join: skip cover over {jSkipSlice.size} slices, {← rssMB} MiB"
     let sliceCovE (x L D : Expr) (n : Nat) : Expr :=

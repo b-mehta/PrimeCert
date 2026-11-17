@@ -535,6 +535,38 @@ public theorem bitsDvd_chunkOA {recs L cnt a e off qoff asm pv D : Nat}
   · exact Nat.beq_refl _
   · exact Nat.ble_eq.mpr (by omega)
 
+/-- `bitsDvd_chunk` for a chunk whose product is stated as `prodHexK`, sixteen records a leaf. -/
+public theorem bitsDvd_chunkH {recs L cnt d e aoff qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d aoff) asm = true)
+    (hprod : Nat.beq (prodHexK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hoff : Nat.beq aoff (16 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (16 * (qoff + 2 ^ e)) = true) :
+    BitsDvd asm L D := by
+  intro j hj
+  rw [← Nat.eq_of_beq_eq_true hasm] at hj
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← Nat.eq_of_beq_eq_true hprod]
+  exact dvd_prodHexK_of_testBit hoff hde hj
+
+/-- `bitsDvd_chunkH` for a chunk whose assembly is stated as `asmHexK` as well, sixteen records a
+leaf on both sides. `asmHexK_eq_asmChunkK` carries the wide assembly to the narrow one four levels
+deeper, on the condition the narrower versions need at their own depths. -/
+public theorem bitsDvd_chunkHA {recs L cnt a e off qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmHexK recs a off) asm = true)
+    (hprod : Nat.beq (prodHexK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hcnt : Nat.ble (16 * (off + 2 ^ a)) cnt = true)
+    (hoff : Nat.beq off qoff = true)
+    (hde : Nat.ble (2 ^ (a + 4)) (16 * 2 ^ e) = true) :
+    BitsDvd asm L D := by
+  have ho := Nat.eq_of_beq_eq_true hoff
+  subst ho
+  have hwide := asmHexK_eq_asmChunkK recs cnt a off (Nat.le_of_ble_eq_true hcnt)
+  rw [hwide] at hasm
+  have hle := Nat.le_of_ble_eq_true hde
+  refine bitsDvd_chunkH (cnt := cnt) (d := a + 4) (aoff := 16 * off) hasm hprod hdvd ?_ ?_
+  · exact Nat.beq_refl _
+  · exact Nat.ble_eq.mpr (by omega)
+
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=
   Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).1 hc
