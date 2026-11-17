@@ -8491,7 +8491,13 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- measurement up to `ZZAD` used; 512 beat it on all three figures at once, and the field runs to
   -- 2048. Doubling halves the statement count and doubles the literals a statement carries, so the
   -- two pull opposite ways and only a measurement settles it.
-  let chunkLog := 8 + (parts / 512) % 4
+  -- The field is two bits wide and 2048 is the top of it, so a bit of its own doubles the chunk
+  -- once more rather than widening the field, which would renumber every flag above it and every
+  -- `parts` value on record. Asked because at `10^17` the certificate is half the kernel, the
+  -- chunk is already at the field's top, and the base sieve's batch length left 6.40 GiB spare
+  -- where there had been 2.76.
+  let chunkPlus := (parts / 8388608) % 2
+  let chunkLog := 8 + (parts / 512) % 4 + chunkPlus
   let chunk := Nat.pow 2 chunkLog
   -- One gcd for the whole window instead of one a chunk. The chunk products are stated as
   -- literals and combined pairwise into the live product, the way the skipped side already is,
@@ -9282,7 +9288,8 @@ Each of those implies the ones below it.
 
 Above 256 the digits are fields rather than thresholds, since the choices there are independent.
 `(parts / 512) % 4` sets the chunk to 256, 512, 1024 or 2048 records, which trades statement count
-against the size of the literals a statement carries. `(parts / 2048) % 2` takes one gcd for the
+against the size of the literals a statement carries, and `(parts / 8388608) % 2` doubles whatever
+that field asks for, so the two together reach 4096. `(parts / 2048) % 2` takes one gcd for the
 window instead of one a chunk, stating the chunk products as literals and combining them pairwise
 first. `(parts / 4096) % 2` merges each chunk's assembly statement into its cover step, which
 drops a statement and an 8 KB literal a chunk on both sides. `(parts / 8192) % 4` moves the band
