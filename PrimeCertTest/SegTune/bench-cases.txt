@@ -1,9 +1,9 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-1
+3
 
-# Can the 10^9 base finish at all, given room? Its batch length moves the peak by 0.75% across
-# 16, 8 and 4, where the gap to run.sh's default limit is 1.9%, so the knob cannot close it. The
-# shortest batch is also the quickest, 3:02 against 5:17. This runs that arm against the raised
-# limit in bench-limit.txt, which is the only thing left that could let it through.
-S11_Base1e18Len4
+# The settled shape at the depth it is for, three rounds, so the number that closes this work has
+# a range rather than a single reading. 10^18 is out: its base sieve needs more memory than a
+# runner has, which the raised-limit run showed by taking the runner down rather than being
+# killed. 10^17 is the ceiling and ZZCC is the proved window there.
+ZZCC_Target1e17Staged
