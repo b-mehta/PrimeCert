@@ -1,0 +1,8 @@
+# The resident size at which the tuning workflow kills a dependency build, in KiB. Default 13000000
+# when this file is absent. Raising it risks the runner dying with the job log, which the default
+# exists to avoid, so it belongs to a run that says why and goes back afterwards.
+#
+# This run: writing the 3.163e8 base to an olean peaked 14103956 KiB, so the default stops a build
+# that had succeeded before the watchdog existed. 14500000 is above that peak and well under the
+# 15200000 that took a runner down.
+14500000

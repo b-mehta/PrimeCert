@@ -56,8 +56,16 @@ jobs:
               # "log not found". Killing the build a little under the runner's size turns that into
               # a failure anyone can read. DEP_LIMIT_KB adjusts it.
               # A little under run.sh's 14000000 for a case, since a kill there has reliably left
-              # the runner alive and this step carries lake as well as lean.
-              deplimit=${DEP_LIMIT_KB:-13000000}
+              # the runner alive and this step carries lake as well as lean. A branch raises it in
+              # PrimeCertTest/SegTune/bench-deplimit.txt, which is how a dependency measured just
+              # over the default gets a run that says why; put it back afterwards.
+              deplimit=13000000
+              deplimitfile=PrimeCertTest/SegTune/bench-deplimit.txt
+              if [ -f "$deplimitfile" ]; then
+                deplimit=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$deplimitfile" \
+                  | grep -v '^$' | head -1)
+              fi
+              echo "dependency limit: $deplimit KiB"
               kids() {
                 local p=$1 c
                 for c in $(pgrep -P "$p" 2>/dev/null || true); do echo "$c"; kids "$c"; done
