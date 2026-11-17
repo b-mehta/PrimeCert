@@ -6907,6 +6907,18 @@ public theorem dvd_prodQuadK_of_testBit {recs lo cnt d e aoff qoff i : Nat}
   have ho := Nat.eq_of_beq_eq_true hoff
   exact dvd_prodQuadK recs lo e qoff s (by omega) (by omega)
 
+/-- A bit a chunk assembles to names a value dividing the oct product over the same records,
+given the oct tree spans the assembly's slots. -/
+public theorem dvd_prodOctK_of_testBit {recs lo cnt d e aoff qoff i : Nat}
+    (hoff : Nat.beq aoff (8 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (8 * (qoff + 2 ^ e)) = true)
+    (hb : Nat.testBit (asmChunkK recs cnt d aoff) i = true) :
+    valueK (Nat.add lo i) ∣ prodOctK recs lo e qoff := by
+  obtain ⟨s, hs1, hs2, rfl⟩ := slot_of_testBit_asmChunkK recs cnt d aoff i hb
+  have hle := Nat.le_of_ble_eq_true hde
+  have ho := Nat.eq_of_beq_eq_true hoff
+  exact dvd_prodOctK recs lo e qoff s (by omega) (by omega)
+
 /-- If two numbers are coprime, nothing above 1 divides both. -/
 public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
     (h : Nat.gcd a b = 1) (hpa : p ∣ a) (hpb : p ∣ b) : p = 1 := by

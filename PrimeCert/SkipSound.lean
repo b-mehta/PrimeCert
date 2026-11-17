@@ -500,6 +500,41 @@ public theorem bitsDvd_chunkQA {recs L cnt a e off qoff asm pv D : Nat}
   · exact Nat.beq_refl _
   · exact Nat.ble_eq.mpr (by omega)
 
+/-- `bitsDvd_chunk` for a chunk whose product is stated as `prodOctK`, eight records a leaf. The
+same statement `bitsDvd_chunkQ` makes for four. -/
+public theorem bitsDvd_chunkO {recs L cnt d e aoff qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmChunkK recs cnt d aoff) asm = true)
+    (hprod : Nat.beq (prodOctK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hoff : Nat.beq aoff (8 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (8 * (qoff + 2 ^ e)) = true) :
+    BitsDvd asm L D := by
+  intro j hj
+  rw [← Nat.eq_of_beq_eq_true hasm] at hj
+  refine Nat.dvd_trans ?_ hdvd
+  rw [← Nat.eq_of_beq_eq_true hprod]
+  exact dvd_prodOctK_of_testBit hoff hde hj
+
+/-- `bitsDvd_chunkO` for a chunk whose assembly is stated as `asmOctK` as well, eight records a
+leaf on both sides. `asmOctK_eq_asmChunkK` carries the wide assembly to the narrow one three
+levels deeper, on the same condition `bitsDvd_chunkQA` needs two levels deeper: every slot the
+wide tree reads is below `cnt`, which the emitter arranges by padding a part-full chunk with
+copies of its last record. -/
+public theorem bitsDvd_chunkOA {recs L cnt a e off qoff asm pv D : Nat}
+    (hasm : Nat.beq (asmOctK recs a off) asm = true)
+    (hprod : Nat.beq (prodOctK recs L e qoff) pv = true) (hdvd : pv ∣ D)
+    (hcnt : Nat.ble (8 * (off + 2 ^ a)) cnt = true)
+    (hoff : Nat.beq off qoff = true)
+    (hde : Nat.ble (2 ^ (a + 3)) (8 * 2 ^ e) = true) :
+    BitsDvd asm L D := by
+  have ho := Nat.eq_of_beq_eq_true hoff
+  subst ho
+  have hwide := asmOctK_eq_asmChunkK recs cnt a off (Nat.le_of_ble_eq_true hcnt)
+  rw [hwide] at hasm
+  have hle := Nat.le_of_ble_eq_true hde
+  refine bitsDvd_chunkO (cnt := cnt) (d := a + 3) (aoff := 8 * off) hasm hprod hdvd ?_ ?_
+  · exact Nat.beq_refl _
+  · exact Nat.ble_eq.mpr (by omega)
+
 public theorem dvd_of_mul_beq_left {a b c D : Nat} (h : Nat.beq (Nat.mul a b) c = true)
     (hc : c ∣ D) : a ∣ D :=
   Nat.dvd_trans (dvd_of_mul_eq (Nat.eq_of_beq_eq_true h)).1 hc
