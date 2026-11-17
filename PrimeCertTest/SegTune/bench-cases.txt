@@ -2,12 +2,12 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 2
 
-# Sixteen a leaf proves the same window: both arms ended
-# [propext, Classical.choice, Quot.sound] on segEqAll_10000000000000001_4194304_33333333.
+# The wider trees now state the live side's products too, not only the skipped side's. The live
+# assembly stays narrow, which is the shape `bitsDvd_chunkO` and `bitsDvd_chunkH` are for, and the
+# live side is small — records 2.2 s, gcd 4.1 — so this is finishing the change rather than
+# chasing it.
 #
-# First round: eight a leaf 161.274 s kernel, records 29.324, assembly 25.347, peak 4443468 KiB;
-# sixteen a leaf 156.709, 27.270, 22.863, 4461456. Records 7.0% down, assembly 9.8%, kernel 2.8%,
-# peak 0.4% up — the same size of step as four to eight, so the line has not stopped. Second
-# round, because 2.8% on one round is inside the spread between runs.
-ZZCL_Join1e16Oct
+# Four a leaf against sixteen, which is the whole of it: two rounds each gave the skipped side's
+# records 7.9% and assembly 8.3% down for the last step alone, about 17% each against four.
+ZZBY_Join1e16Quad
 ZZCN_Join1e16Hex
