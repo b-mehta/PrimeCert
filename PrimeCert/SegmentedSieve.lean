@@ -7020,6 +7020,150 @@ public theorem dvd_prodHexK (recs lo : Nat) :
     · exact Nat.dvd_mul_right_of_dvd (ih off s ha hc) _
     · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
 
+/-- The bits named by the sixteen sixteen-bit records packed in the 256-bit word `w`, associated
+as `asmChunkK` associates a tree of depth four. -/
+@[expose] public noncomputable def hexAsmK (w : Nat) : Nat :=
+  Nat.lor
+    (Nat.lor
+      (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land w 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 16) 65535)))
+        (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 32) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 48) 65535))))
+      (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 64) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 80) 65535)))
+        (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 96) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 112) 65535)))))
+    (Nat.lor
+      (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 128) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 144) 65535)))
+        (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 160) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 176) 65535))))
+      (Nat.lor (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 192) 65535))
+          (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 208) 65535)))
+        (Nat.lor (Nat.shiftLeft 1 (Nat.land (Nat.shiftRight w 224) 65535))
+          (Nat.shiftLeft 1 (Nat.shiftRight w 240)))))
+
+/-- The bits named by the `16 * 2 ^ e` records of `recs` from slot `16 * off`, as a balanced tree
+over 256-bit words of sixteen records each. The assembly side of `prodHexK`. -/
+@[expose] public noncomputable def asmHexK (recs e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => hexAsmK (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256))
+    (fun k ih o => Nat.lor (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+/-- The wide tree assembles exactly what the narrow one does, four levels deeper, as long as no
+leaf of the narrow tree meets its slot cutoff. The same statement `asmOctK_eq_asmChunkK` makes
+three levels deeper. -/
+public theorem asmHexK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
+    16 * (off + 2 ^ e) ≤ cnt → asmHexK recs e off = asmChunkK recs cnt (e + 4) (16 * off) := by
+  intro e
+  induction e with
+  | zero =>
+    intro off hc
+    have hc16 : 16 * off + 15 < cnt := by simp only [Nat.pow_zero] at hc; omega
+    have hleaf : ∀ j, j < 16 → asmChunkK recs cnt 0 (16 * off + j)
+        = Nat.shiftLeft 1 (Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + j) 16)) 65535) := by
+      intro j hj
+      have hb : Nat.blt (16 * off + j) cnt = true := by
+        have hlt : 16 * off + j < cnt := by omega
+        simpa using hlt
+      have hu : asmChunkK recs cnt 0 (16 * off + j) = (Nat.blt (16 * off + j) cnt).rec 0
+          (Nat.shiftLeft 1
+            (Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + j) 16)) 65535)) := rfl
+      rw [hu, hb]
+    have ha : asmChunkK recs cnt 4 (16 * off) =
+        Nat.lor
+          (Nat.lor
+            (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (16 * off + 0))
+                (asmChunkK recs cnt 0 (16 * off + 1)))
+              (Nat.lor (asmChunkK recs cnt 0 (16 * off + 2))
+                (asmChunkK recs cnt 0 (16 * off + 3))))
+            (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (16 * off + 4))
+                (asmChunkK recs cnt 0 (16 * off + 5)))
+              (Nat.lor (asmChunkK recs cnt 0 (16 * off + 6))
+                (asmChunkK recs cnt 0 (16 * off + 7)))))
+          (Nat.lor
+            (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (16 * off + 8))
+                (asmChunkK recs cnt 0 (16 * off + 9)))
+              (Nat.lor (asmChunkK recs cnt 0 (16 * off + 10))
+                (asmChunkK recs cnt 0 (16 * off + 11))))
+            (Nat.lor (Nat.lor (asmChunkK recs cnt 0 (16 * off + 12))
+                (asmChunkK recs cnt 0 (16 * off + 13)))
+              (Nat.lor (asmChunkK recs cnt 0 (16 * off + 14))
+                (asmChunkK recs cnt 0 (16 * off + 15))))) := rfl
+    have hf : ∀ j, j < 15 → Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs
+        (Nat.mul off 256)) mask256) (16 * j)) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + j) 16)) 65535 :=
+      fun j hj => field_hex recs off j (by omega)
+    have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256) 65535 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 0) 16)) 65535 := hf 0 (by omega)
+    have h1 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        16) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 1) 16)) 65535 :=
+      hf 1 (by omega)
+    have h2 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        32) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 2) 16)) 65535 :=
+      hf 2 (by omega)
+    have h3 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        48) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 3) 16)) 65535 :=
+      hf 3 (by omega)
+    have h4 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        64) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 4) 16)) 65535 :=
+      hf 4 (by omega)
+    have h5 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        80) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 5) 16)) 65535 :=
+      hf 5 (by omega)
+    have h6 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        96) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 6) 16)) 65535 :=
+      hf 6 (by omega)
+    have h7 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        112) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 7) 16)) 65535 :=
+      hf 7 (by omega)
+    have h8 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        128) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 8) 16)) 65535 :=
+      hf 8 (by omega)
+    have h9 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        144) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 9) 16)) 65535 :=
+      hf 9 (by omega)
+    have h10 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        160) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 10) 16)) 65535 :=
+      hf 10 (by omega)
+    have h11 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        176) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 11) 16)) 65535 :=
+      hf 11 (by omega)
+    have h12 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        192) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 12) 16)) 65535 :=
+      hf 12 (by omega)
+    have h13 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        208) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 13) 16)) 65535 :=
+      hf 13 (by omega)
+    have h14 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256)
+        224) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 14) 16)) 65535 :=
+      hf 14 (by omega)
+    have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256) 240 =
+        Nat.land (Nat.shiftRight recs (Nat.mul (16 * off + 15) 16)) 65535 := field_hex_top recs off
+    have hq : asmHexK recs 0 off =
+        hexAsmK (Nat.land (Nat.shiftRight recs (Nat.mul off 256)) mask256) := rfl
+    rw [hq, ha, hleaf 0 (by omega), hleaf 1 (by omega), hleaf 2 (by omega), hleaf 3 (by omega),
+      hleaf 4 (by omega), hleaf 5 (by omega), hleaf 6 (by omega), hleaf 7 (by omega),
+      hleaf 8 (by omega), hleaf 9 (by omega), hleaf 10 (by omega), hleaf 11 (by omega),
+      hleaf 12 (by omega), hleaf 13 (by omega), hleaf 14 (by omega), hleaf 15 (by omega)]
+    unfold hexAsmK
+    rw [h0, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, ht]
+  | succ k ih =>
+    intro off hc
+    -- Written with `+` and `^` rather than `Nat.add` and `Nat.pow`, because omega reads the two
+    -- spellings as different atoms. The `rfl`s carry them across.
+    have hpow : 2 ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [Nat.pow_succ]; omega
+    have h16 : 2 ^ (k + 4) = 2 ^ k * 16 := by
+      rw [Nat.pow_succ, Nat.pow_succ, Nat.pow_succ, Nat.pow_succ]; omega
+    have hq : asmHexK recs (k + 1) off =
+        Nat.lor (asmHexK recs k off) (asmHexK recs k (off + 2 ^ k)) := rfl
+    have ha : asmChunkK recs cnt (k + 5) (16 * off) =
+        Nat.lor (asmChunkK recs cnt (k + 4) (16 * off))
+          (asmChunkK recs cnt (k + 4) (16 * off + 2 ^ (k + 4))) := rfl
+    have hoff : 16 * off + 2 ^ (k + 4) = 16 * (off + 2 ^ k) := by rw [h16]; omega
+    rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
+
 /-- A set bit of a chunk's assembly is the position some slot in range names. -/
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
     ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
@@ -7086,6 +7230,18 @@ public theorem dvd_prodOctK_of_testBit {recs lo cnt d e aoff qoff i : Nat}
   have hle := Nat.le_of_ble_eq_true hde
   have ho := Nat.eq_of_beq_eq_true hoff
   exact dvd_prodOctK recs lo e qoff s (by omega) (by omega)
+
+/-- A bit a chunk assembles to names a value dividing the sixteen-a-leaf product over the same
+records, given that tree spans the assembly's slots. -/
+public theorem dvd_prodHexK_of_testBit {recs lo cnt d e aoff qoff i : Nat}
+    (hoff : Nat.beq aoff (16 * qoff) = true)
+    (hde : Nat.ble (aoff + 2 ^ d) (16 * (qoff + 2 ^ e)) = true)
+    (hb : Nat.testBit (asmChunkK recs cnt d aoff) i = true) :
+    valueK (Nat.add lo i) ∣ prodHexK recs lo e qoff := by
+  obtain ⟨s, hs1, hs2, rfl⟩ := slot_of_testBit_asmChunkK recs cnt d aoff i hb
+  have hle := Nat.le_of_ble_eq_true hde
+  have ho := Nat.eq_of_beq_eq_true hoff
+  exact dvd_prodHexK recs lo e qoff s (by omega) (by omega)
 
 /-- If two numbers are coprime, nothing above 1 divides both. -/
 public theorem eq_one_of_dvd_gcd_one {a b p : Nat}
