@@ -6884,6 +6884,142 @@ public theorem asmOctK_eq_asmChunkK (recs cnt : Nat) : ∀ e off,
     have hoff : 8 * off + 2 ^ (k + 3) = 8 * (off + 2 ^ k) := by rw [h8]; omega
     rw [hq, ha, hoff, ih off (by omega), ih (off + 2 ^ k) (by omega)]
 
+/-- The product of the sixteen values named by the sixteen-bit records packed in the 256-bit word
+`w`, associated as `prodChunkK` associates a tree of depth four. -/
+@[expose] public noncomputable def hexK (lo w : Nat) : Nat :=
+  Nat.mul
+    (Nat.mul
+      (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land w 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 16) 65535))))
+        (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 32) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 48) 65535)))))
+      (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 64) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 80) 65535))))
+        (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 96) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 112) 65535))))))
+    (Nat.mul
+      (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 128) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 144) 65535))))
+        (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 160) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 176) 65535)))))
+      (Nat.mul (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 192) 65535)))
+          (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 208) 65535))))
+        (Nat.mul (valueK (Nat.add lo (Nat.land (Nat.shiftRight w 224) 65535)))
+          (valueK (Nat.add lo (Nat.shiftRight w 240))))))
+
+/-- The product of the values named by the `16 * 2 ^ e` records of `recs` from slot `16 * off`, as
+a balanced tree over 256-bit words of sixteen records each. Every slot counts. -/
+@[expose] public noncomputable def prodHexK (recs lo e off : Nat) : Nat :=
+  Nat.rec (motive := fun _ => Nat → Nat)
+    (fun o => hexK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256))
+    (fun k ih o => Nat.mul (ih o) (ih (Nat.add o (Nat.pow 2 k))))
+    e off
+
+/-- Each of the sixteen slots of word `o` divides that word's product. -/
+theorem dvd_hexK (recs lo o s : Nat) (h1 : 16 * o ≤ s) (h2 : s < 16 * o + 16) :
+    valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535)) ∣
+      hexK lo (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256) := by
+  have hf : ∀ j, j < 15 → Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs
+      (Nat.mul o 256)) mask256) (16 * j)) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + j) 16)) 65535 :=
+    fun j hj => field_hex recs o j (by omega)
+  have h0 : Nat.land (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256) 65535 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 0) 16)) 65535 := hf 0 (by omega)
+  have h1' : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      16) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 1) 16)) 65535 := hf 1 (by omega)
+  have h2' : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      32) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 2) 16)) 65535 := hf 2 (by omega)
+  have h3 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      48) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 3) 16)) 65535 := hf 3 (by omega)
+  have h4 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      64) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 4) 16)) 65535 := hf 4 (by omega)
+  have h5 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      80) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 5) 16)) 65535 := hf 5 (by omega)
+  have h6 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      96) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 6) 16)) 65535 := hf 6 (by omega)
+  have h7 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      112) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 7) 16)) 65535 := hf 7 (by omega)
+  have h8 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      128) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 8) 16)) 65535 := hf 8 (by omega)
+  have h9 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      144) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 9) 16)) 65535 := hf 9 (by omega)
+  have h10 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      160) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 10) 16)) 65535 :=
+    hf 10 (by omega)
+  have h11 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      176) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 11) 16)) 65535 :=
+    hf 11 (by omega)
+  have h12 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      192) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 12) 16)) 65535 :=
+    hf 12 (by omega)
+  have h13 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      208) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 13) 16)) 65535 :=
+    hf 13 (by omega)
+  have h14 : Nat.land (Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256)
+      224) 65535 = Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 14) 16)) 65535 :=
+    hf 14 (by omega)
+  have ht : Nat.shiftRight (Nat.land (Nat.shiftRight recs (Nat.mul o 256)) mask256) 240 =
+      Nat.land (Nat.shiftRight recs (Nat.mul (16 * o + 15) 16)) 65535 := field_hex_top recs o
+  unfold hexK
+  rw [h0, h1', h2', h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, ht]
+  rcases (by omega : s = 16 * o ∨ s = 16 * o + 1 ∨ s = 16 * o + 2 ∨ s = 16 * o + 3 ∨
+      s = 16 * o + 4 ∨ s = 16 * o + 5 ∨ s = 16 * o + 6 ∨ s = 16 * o + 7 ∨
+      s = 16 * o + 8 ∨ s = 16 * o + 9 ∨ s = 16 * o + 10 ∨ s = 16 * o + 11 ∨
+      s = 16 * o + 12 ∨ s = 16 * o + 13 ∨ s = 16 * o + 14 ∨ s = 16 * o + 15) with
+    hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs | hs <;> subst hs
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_right_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_right _ _) _) _) _
+  · exact Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left_of_dvd
+      (Nat.dvd_mul_left_of_dvd (Nat.dvd_mul_left _ _) _) _) _
+
+/-- Every slot in range divides the product. -/
+public theorem dvd_prodHexK (recs lo : Nat) :
+    ∀ e off s, 16 * off ≤ s → s < 16 * (off + 2 ^ e) →
+      valueK (Nat.add lo (Nat.land (Nat.shiftRight recs (Nat.mul s 16)) 65535))
+        ∣ prodHexK recs lo e off := by
+  intro e
+  induction e with
+  | zero =>
+    intro off s ha hb
+    have hb' : s < 16 * off + 16 := by
+      change s < 16 * (off + 1) at hb
+      omega
+    exact dvd_hexK recs lo off s ha hb'
+  | succ k ih =>
+    intro off s ha hb
+    change _ ∣ Nat.mul (prodHexK recs lo k off) (prodHexK recs lo k (off + 2 ^ k))
+    by_cases hc : s < 16 * (off + 2 ^ k)
+    · exact Nat.dvd_mul_right_of_dvd (ih off s ha hc) _
+    · exact Nat.dvd_mul_left_of_dvd (ih (off + 2 ^ k) s (by omega) (by omega)) _
+
 /-- A set bit of a chunk's assembly is the position some slot in range names. -/
 public theorem slot_of_testBit_asmChunkK (recs cnt : Nat) :
     ∀ d off i, Nat.testBit (asmChunkK recs cnt d off) i = true →
