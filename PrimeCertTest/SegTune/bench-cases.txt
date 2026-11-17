@@ -58,9 +58,18 @@
 # so `S23` reads the 10^8 bound at 64 against `S8` at the default before the default is touched.
 # The cliff moves with the bound, so a length that wins at one is not assumed to win at another.
 # `S24` is the last untried length at the 10^9 bound, between 32 accumulating and 64 falling off.
-S8_Sieve1e8
-S23_Base1e8Len64
-S24_Base1e18Len48
+# And both answers are no. At the 10^8 bound 64 is worse, 2485620 KiB against 2096172 at the
+# default for the same kernel time, so the best length moves with the bound and `run_sieve` keeps
+# its default of 16. At the 10^9 bound 48 was killed at 14237656 KiB after 4:47, so every length
+# tried there fails: 4, 8, 16, 32 and 48 by accumulation, 64 and 128 off the cliff.
+#
+# 10^17 stands as the ceiling, and the cost there is kernel rather than memory now. Of `ZZCE`'s
+# 504.376 s, the certificate is 267.8: skip records 142.791 and the skip cover 124.972, of which
+# the assembly alone is 120.869. The chunk sets how many statements carry that, and it was already
+# at the top of its two-bit field, so `ZZCF` adds a bit that doubles it to 4096 and spends some of
+# the 6.40 GiB the batch length freed.
+ZZCE_Target1e17Len64
+ZZCF_Target1e17Chunk4096
 
 # Settled before that: importing a base sieve is free until something reads it. Three rounds each
 # of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
