@@ -2,11 +2,11 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# A compile check for the sixteen-a-leaf field lemmas, which nothing calls yet.
+# Sixteen records a leaf against eight, both on the skipped side, chunk 1024, join on. One round
+# first, because the new tree has never run: either it emits a proved window with the same three
+# axioms or it does not, and only then is a timing worth taking.
 #
-# The chunk does not move with the wider leaves. Two rounds each of the eight-a-leaf arm at 1024
-# and 2048 gave kernel 169.474, 168.739 against 179.654, 174.695; records 30.093, 29.672 against
-# 34.621, 33.765; peaks 4438996 and 4224072 KiB. Same shape as the four-a-leaf sweep — 1024 wins
-# kernel by 3.5%, 2048 saves 4.8% peak — so 1024 stays. That job's runner was much the fastest of
-# the day: the identical case came back at 263 to 266 s on the previous one.
-Base0_Startup
+# The line so far: one a leaf to four took the assembly down 58%; four to eight took the records
+# 10.1%, the assembly 9.3% and the whole kernel 2.6%, for 0.7% more peak.
+ZZCL_Join1e16Oct
+ZZCN_Join1e16Hex
