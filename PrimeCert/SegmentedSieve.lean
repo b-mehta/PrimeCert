@@ -7955,7 +7955,10 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
       -- before it accounted for 10.4 of the 14 GiB at 10^17 and the rest went unreported. One line
       -- every 64 batches is enough to see where it goes without filling the file.
       if i % 64 == 0 then
-        rssLog s!"route batch {i} of {(fuel + step0 - 1) / step0}, {← rssMB} MiB"
+        -- Progress by `start` against `fuel`, not by batch number: this loop takes its lengths
+        -- from `batchLen`'s schedule, so the early batches are short and the count of them is not
+        -- `fuel / step0`. Labelling it that way read as 2688 batches of a declared 1609.
+        rssLog s!"route at index {start} of {fuel}, batch {i}, {← rssMB} MiB"
       -- The window after this batch is the window with the batch's mask cleared from it, so a
       -- batch that has already assembled its mask needs no second marking pass to find it. Only
       -- an unsorted batch, which assembles nothing, still runs the twin. That pass used to sit
