@@ -10,4 +10,6 @@
 # A case importing a module needs its olean and nothing else, so each line asks for that facet by
 # name. Lake's default facet is irArts, which also generates and compiles a C file, and for a
 # module whose whole body is a numeral of several megabytes that is work no case here reads.
-PrimeCertTest.SegTune.S8_Sieve1e8:olean
+# Nothing in the current list imports a base, so no dependency is named. Put a line back when a
+# case does: the build is not free and `Base1e17` cannot be built here at all.
+

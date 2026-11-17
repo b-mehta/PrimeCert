@@ -1,22 +1,20 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-2
+1
 
-# The same pair again, now that run.sh prints the phase log for a case that finished. The first
-# job of it gave, one round each: built in the file 254.709 s kernel, 340.5 s processor,
-# 4344140 KiB peak; imported 235.868 s, 307.5 s, 3499348 KiB. Identical window time (307.483
-# against 306.085 s) and the `base sieve` command 31.532 s against nothing, so importing takes
-# 825 MiB off the peak and 18.8 s off the kernel for the same work. This asks for a second round
-# of that, and for the two lines around the base read that the first job wrote and threw away.
-
-# Importing a base sieve is free until something reads it. Three rounds each of `Base0_Startup`
-# (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and `S14_BaseFloor1e8` gave
-# 1043284 to 1044344 KiB across all nine readings, so a sieve ten times larger, and a sieve
-# against no sieve at all, are the same to within 0.1%.
+# Reading the base sieve costs nothing. With it imported the two new lines read 1019 MiB before
+# and 1019 after; with it built in the file, 2045 and 2047. What separates the two arms is the
+# gigabyte that building leaves resident for the rest of the run, not the read: over two rounds,
+# built 214.545 and 214.861 s kernel at 4344300 and 4345260 KiB, imported 202.591 and 194.557 s
+# at 3482464 and 3482428 KiB.
 #
-# That moves the question to the read. `ZZCA` was at 5508 MiB by the time the emitter's `entry`
-# line printed, and the base sieve is read before it. `runSegmentSkip` now prints a line either
-# side of that read, and the pair below is the settled `10^16` window over a base that was built
-# in the file against the same window over a base that was imported.
-ZZBB_Target1e16Skip
-ZZCD_Target1e16Imported
+# So the 5508 MiB `ZZCA` showed at entry belongs to the 3.163e8 base and not to reading a base as
+# such, and that base can no longer be imported here. `ZZBP` builds it in the file at 10^17 and
+# fits, so it is the one case that can say where those megabytes are, now that a line prints
+# either side of the read.
+ZZBP_Target1e17Skip
+
+# Settled before that: importing a base sieve is free until something reads it. Three rounds each
+# of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
+# `S14_BaseFloor1e8` gave 1043284 to 1044344 KiB across all nine readings, so a sieve ten times
+# larger, and a sieve against no sieve at all, are the same to within 0.1%.
