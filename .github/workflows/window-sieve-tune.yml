@@ -50,7 +50,11 @@ jobs:
             mapfile -t targets < <(sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$deps" | grep -v '^$')
             if [ ${#targets[@]} -gt 0 ]; then
               printf 'dependency: %s\n' "${targets[@]}"
-              lake build "${targets[@]}"
+              # One thread, because this step has no watchdog over it the way a timed case does,
+              # and a dependency that elaborates a large sieve can take the runner down with the
+              # log, which is how this step first failed.
+              LEAN_NUM_THREADS=1 lake build "${targets[@]}"
+              echo "dependencies built"
             fi
           fi
       - name: Time the cases this branch asks for
