@@ -38,6 +38,12 @@ The batch length is 65536, which won at `10^16` on kernel time over 8192 and 327
 reason it matters here rather than time: at `10^16` the same design peaked 9.92 GiB at 8192 and
 6.70 GiB at 32768, and `run.sh` fails a case at 14 GB.
 
+`parts 3329987`, which is the settled shape with two changes aimed at the peak that killed the
+first attempt at 13.51 GiB. Both chunk trees read four records a leaf, which at `10^16` cost 1%
+more peak and took the kernel from 310.3 to 211.2 seconds; and the chunk is 2048 records rather
+than 1024, which at `10^16` cost 8% more kernel for 4.6% less peak. The second is there only
+because this case is the one where memory decides whether anything runs at all.
+
 The `3.163 * 10^8` base sieve comes first, and on its own it is 86 to 88 processor seconds and
 6.41 GiB (`S9_Sieve1e17Base`, run 43820571523).
 
@@ -48,7 +54,7 @@ namespace PrimeCert.SegTune.ZZBP_Target1e17Skip
 run_sieve 316300000
 
 set_option maxRecDepth 1000000 in
-run_segment_skip_part 183747 100000000000000001 4194304 105433333 65536 0 65536 316300000
+run_segment_skip_part 3329987 100000000000000001 4194304 105433333 65536 0 65536 316300000
 
 #print axioms segEqAll_100000000000000001_4194304_105433333
 
