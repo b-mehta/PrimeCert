@@ -8452,11 +8452,20 @@ meta def sliceCovProof (xE LE D : Expr) (L chunkLog : Nat) (slices : Array Nat)
 
 public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : Nat) :
     MetaM Unit := do
+  -- The log starts here rather than at the `entry` line below, because the base sieve is read
+  -- first and that read is not small. A case that imports a base and never runs this command
+  -- peaks 1020 MiB, the same as one importing no sieve at all (`S14_BaseFloor1e8` against
+  -- `Base0_Startup`, three rounds each), while `ZZCA` is at 5508 MiB by the time `entry` prints.
+  -- So the charge is for reading the literal, not for having it imported, and these two lines are
+  -- where it lands.
+  rssLogInit
+  rssLog s!"before the base sieve {← rssMB} MiB"
   let env ← getEnv
   let some info := env.find? baseLit
     | throwError "run_segment_skip: no base sieve {baseLit}"
   let some sVal := info.value?.bind Expr.rawNatLit?
     | throwError "run_segment_skip: the base sieve {baseLit} is not a numeral"
+  rssLog s!"base sieve read {← rssMB} MiB"
   if bs == 0 || W % bs ≠ 0 then
     throwError "run_segment_skip: the certificate states one gcd per slice of {bs} bits, so the \
       slice must divide the window {W}"
@@ -8600,7 +8609,6 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   while sweepK * value wideFirst ≤ wm1 && wideFirst < fuel do
     wideFirst := wideFirst + 1
   let nBatch := (fuel + step0 - 1) / step0
-  rssLogInit
   rssLog s!"entry {← rssMB} MiB, {nBatch} batches of {step0}, W {W}, fuel {fuel}, parts {parts}, \
     swept band from {wideFirst}, sweep starts where {sweepK}p exceeds Wm1"
   let mut full := initSeg W
