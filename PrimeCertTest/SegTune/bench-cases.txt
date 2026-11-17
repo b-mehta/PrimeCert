@@ -2,11 +2,12 @@
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
 1
 
-# A compile check, not a measurement: the eight-a-leaf tree is new and nothing calls it yet, so
-# the job is here to build `PrimeCert.SegmentedSieve` and `PrimeCert.SkipSound` at step 5 and this
-# case costs half a second on top.
+# Eight records a leaf on the skipped side, against the settled window. Going from one a leaf to
+# four took the assembly down 58%, and the skipped side is where the certificate's time is: of
+# `ZZBY`'s kernel the records are 31 to 41 s and the assembly 27 to 39 s, out of 195 to 270
+# depending on the runner.
 #
-# Settled by the second round of the route batch: 65536 stays. Two rounds each gave 198.180 and
-# 193.590 s kernel at 65536 against 193.874 and 194.977 at 131072, so the arms overlap and the
-# earlier 2.1% was the spread between runs, not the setting; 131072 also costs 8.3% peak.
-Base0_Startup
+# One round first, because the new tree has never run: either it emits a proved window with the
+# same three axioms or it does not, and only then is a timing worth taking.
+ZZBY_Join1e16Quad
+ZZCL_Join1e16Oct
