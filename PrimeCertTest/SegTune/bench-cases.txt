@@ -1,17 +1,12 @@
 # The cases the tuning workflow times, read from whichever branch is pushed to a bench branch.
 # First line: how many rounds. Then one case a line. Blank lines and # comments are ignored.
-2
+1
 
-# Eight a leaf is settled at 10^16, two rounds each, four clean axiom lines:
+# A compile check for the sixteen-a-leaf field lemmas, which nothing calls yet.
 #
-#   four a leaf    kernel 270.780, 271.757   records 41.182, 41.407   assembly 39.263, 39.553
-#   eight a leaf   kernel 266.529, 263.088   records 37.201, 36.870   assembly 36.099, 35.458
-#
-# peaks 4409572 and 4441668 KiB. Every group separates: records 10.1% down, assembly 9.3%, whole
-# kernel 2.6%, peak 0.7% up. An earlier job's single round agrees at 7.9% and 7.8%.
-#
-# The chunk was swept with the four-a-leaf tree, where 1024 won on kernel and each doubling bought
-# peak at its expense. The leaves are twice as wide now, so a chunk holds half as many and that is
-# not the trade the sweep measured.
-ZZCL_Join1e16Oct
-ZZCM_Join1e16OctChunk2048
+# The chunk does not move with the wider leaves. Two rounds each of the eight-a-leaf arm at 1024
+# and 2048 gave kernel 169.474, 168.739 against 179.654, 174.695; records 30.093, 29.672 against
+# 34.621, 33.765; peaks 4438996 and 4224072 KiB. Same shape as the four-a-leaf sweep — 1024 wins
+# kernel by 3.5%, 2048 saves 4.8% peak — so 1024 stays. That job's runner was much the fastest of
+# the day: the identical case came back at 263 to 266 s on the previous one.
+Base0_Startup
