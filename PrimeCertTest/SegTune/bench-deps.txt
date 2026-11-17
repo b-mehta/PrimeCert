@@ -3,13 +3,12 @@
 # without it the case fails in about a second with an unknown module prefix.
 #
 # Name a target here only while a case in the list actually imports it. Building one is not free
-# and has no watchdog over it: PrimeCertTest.SegTune.Base1e17 elaborates the 3.163e8 sieve and has
-# taken the runner down twice, once uncapped and once at LEAN_NUM_THREADS=1, so it belongs here
-# only for a run that needs it.
-
+# and the step now reports each target's peak: PrimeCertTest.SegTune.Base1e17 elaborates the
+# 3.163e8 sieve and peaks 14103956 KiB writing its olean, which is over the step's default limit,
+# so a run that needs it raises the limit in bench-deplimit.txt.
+#
 # A case importing a module needs its olean and nothing else, so each line asks for that facet by
 # name. Lake's default facet is irArts, which also generates and compiles a C file, and for a
 # module whose whole body is a numeral of several megabytes that is work no case here reads.
-# Nothing in the current list imports a base, so no dependency is named. Put a line back when a
-# case does: the build is not free and `Base1e17` cannot be built here at all.
 
+PrimeCertTest.SegTune.Base1e17:olean

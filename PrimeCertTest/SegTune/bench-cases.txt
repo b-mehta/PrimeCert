@@ -13,6 +13,16 @@
 # fits, so it is the one case that can say where those megabytes are, now that a line prints
 # either side of the read.
 ZZBP_Target1e17Skip
+# And the answer it gave: 6564 MiB before the read, 6564 after, so reading the 3.163e8 base is
+# free too and the 6.5 GiB is what building it leaves. That is 61% of the run's 10982212 KiB peak
+# standing before the window is touched, and 86.3 s of its 633.4 s window command. The whole run
+# was kernel 446.992 s, wall 12:01, processor 722.8 s, with 2.88 GiB spare.
+#
+# `ZZCA` is that case with the base imported instead, same `parts 3329987`. At 10^16 importing
+# was worth about 860 MiB of peak, and here 2.88 GiB of spare is what the join has to fit in.
+# Needs the raised dependency limit in bench-deplimit.txt, since writing that base to an olean
+# peaks 14103956 KiB.
+ZZCA_Target1e17Imported
 
 # Settled before that: importing a base sieve is free until something reads it. Three rounds each
 # of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
