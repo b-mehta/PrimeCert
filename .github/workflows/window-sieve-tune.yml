@@ -10,6 +10,8 @@ on:
   push:
     branches:
       - ci/sieve-bench
+      # And a pattern, so each timing run gets a branch of its own and none of them is rewritten.
+      - 'ci/bench-**'
 
 jobs:
   build:
