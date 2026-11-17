@@ -6879,6 +6879,35 @@ Modes 0 to 7 compute the batch literals with the `segLoop` twin and modes 8 to 1
 command's own computation alone. Mode 16 joins each batch's masks into a running total and clears
 the window once at the end, in place of clearing it per prime; it uses slices, the `segLoopC` twin
 and a chain, so mode 11 is the arm to compare it against. -/
+/-- Append a line to `/tmp/skip-rss.log` and flush it.
+
+`logInfo` holds its messages until the command finishes, so a command the watchdog kills prints
+none of them, and `IO.getStderr` is no better because the command elaborator runs inside
+`IO.FS.withIsolatedStreams` and that handle is the captured stream. A file opened by name is
+outside both, which is the whole reason for the path. Read it after the kill; it is not in the
+`out-` or `time-` file. -/
+meta def rssLog (msg : String) : IO Unit := do
+  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.append
+  h.putStrLn s!"skip rss: {msg}"
+  h.flush
+
+/-- Empty `/tmp/skip-rss.log`, so a run's lines are its own rather than the previous run's with
+this one appended. Called once at the start of the emitter. -/
+meta def rssLogInit : IO Unit := do
+  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.write
+  h.flush
+
+/-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
+counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
+rather than failing a build. -/
+meta def rssMB : IO Nat := do
+  try
+    let s ← IO.FS.readFile "/proc/self/statm"
+    match (s.splitOn " ")[1]? with
+    | some p => return ((p.trimAscii.toNat?.getD 0) * 4) / 1024
+    | none => return 0
+  catch _ => return 0
+
 meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
     (prodNames : Bool := false) (out : Option (IO.Ref (Option (Nat × Name))) := none) :
     MetaM Unit := do
@@ -7918,6 +7947,11 @@ meta def runSegmentV (ns baseLit : Name) (mode a W fuel len : Nat)
           assembled no position; an empty batch is taken unsorted above, so this is not that"
       let t1 ← IO.monoNanosNow
       sortNanos := sortNanos + (t1 - t0)
+      -- The route is the phase a killed case dies in, and until now no log covered it: everything
+      -- before it accounted for 10.4 of the 14 GiB at 10^17 and the rest went unreported. One line
+      -- every 64 batches is enough to see where it goes without filling the file.
+      if i % 64 == 0 then
+        rssLog s!"route batch {i} of {(fuel + step0 - 1) / step0}, {← rssMB} MiB"
       -- The window after this batch is the window with the batch's mask cleared from it, so a
       -- batch that has already assembled its mask needs no second marking pass to find it. Only
       -- an unsorted batch, which assembles nothing, still runs the twin. That pass used to sit
@@ -8304,27 +8338,8 @@ help either: the command elaborator runs inside `IO.FS.withIsolatedStreams`, so 
 captured stream rather than the real file descriptor, and the capture is turned into messages at
 the same point `logInfo` would have been. **A file opened by name is outside both**, which is the
 whole reason for the path here. Read it after the kill; it is not in the `out-` or `time-` file. -/
-meta def rssLog (msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.append
-  h.putStrLn s!"skip rss: {msg}"
-  h.flush
-
-/-- Empty `/tmp/skip-rss.log`, so a run's lines are its own rather than the previous run's with
-this one appended. Called once at the start of the emitter. -/
-meta def rssLogInit : IO Unit := do
-  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.write
-  h.flush
-
-/-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
-counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
-rather than failing a build. -/
-meta def rssMB : IO Nat := do
-  try
-    let s ← IO.FS.readFile "/proc/self/statm"
-    match (s.splitOn " ")[1]? with
-    | some p => return ((p.trimAscii.toNat?.getD 0) * 4) / 1024
-    | none => return 0
-  catch _ => return 0
+The definitions themselves sit above `runSegmentV`, because the route is the one phase the log
+never covered and the reason it did not was that these were declared below it. -/
 
 /-- The product of an array, combined pairwise.
 
