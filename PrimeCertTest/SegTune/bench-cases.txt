@@ -29,9 +29,15 @@
 #
 # Only lengths below the default have been swept, at the 10^9 bound, where 16, 8 and 4 moved the
 # peak 0.75%. These three take the default against 64 and 256 at the bound 10^17 needs.
-S9_Sieve1e17Base
-S17_Base1e17Len64
-S18_Base1e17Len256
+# And the sweep says 64: at the 3.163e8 bound, length 16 gave kernel 83.588 s at 6707116 KiB,
+# length 64 gave 83.769 s at 5737748 KiB — 946 MiB less for the same kernel time — and length 256
+# was killed at 14377552 KiB after twelve seconds. So the knob was only spent downward.
+#
+# The bound 10^18 needs was killed at 14465364 KiB at the default 16, which is what closed 10^18
+# here. These three ask whether it comes under the limit at a longer batch.
+S20_Base1e18Len32
+S21_Base1e18Len64
+S22_Base1e18Len128
 
 # Settled before that: importing a base sieve is free until something reads it. Three rounds each
 # of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
