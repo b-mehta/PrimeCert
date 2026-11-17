@@ -21,8 +21,17 @@
 # That leaves building it cheaper as the only way at the largest item in the run, and the base
 # sieve has had no phase log at all. `run_sieve` now writes one, so these two say where its
 # 6.5 GiB appears: the bound at 10^8 for a reading that costs a minute, and the one at 10^17.
-S8_Sieve1e8
+# And it says the memory accumulates over the chain's batches rather than appearing at the end.
+# At the 3.163e8 bound, 371 batches of 16: 1045 MiB at batch 0, then 2970, 3725, 4253, 5354, 5955
+# at batches 64 to 320, 6533 at the last and 6535 when the command returns. The 10^8 bound has the
+# same shape, 209 batches from 1019 to 2045 MiB. Each batch adds a step theorem whose statement
+# carries two literals the width of the whole sieve, and a longer batch makes fewer of them.
+#
+# Only lengths below the default have been swept, at the 10^9 bound, where 16, 8 and 4 moved the
+# peak 0.75%. These three take the default against 64 and 256 at the bound 10^17 needs.
 S9_Sieve1e17Base
+S17_Base1e17Len64
+S18_Base1e17Len256
 
 # Settled before that: importing a base sieve is free until something reads it. Three rounds each
 # of `Base0_Startup` (the two imports every case carries, no sieve), `S15_BaseFloor1e7` and
