@@ -7,6 +7,7 @@ module
 
 import Lean.Elab.Command
 public meta import SieveEmit
+public meta import PrimeCert.Meta.Rss
 public import PrimeCert.Sieve
 public import PrimeCert.SieveCorrect
 public import PrimeCert.SieveBase
@@ -6867,39 +6868,6 @@ public meta def runSegment (ns baseLit : Name) (a W fuel len : Nat) : MetaM Unit
         mkConst litName, Lean.reflBoolTrue, Lean.reflBoolTrue, Lean.reflBoolTrue,
         mkConst parent])
 
-/-- Append a line to `/tmp/skip-rss.log` and flush it.
-
-`logInfo` holds its messages until the command finishes, so a command the watchdog kills prints
-none of them, and `IO.getStderr` is no better because the command elaborator runs inside
-`IO.FS.withIsolatedStreams` and that handle is the captured stream. A file opened by name is
-outside both, which is the whole reason for the path. Read it after the kill; it is not in the
-`out-` or `time-` file.
-
-These sit above `runSegmentV` rather than beside the rest of the emitter's helpers, because the
-route is the one phase the log never covered and the reason it did not was that they were
-declared below it. -/
-meta def rssLog (msg : String) : IO Unit := do
-  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.append
-  h.putStrLn s!"skip rss: {msg}"
-  h.flush
-
-/-- Empty `/tmp/skip-rss.log`, so a run's lines are its own rather than the previous run's with
-this one appended. Called once at the start of the emitter. -/
-meta def rssLogInit : IO Unit := do
-  let h ← IO.FS.Handle.mk "/tmp/skip-rss.log" IO.FS.Mode.write
-  h.flush
-
-/-- Resident memory of this process in MiB, from the second field of `/proc/self/statm`, which
-counts pages. Returns 0 where that file is not readable, so a platform without it reports zeros
-rather than failing a build. -/
-meta def rssMB : IO Nat := do
-  try
-    let s ← IO.FS.readFile "/proc/self/statm"
-    match (s.splitOn " ")[1]? with
-    | some p => return ((p.trimAscii.toNat?.getD 0) * 4) / 1024
-    | none => return 0
-  catch _ => return 0
-
 /-- `runSegment` with a choice of loop and of batch assembly, for timing the draft variants
 against each other. The loop is `mode % 4`: 0 is `segLoopK`, 1 is `segLoopCK`, 2 is `segLoopSK`
 and 3 is `segLoopSCK`. Loops 2 and 3 emit one lemma checking the slice of the base sieve
@@ -8458,7 +8426,6 @@ public meta def runSegmentSkip (ns baseLit : Name) (a W fuel len thr bs parts : 
   -- `Base0_Startup`, three rounds each), while `ZZCA` is at 5508 MiB by the time `entry` prints.
   -- So the charge is for reading the literal, not for having it imported, and these two lines are
   -- where it lands.
-  rssLogInit
   rssLog s!"before the base sieve {← rssMB} MiB"
   let env ← getEnv
   let some info := env.find? baseLit

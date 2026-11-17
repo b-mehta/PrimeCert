@@ -108,6 +108,10 @@ for round in $(seq 1 "$rounds"); do
     f=${cases[$(( (k + round - 1) % n ))]}
     out="out-${TAG}$f-$round.txt"
     tim="time-${TAG}$f-$round.txt"
+    # Emptied here rather than by whichever command writes to it first: `run_sieve` and
+    # `run_segment_skip_part` both log phases and either may come first in a case, so a command
+    # that truncated would throw away the other's lines.
+    rm -f /tmp/skip-rss.log
     /usr/bin/time -v lean $plugin -Dtrace.profiler=true -Dtrace.profiler.threshold=0 $LEAN_FLAGS \
       "PrimeCertTest/SegTune/$f.lean" > "$out" 2> "$tim" &
     tpid=$!
