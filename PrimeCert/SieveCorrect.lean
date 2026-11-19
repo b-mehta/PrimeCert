@@ -58,18 +58,9 @@ theorem testBit_initK {M t : ℕ} :
 
 @[simp, grind =] public theorem indexK_eq_index : indexK = index := rfl
 
-/-- A number is coprime to 6 exactly when it is 1 or 5 modulo 6. -/
-@[grind =]
-theorem coprime6_mod {m : ℕ} : m.Coprime 6 ↔ m % 6 = 1 ∨ m % 6 = 5 := by
-  have : ∀ t < 6, t.gcd 6 = 1 ↔ t % 6 = 1 ∨ t % 6 = 5 := by decide
-  simpa using this (m % 6) (Nat.mod_lt _ (by simp))
-
-alias ⟨mod6_of_coprime6, _⟩ := coprime6_mod
-attribute [grind .] mod6_of_coprime6
-
 /-- Every number in the sieve is coprime to 6. -/
 @[grind .] public theorem value_coprime6 (k : ℕ) : (value k).Coprime 6 :=
-  coprime6_mod.2 (by grind [value])
+  Nat.coprime_six_iff.2 (by grind [value])
 
 /-- Every number above index 0 is at least 5. -/
 @[grind! .] public theorem five_le_value {k : ℕ} (hk : k ≠ 0) : 5 ≤ value k := by grind [value]
@@ -87,6 +78,12 @@ attribute [grind .] mod6_of_coprime6
 /-- Adding an even amount `2*m` to the index adds `6*m` to the number. -/
 @[grind =]
 theorem value_add_two_mul {k m : ℕ} : value (k + 2 * m) = value k + 6 * m := by grind [value]
+
+/-- Adding `6*m` to a number coprime to 6 adds `2*m` to its index. -/
+public theorem index_add {r m : ℕ} (hr : r.Coprime 6) :
+    index (r + 6 * m) = index r + 2 * m := by
+  have : value (index r + 2 * m) = r + 6 * m := by rw [value_add_two_mul, value_index hr]
+  grind
 
 /-- The number at an index rises with the index. -/
 public theorem value_strictMono : StrictMono value := by grind [value, StrictMono]
@@ -186,10 +183,10 @@ theorem mask_iff {p M t : ℕ} (hp6 : p.Coprime 6)
   rw [testBit_buildMaskK (by grind) ht hM]
   constructor
   · rintro (⟨hle, c, hc⟩ | ⟨hle, c, hc⟩)
-    · exact ⟨5 + 6 * c, by lia, coprime6_mod.2 (by lia), by grind [value, index]⟩
-    · exact ⟨7 + 6 * c, by lia, coprime6_mod.2 (by lia), by grind [value, index]⟩
+    · exact ⟨5 + 6 * c, by lia, Nat.coprime_six_iff.2 (by lia), by grind [value, index]⟩
+    · exact ⟨7 + 6 * c, by lia, Nat.coprime_six_iff.2 (by lia), by grind [value, index]⟩
   · rintro ⟨k, hk5, hk6, hval⟩
-    rcases coprime6_mod.1 hk6 with h1 | h5
+    rcases Nat.coprime_six_iff.1 hk6 with h1 | h5
     · right
       obtain ⟨j, rfl⟩ : ∃ j, k = 7 + 6 * j := ⟨(k - 7) / 6, by grind⟩
       have ht2 : value t = value (index (p * 7) + 2 * (p * j)) := by grind
@@ -358,5 +355,10 @@ public theorem IsSieve.prime {n lit t p : ℕ} (h : IsSieve n lit) (h1 : Nat.ble
     (h4 : p.ble n) (hbit : testBitK lit t) (hp : (valueK t).beq p) :
     Nat.Prime p := by
   grind [IsSieve, Nat.beq_eq, Nat.ble_eq]
+
+/-- A prime within the range of a sieve sets its own bit. -/
+public theorem IsSieve.testBit_of_prime {n lit p : ℕ} (h : IsSieve n lit) (hp : p.Prime)
+    (hb : p ≤ n) (hc : p.Coprime 6) : lit.testBit (index p) := by
+  grind [IsSieve, index, value_index, hp.two_le]
 
 end PrimeCert.Sieve
