@@ -7,6 +7,7 @@ module
 
 public import PrimeCert.Sieve
 public import Mathlib.Data.Nat.Prime.Basic
+public import Mathlib.Order.Monotone.Defs
 
 import Mathlib.Data.Nat.Bitwise
 import Mathlib.Tactic.Ring
