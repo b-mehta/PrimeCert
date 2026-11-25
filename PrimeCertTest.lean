@@ -5,3 +5,4 @@ import PrimeCertTest.PrimeListTest
 import PrimeCertTest.SieveLookupTest
 import PrimeCertTest.SieveMethodTest
 import PrimeCertTest.SieveVerify1e8
+import PrimeCertTest.Pock3IntervalTest
